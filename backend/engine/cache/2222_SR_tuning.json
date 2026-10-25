@@ -1,0 +1,26 @@
+{
+  "ticker": "2222.SR",
+  "tuned_on": "2026-09-21",
+  "data_end_date": "2026-09-17",
+  "xgb": {
+    "max_depth": 2,
+    "learning_rate": 0.02,
+    "n_estimators": 300,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "random_state": 42
+  },
+  "lstm": {
+    "hidden": 64,
+    "lr": 0.0005
+  },
+  "arima_order": [
+    1,
+    1,
+    0
+  ],
+  "ridge": {
+    "alpha": 0.1
+  },
+  "kalman": "local level"
+}

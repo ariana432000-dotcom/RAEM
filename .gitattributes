@@ -1,0 +1,9 @@
+# Check text files out with LF everywhere, as they were written (the notebooks append LF lines to the CSV logs)
+* text=auto eol=lf
+*.gz binary
+*.pkl binary
+*.db binary
+*.sqlite3 binary
+*.bin binary
+*.pdf binary
+*.png binary

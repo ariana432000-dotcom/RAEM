@@ -1,0 +1,14 @@
+# secrets and local settings
+.env
+
+# run database and executed notebook copies (created by the server; back them up separately if you need them)
+backend/storage/
+
+# Python / tooling
+__pycache__/
+*.pyc
+.pytest_cache/
+*.tmp
+
+# generated during the page build
+frontend/src/template3.html

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "echo no install needed",
+  "buildCommand": "echo the page is prebuilt in frontend/dist",
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://YOUR-APP.up.railway.app/api/:path*" }
+  ]
+}

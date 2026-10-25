@@ -1,0 +1,27 @@
+# Run from this folder:  docker compose up --build -d
+# The volumes keep prices, logs, the run database and exported data on your disk, so a restart loses nothing.
+# AI analysis needs Ollama: by default the container uses Ollama running on this machine (host.docker.internal).
+services:
+  web:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      TZ: ${TZ:-Asia/Dhaka}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend/engine/data:/app/backend/engine/data
+      - ./backend/engine/daily_data:/app/backend/engine/daily_data
+      - ./backend/engine/forecast_log:/app/backend/engine/forecast_log
+      - ./backend/engine/cache:/app/backend/engine/cache
+      - ./backend/engine/chroma_memory:/app/backend/engine/chroma_memory
+      - ./backend/engine/notebooks:/app/backend/engine/notebooks
+      - ./backend/data:/app/backend/data
+      - ./backend/storage:/app/backend/storage
+      - ./frontend/dist:/app/frontend/dist
+    restart: unless-stopped

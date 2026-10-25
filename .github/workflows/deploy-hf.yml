@@ -1,0 +1,26 @@
+   name: deploy-to-hugging-face
+
+   on:
+     push:
+       branches: [main]
+     workflow_dispatch:
+
+   concurrency:
+     group: hf-deploy
+     cancel-in-progress: true
+
+   jobs:
+     deploy:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v4
+         - uses: actions/setup-python@v5
+           with:
+             python-version: "3.12"
+         - run: pip install huggingface_hub python-dotenv
+         - name: Upload to the Space
+           run: python backend/tools/deploy_hf.py lamiha/ream --secrets
+           env:
+             HF_TOKEN: ${{ secrets.HF_TOKEN }}
+             RAEM_RUN_TOKEN: ${{ secrets.RAEM_RUN_TOKEN }}
+             ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

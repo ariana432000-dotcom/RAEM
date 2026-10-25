@@ -1,0 +1,45 @@
+{
+  "horizon": 7,
+  "ticker": "IBM",
+  "data_end_date": "2026-10-19",
+  "n_rows": 524,
+  "cached_at": "2026-10-20 11:51:02",
+  "results": {
+    "xgb_ret": 0.015536627732217312,
+    "xgb_mae": 0.0756040972001197,
+    "xgb_dacc": 0.6338028169014085,
+    "xgb_params": {
+      "max_depth": 2,
+      "learning_rate": 0.02,
+      "n_estimators": 300,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "random_state": 42
+    },
+    "lstm_ret": 0.03224113583564758,
+    "lstm_mae": 0.0615093857049942,
+    "lstm_dacc": 0.6323529411764706,
+    "lstm_params": {
+      "hidden": 16,
+      "lr": 0.001
+    },
+    "arima_ret": 0.0008578444985165579,
+    "arima_mae": 0.05922072784069874,
+    "arima_dacc": 0.4788732394366197,
+    "arima_order": [
+      1,
+      1,
+      0
+    ],
+    "ridge_ret": -0.005304270270597947,
+    "ridge_mae": 0.061545412575884105,
+    "ridge_dacc": 0.5915492957746479,
+    "ridge_params": {
+      "alpha": 10.0
+    },
+    "kalman_ret": -6.855289669260856e-10,
+    "kalman_mae": 0.059410407535840405,
+    "kalman_dacc": 0.5211267605633803,
+    "kalman_level": "local level"
+  }
+}

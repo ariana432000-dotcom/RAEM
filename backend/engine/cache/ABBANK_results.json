@@ -1,0 +1,45 @@
+{
+  "horizon": 7,
+  "ticker": "ABBANK",
+  "data_end_date": "2026-09-17",
+  "n_rows": 476,
+  "cached_at": "2026-10-20 11:52:01",
+  "results": {
+    "xgb_ret": 0.009132886305451393,
+    "xgb_mae": 0.03169778986318001,
+    "xgb_dacc": 0.4603174603174603,
+    "xgb_params": {
+      "max_depth": 4,
+      "learning_rate": 0.02,
+      "n_estimators": 300,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "random_state": 42
+    },
+    "lstm_ret": 0.0001240372657775879,
+    "lstm_mae": 0.03469505533576012,
+    "lstm_dacc": 0.5333333333333333,
+    "lstm_params": {
+      "hidden": 32,
+      "lr": 0.0005
+    },
+    "arima_ret": -0.001839474736468505,
+    "arima_mae": 0.028493582864799052,
+    "arima_dacc": 0.31746031746031744,
+    "arima_order": [
+      1,
+      1,
+      0
+    ],
+    "ridge_ret": 0.0019293281912011687,
+    "ridge_mae": 0.02835634705511486,
+    "ridge_dacc": 0.5079365079365079,
+    "ridge_params": {
+      "alpha": 100.0
+    },
+    "kalman_ret": 6.19505335919257e-10,
+    "kalman_mae": 0.028149849133354676,
+    "kalman_dacc": 0.30158730158730157,
+    "kalman_level": "local level"
+  }
+}

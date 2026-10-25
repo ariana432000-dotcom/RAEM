@@ -1,0 +1,45 @@
+{
+  "horizon": 7,
+  "ticker": "AAPL",
+  "data_end_date": "2026-10-19",
+  "n_rows": 524,
+  "cached_at": "2026-10-20 11:50:39",
+  "results": {
+    "xgb_ret": 0.00986812636256218,
+    "xgb_mae": 0.037233152742066344,
+    "xgb_dacc": 0.3380281690140845,
+    "xgb_params": {
+      "max_depth": 2,
+      "learning_rate": 0.02,
+      "n_estimators": 300,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "random_state": 42
+    },
+    "lstm_ret": 0.0065339431166648865,
+    "lstm_mae": 0.05157238990068436,
+    "lstm_dacc": 0.4264705882352941,
+    "lstm_params": {
+      "hidden": 64,
+      "lr": 0.0005
+    },
+    "arima_ret": -0.0005823062202010565,
+    "arima_mae": 0.03304233063633937,
+    "arima_dacc": 0.39436619718309857,
+    "arima_order": [
+      5,
+      1,
+      0
+    ],
+    "ridge_ret": 0.00400766044903892,
+    "ridge_mae": 0.03008658212738954,
+    "ridge_dacc": 0.6056338028169014,
+    "ridge_params": {
+      "alpha": 10.0
+    },
+    "kalman_ret": 1.6710721695289976e-10,
+    "kalman_mae": 0.030699260747352266,
+    "kalman_dacc": 0.4507042253521127,
+    "kalman_level": "local level"
+  }
+}

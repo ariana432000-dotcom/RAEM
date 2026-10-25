@@ -1,0 +1,45 @@
+{
+  "horizon": 7,
+  "ticker": "BATBC",
+  "data_end_date": "2026-09-17",
+  "n_rows": 475,
+  "cached_at": "2026-10-20 11:52:25",
+  "results": {
+    "xgb_ret": -0.009516504593193531,
+    "xgb_mae": 0.042578035581667735,
+    "xgb_dacc": 0.5714285714285714,
+    "xgb_params": {
+      "max_depth": 2,
+      "learning_rate": 0.02,
+      "n_estimators": 300,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "random_state": 42
+    },
+    "lstm_ret": -0.04486073553562164,
+    "lstm_mae": 0.03710412234067917,
+    "lstm_dacc": 0.6333333333333333,
+    "lstm_params": {
+      "hidden": 32,
+      "lr": 0.001
+    },
+    "arima_ret": -0.00045476791221832347,
+    "arima_mae": 0.027769495972678908,
+    "arima_dacc": 0.49206349206349204,
+    "arima_order": [
+      5,
+      1,
+      0
+    ],
+    "ridge_ret": -0.005756823659312465,
+    "ridge_mae": 0.0300826451195605,
+    "ridge_dacc": 0.47619047619047616,
+    "ridge_params": {
+      "alpha": 100.0
+    },
+    "kalman_ret": -1.115674663765276e-09,
+    "kalman_mae": 0.028068118781763088,
+    "kalman_dacc": 0.4603174603174603,
+    "kalman_level": "local level"
+  }
+}

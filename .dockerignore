@@ -1,0 +1,9 @@
+.env
+**/__pycache__
+**/*.pyc
+**/*.bak
+**/*.bak_*
+.pytest_cache
+.github
+backend/storage
+frontend/src/template3.html

@@ -1,0 +1,700 @@
+<title>RAEM Forecast Console</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@500;600;700;800&display=swap">
+<style>
+/* Layout: sticky glass top nav, then one centred column (hero, glass cards, footer) over a soft gradient field.
+   Palette: periwinkle accent on a pale lilac and mint field (light) or deep navy with violet and teal glows (dark).
+   Green, red and amber are signal colours only. Manrope for text, JetBrains Mono for every figure. */
+:root {
+  --bg: #f3f4f9; --solid: #ffffff; --bg-raised: #ffffffa6; --panel: #ffffffb8; --panel-hover: #ffffffe6;
+  --border: #505aa029; --border-soft: #505aa01a; --ctl: #7d88b0;
+  --text: #141a33; --muted: #4d5880; --faint: #5c6689;
+  --accent: #4350f0; --accent2: #8a4ff0; --accent-soft: #4350f01a; --accent-strong: #2f3ac4; --on-accent: #ffffff;
+  --buy: #0a6f43; --buy-soft: #0a6f431a; --sell: #c4254f; --sell-soft: #c4254f1a; --hold: #8a5304; --hold-soft: #8a53041a;
+  --c1: #d4561f; --c2: #0a8f8a; --c3: #8a4fd0; --c4: #8f7400; --c5: #d6409f; --c6: #3f8f2a; --c7: #2a7fd4; --c8: #7a5c44;
+  --base-line: #b2badb; --shadow: 0 10px 34px rgba(60, 70, 140, 0.12);
+  --g1: #dde3ff; --g2: #ebe2ff; --g3: #dcf3ec; --g4: #fdeee4;
+  --font-sans: "Manrope", ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a0e1f; --solid: #171c33; --bg-raised: #ffffff12; --panel: #ffffff0f; --panel-hover: #ffffff1c;
+    --border: #ffffff22; --border-soft: #ffffff14; --ctl: #7480ad;
+    --text: #eef0ff; --muted: #b0b8da; --faint: #a0a9cf;
+    --accent: #8b97ff; --accent2: #c08bff; --accent-soft: #8b97ff26; --accent-strong: #aab3ff; --on-accent: #0a0e1f;
+    --buy: #3ddc97; --buy-soft: #3ddc9726; --sell: #ff8aa0; --sell-soft: #ff8aa026; --hold: #fbbf24; --hold-soft: #fbbf2426;
+    --c1: #ff8a57; --c2: #3fd0c9; --c3: #b88cf2; --c4: #e6c23a; --c5: #f276c3; --c6: #7ad45f; --c7: #62aef5; --c8: #c9a589;
+    --base-line: #3b4468; --shadow: 0 10px 34px rgba(0, 0, 0, 0.4);
+    --g1: #151a42; --g2: #1d1742; --g3: #0c2531; --g4: #101c46; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a0e1f; --solid: #171c33; --bg-raised: #ffffff12; --panel: #ffffff0f; --panel-hover: #ffffff1c;
+  --border: #ffffff22; --border-soft: #ffffff14; --ctl: #7480ad;
+  --text: #eef0ff; --muted: #b0b8da; --faint: #a0a9cf;
+  --accent: #8b97ff; --accent2: #c08bff; --accent-soft: #8b97ff26; --accent-strong: #aab3ff; --on-accent: #0a0e1f;
+  --buy: #3ddc97; --buy-soft: #3ddc9726; --sell: #ff8aa0; --sell-soft: #ff8aa026; --hold: #fbbf24; --hold-soft: #fbbf2426;
+  --c1: #ff8a57; --c2: #3fd0c9; --c3: #b88cf2; --c4: #e6c23a; --c5: #f276c3; --c6: #7ad45f; --c7: #62aef5; --c8: #c9a589;
+  --base-line: #3b4468; --shadow: 0 10px 34px rgba(0, 0, 0, 0.4);
+  --g1: #151a42; --g2: #1d1742; --g3: #0c2531; --g4: #101c46; color-scheme: dark;
+}
+* { box-sizing: border-box; border-color: var(--border); }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+[hidden] { display: none !important; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+h1, h2, h3, p { margin: 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+::selection { background: var(--accent); color: #fff; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.up { color: var(--buy); } .down { color: var(--sell); } .flat { color: var(--muted); }
+
+/* shell */
+.bgfx { position: fixed; inset: 0; z-index: -1; background: radial-gradient(55% 45% at 10% 6%, var(--g1), transparent 62%), radial-gradient(45% 40% at 92% 10%, var(--g2), transparent 62%), radial-gradient(50% 45% at 78% 96%, var(--g3), transparent 62%), radial-gradient(40% 40% at 4% 88%, var(--g4), transparent 62%), var(--bg); }
+.app { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.topnav { flex: none; position: relative; z-index: 30; background: var(--panel); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); border-bottom: 1px solid var(--border); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.topnav-in { max-width: 1180px; margin-inline: auto; height: 64px; display: flex; align-items: center; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; border: 0; background: none; padding: 0; font-weight: 800; font-size: 17px; letter-spacing: -0.01em; white-space: nowrap; flex: none; }
+.logo { width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: var(--on-accent); display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-weight: 700; font-size: 13px; flex: none; }
+.links { display: flex; gap: 2px; align-items: center; margin-left: 10px; min-width: 0; }
+.nl { display: inline-flex; align-items: center; gap: 8px; border: 0; background: none; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 14px; color: var(--muted); white-space: nowrap; transition: background 0.15s, color 0.15s; }
+.nl:hover { color: var(--text); background: var(--panel-hover); }
+.nl[aria-current] { background: var(--accent-soft); color: var(--accent-strong); }
+.nl svg { width: 16px; height: 16px; flex: none; }
+.morewrap { position: relative; }
+.pop { position: absolute; top: calc(100% + 10px); right: 0; min-width: 230px; background: var(--solid); border: 1px solid var(--border); border-radius: 18px; padding: 8px; box-shadow: var(--shadow); z-index: 40; display: flex; flex-direction: column; gap: 2px; }
+.pop .nl { width: 100%; border-radius: 12px; }
+.search { position: relative; flex: 0 1 230px; margin-left: auto; }
+.search svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--faint); pointer-events: none; }
+.search input { width: 100%; height: 38px; border-radius: 999px; border: 1px solid var(--ctl); background: var(--bg-raised); padding: 0 14px 0 38px; font-family: var(--font-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.search input::placeholder { color: var(--faint); text-transform: none; letter-spacing: 0; }
+.search input:focus { border-color: var(--accent); outline: none; }
+.search .miss { position: absolute; top: 44px; left: 0; font-size: 11px; color: var(--sell); background: var(--solid); border: 1px solid var(--border); padding: 4px 10px; border-radius: 10px; z-index: 5; white-space: nowrap; }
+.iconbtn { width: 36px; height: 36px; border-radius: 999px; border: 0; background: none; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.iconbtn:hover { background: var(--panel-hover); color: var(--text); }
+.iconbtn svg { width: 18px; height: 18px; }
+.menu { display: none; }
+.dotc { width: 8px; height: 8px; border-radius: 50%; background: var(--buy); flex: none; display: inline-block; }
+.dotc.warn { background: var(--hold); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.scrollarea { flex: 1; overflow-y: auto; min-height: 0; }
+.content { max-width: 1180px; margin-inline: auto; padding-block: 36px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 28px; }
+.footer { max-width: 1180px; margin-inline: auto; padding-block: 8px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); color: var(--faint); font-size: 12px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; align-items: center; }
+.footer .l { display: inline-flex; gap: 8px; align-items: center; }
+.sheet { display: none; position: fixed; z-index: 25; inset: 0; padding: calc(76px + env(safe-area-inset-top, 0px)) 16px 28px; background: var(--solid); overflow-y: auto; }
+.app.open .sheet { display: block; }
+.sheet .nl { width: 100%; padding: 12px 14px; border-radius: 14px; font-size: 15px; }
+.navh { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--faint); padding: 18px 14px 6px; }
+.sheet .dot { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex: none; }
+.sheet .dot.BUY { background: var(--buy); } .sheet .dot.SELL { background: var(--sell); } .sheet .dot.HOLD { background: var(--hold); }
+.sheet .sym { font-family: var(--font-mono); font-size: 13px; }
+.sheet .nm { font-size: 12px; color: var(--faint); }
+.backdrop { display: none; }
+.skip { position: absolute; left: -999px; top: 0; z-index: 100; background: var(--accent); color: var(--on-accent); padding: 8px 14px; border-radius: 0 0 12px 0; font-weight: 700; }
+.skip:focus { left: 0; }
+tr.click:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tabpanel:focus-visible { outline-offset: 4px; }
+.formgrid[hidden] + .runbar { margin-top: 0; padding-top: 0; border-top: 0; }
+@media (pointer: coarse) { .pillbtn, .tab, .btn.sm, .nl, select, .search input { min-height: 44px; } .x, .iconbtn { min-width: 44px; min-height: 44px; } }
+@media (max-width: 860px) { .links { display: none; } .menu { display: inline-flex; } .search { flex: 1 1 auto; } .brand span:last-child { display: none; } }
+
+/* primitives */
+.page-h h1 { font-size: clamp(28px, 3.6vw, 40px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.page-h p { margin-top: 8px; font-size: 15px; color: var(--muted); max-width: 70ch; }
+.card { border: 1px solid var(--border); background: var(--panel); border-radius: 22px; padding: 24px; min-width: 0; box-shadow: var(--shadow); backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%); }
+.card.warn { border-color: color-mix(in srgb, var(--hold) 30%, transparent); background: var(--hold-soft); }
+.card.dashed { border-style: dashed; background: transparent; }
+.ch { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.ch h3 { font-size: 16px; font-weight: 700; letter-spacing: -0.005em; }
+.ch p { margin-top: 4px; font-size: 12px; color: var(--muted); }
+.src { margin-top: 14px; font-size: 11px; color: var(--faint); }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.stat .k { font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stat .v { margin-top: 8px; font-family: var(--font-mono); font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stat .h { margin-top: 4px; font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat .ico { width: 40px; height: 40px; border-radius: 13px; background: var(--bg-raised); color: var(--muted); display: flex; align-items: center; justify-content: center; flex: none; }
+.stat .ico svg { width: 16px; height: 16px; }
+.stat .v.buy { color: var(--buy); } .stat .v.sell { color: var(--sell); } .stat .v.hold { color: var(--hold); } .stat .v.accent { color: var(--accent-strong); }
+.badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--muted); padding: 2px 10px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.badge.buy { background: var(--buy-soft); color: var(--buy); border-color: color-mix(in srgb, var(--buy) 30%, transparent); }
+.badge.sell { background: var(--sell-soft); color: var(--sell); border-color: color-mix(in srgb, var(--sell) 30%, transparent); }
+.badge.hold { background: var(--hold-soft); color: var(--hold); border-color: color-mix(in srgb, var(--hold) 30%, transparent); }
+.badge.accent { background: var(--accent-soft); color: var(--accent-strong); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.badge.sig { font-family: var(--font-mono); text-transform: uppercase; }
+.badge.sig i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 44px; padding: 0 22px; border-radius: 999px; border: 1px solid transparent; font-size: 14px; font-weight: 700; transition: background 0.15s, filter 0.15s; }
+.btn.primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 24%, transparent); }
+.btn.primary:hover { filter: brightness(1.07); }
+.btn.secondary { background: var(--bg-raised); border-color: var(--ctl); }
+.btn.secondary:hover { background: var(--panel-hover); }
+.btn.sm { height: 34px; padding: 0 14px; font-size: 12px; gap: 6px; }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.link { background: none; border: 0; padding: 0; font-size: 12px; font-weight: 600; color: var(--accent-strong); }
+.link:hover { text-decoration: underline; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pillbtn { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-raised); color: var(--faint); padding: 6px 12px; font-size: 12px; font-weight: 500; }
+.pillbtn:hover { color: var(--muted); }
+.pillbtn i { width: 6px; height: 6px; border-radius: 50%; background: var(--base-line); display: inline-block; }
+.pillbtn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }
+.pillbtn[aria-pressed="true"] i { background: var(--accent); }
+.pillbtn.mdl[aria-pressed="true"] { border-color: var(--border); background: var(--bg-raised); color: var(--text); }
+.pillbtn.mdl { padding: 4px 10px; }
+.field label, .field .lbl { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin-bottom: 8px; }
+.field .lbl .link { text-transform: none; letter-spacing: 0; margin-left: 8px; }
+select { height: 38px; border-radius: 12px; border: 1px solid var(--ctl); background: var(--bg-raised); padding: 0 10px; min-width: 190px; max-width: 100%; }
+.checks { display: flex; flex-direction: column; gap: 8px; }
+.checks label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); text-transform: none; letter-spacing: 0; margin: 0; cursor: pointer; }
+.checks input { accent-color: var(--accent); }
+.formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px 28px; }
+.runbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border-soft); }
+.runbar .note { flex: 1 1 260px; font-size: 12px; color: var(--muted); }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 5px; border-radius: 999px; background: var(--bg-raised); border: 1px solid var(--border); width: fit-content; max-width: 100%; }
+.tab { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); padding: 8px 16px; font-size: 13px; font-weight: 600; }
+.tab:hover { background: var(--panel-hover); color: var(--text); }
+.tab b { font-family: var(--font-mono); font-size: 11px; color: var(--accent-strong); font-weight: 600; }
+.tab[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
+.tab[aria-selected="true"] b { color: inherit; opacity: 0.85; }
+.tabpanel { margin-top: 18px; display: flex; flex-direction: column; gap: 16px; }
+
+.progress .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.progress .ttl { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.bar { height: 6px; border-radius: 999px; background: var(--bg-raised); overflow: hidden; margin-bottom: 14px; }
+.bar > div { height: 100%; background: var(--accent); border-radius: 999px; transition: width 0.3s; }
+.progress .msg { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+.progress .msg b { color: var(--text); font-weight: 500; }
+.events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 224px; overflow-y: auto; }
+.events li { display: flex; gap: 8px; font-size: 11px; color: var(--faint); }
+.events li span:last-child { color: var(--muted); }
+
+.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 48px 16px; }
+.empty .ic { width: 44px; height: 44px; border-radius: 50%; background: var(--bg-raised); color: var(--faint); display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+.empty .ic svg { width: 20px; height: 20px; }
+.empty .tt { font-size: 14px; font-weight: 500; }
+.empty .dd { max-width: 380px; font-size: 12px; color: var(--muted); }
+
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+.sigrow { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.ring { position: relative; flex: none; }
+.ring svg { transform: rotate(-90deg); display: block; }
+.ring .c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring .c b { font-family: var(--font-mono); font-size: 16px; font-weight: 700; }
+.ring .c span { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); }
+.sigtext { flex: 1 1 240px; min-width: 0; }
+.sigtext .conf { font-family: var(--font-mono); font-size: 12px; color: var(--faint); margin-bottom: 6px; }
+.sigtext .sum { font-size: 14px; line-height: 1.6; }
+.sect { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-soft); }
+.sect .l { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); margin-bottom: 8px; }
+.sect .v { font-family: var(--font-mono); font-size: 14px; font-weight: 500; }
+.sect .vs { font-family: var(--font-mono); font-size: 11px; opacity: 0.85; }
+.sect .small { margin-top: 8px; font-size: 11px; color: var(--faint); }
+.sect .why { font-size: 14px; line-height: 1.6; color: var(--muted); }
+.zones { margin-top: 16px; }
+.gtrack { position: relative; height: 10px; border-radius: 5px; overflow: hidden; display: flex; }
+.gtrack b { display: block; height: 100%; }
+.gz-s { background: var(--sell-soft); } .gz-h { background: var(--hold-soft); } .gz-b { background: var(--buy-soft); }
+.gmark { position: absolute; top: 0; width: 3px; height: 10px; background: var(--text); transform: translateX(-1px); }
+.glabels { position: relative; height: 18px; margin-top: 4px; font-size: 11px; color: var(--faint); font-family: var(--font-mono); }
+.glabels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.rows { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 136px; gap: 10px; align-items: center; font-size: 13px; }
+.row .dv { position: relative; height: 12px; background: var(--bg-raised); border-radius: 3px; }
+.row .dv::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--faint); }
+.row .dv b { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.row .dv b.pos { background: var(--buy); } .row .dv b.neg { background: var(--sell); }
+.row .val { font-family: var(--font-mono); font-size: 12px; text-align: right; white-space: nowrap; }
+.hz { display: grid; grid-template-columns: 44px minmax(0, 1fr) 96px; gap: 10px; align-items: center; font-size: 12px; }
+.hz .tr { position: relative; height: 10px; background: var(--bg-raised); border-radius: 3px; }
+.hz .tr b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; }
+.hz .tr u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--text); }
+.verdict-text { font-size: 13.5px; line-height: 1.6; color: var(--muted); max-width: 72ch; }
+.checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.checklist li { display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 13px; color: var(--muted); }
+.checklist .c { color: var(--text); font-weight: 600; }
+.kvs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.kv .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--faint); }
+.kv .v { margin-top: 4px; font-family: var(--font-mono); font-size: 18px; font-variant-numeric: tabular-nums; }
+.kv .s { font-size: 11px; color: var(--faint); }
+
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: right; padding: 8px 14px 8px 0; font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); border-bottom: 1px solid var(--border-soft); white-space: nowrap; }
+td { text-align: right; padding: 12px 14px 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--border-soft) 60%, transparent); white-space: nowrap; font-family: var(--font-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+tr:last-child td { border-bottom: 0; }
+th button { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; }
+th button:hover { color: var(--text); }
+td.t { font-family: var(--font-sans); }
+tr.sel td { background: var(--accent-soft); }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--panel-hover); }
+.tkr { font-family: var(--font-mono); font-weight: 600; font-size: 14px; color: var(--text); }
+.mname { display: inline-flex; gap: 8px; align-items: center; background: none; border: 0; padding: 0; text-align: left; font-family: var(--font-sans); font-size: 13px; color: var(--text); }
+.mname i { width: 10px; height: 10px; border-radius: 2px; background: var(--base-line); flex: none; display: inline-block; }
+.nbar { display: inline-block; vertical-align: middle; height: 6px; border-radius: 3px; margin-left: 8px; }
+.nbar.good { background: var(--buy); } .nbar.bad { background: var(--sell); }
+.sub { color: var(--faint); font-size: 12px; font-family: var(--font-sans); }
+.actlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.actlist li { display: flex; gap: 8px; font-size: 12px; align-items: flex-start; }
+.actlist li svg { width: 14px; height: 14px; margin-top: 2px; color: var(--buy); flex: none; }
+.actlist .tk { font-family: var(--font-mono); font-weight: 500; }
+.actlist .tm { color: var(--faint); }
+
+.chartwrap { position: relative; }
+.chartwrap svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+.ax { fill: var(--faint); font-family: var(--font-mono); font-size: 10px; }
+.tip { position: absolute; pointer-events: none; background: var(--solid); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 8px 10px; font-size: 12px; min-width: 150px; z-index: 3; }
+.tip .d { color: var(--muted); margin-bottom: 4px; }
+.tip .r { display: flex; justify-content: space-between; gap: 14px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); margin-top: 10px; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.dashgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; }
+
+@media (max-width: 767px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .row { grid-template-columns: 58px minmax(0, 1fr) 112px; gap: 8px; }
+  .row .val { font-size: 11px; }
+  .stat .v { font-size: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; } }
+</style>
+
+<a class="skip" href="#main" id="skip">Skip to content</a>
+<div class="bgfx" aria-hidden="true"></div>
+<div class="app" id="app">
+  <header class="topnav">
+    <div class="topnav-in">
+      <button class="menu iconbtn" id="menu" type="button" aria-label="Open menu" aria-expanded="false"></button>
+      <button class="brand" type="button" data-page="dash" aria-label="RAEM Console home"><span class="logo">RA</span><span>RAEM</span></button>
+      <nav class="links" id="nav" aria-label="Main"></nav>
+      <form class="search" id="search" autocomplete="off">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="q" placeholder="Jump to stock, e.g. AAPL" aria-label="Jump to stock" spellcheck="false">
+        <span class="miss" id="miss" role="alert" hidden></span>
+      </form>
+      <button class="iconbtn" id="theme" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+  <div class="sheet" id="sheet"><nav id="sheetnav" aria-label="All pages"></nav></div>
+  <div class="backdrop" id="backdrop" hidden></div>
+  <div class="scrollarea" id="scroller">
+    <main class="content" id="main" tabindex="-1"></main>
+    <footer class="footer"><span class="l"><span class="dotc"></span><span id="savedAt"></span></span><span>Replays results exported from the project's Python code. Research output, not investment advice.</span></footer>
+  </div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const ASOF = "2026-10-20";
+const ORDER = ["AAPL","IBM","2222.SR","0300.HK","ABBANK","BATBC","BPML","WALTONHIL"].filter(t => DATA[t]);
+// The six models the site shows (best average rank across the 8 tickers); see ui/export_ticker.py KEEP_MODELS.
+const BASE = ["N-BEATS","LASSO","Ridge","RandomForest","Theta","ARIMA","Kalman","ARIMAX","WSAE-LSTM","XGBoost","LSTM","DNN","TFT","RegimeSwitch"];  // listed when present in a run; the default export has the first six
+const VIEWS = [["Ensemble","Ensemble"],["Fusion","Fusion"],["Fusion-Top3","Fusion Top 3"],["Agent","Reviewed agent"],["Best","Best single model"]];
+const STEPS = [
+  ["Fetching market data", "Loaded prices and daily log rows"],
+  ["Building features", "Return, volatility and trend features"],
+  ["Daily 5-model signal", "Ridge, XGBoost, LSTM, ARIMA, Kalman"],
+  ["Fitting the forecast models", "The six best in this copy; all 14 when run on the server"],
+  ["Fusion and ensemble", "Learned blend and best-two average"],
+  ["Reviewer check", "Audit, shrink, clip and add band"],
+  ["Grading track record", "Past forecasts vs actual closes"],
+];
+const TABS = [["signal","Daily signal"],["forecast","7-day forecast"],["models","All models"],["agent","Reviewer"],["track","Track record"]];
+const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
+const DAILY_MODELS = [["xgb","XGBoost"],["lstm","LSTM"],["arima","ARIMA"],["ridge","Ridge"],["kalman","Kalman"]];
+const ICONS = {
+  dash: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2m-7.07-2.93 1.41-1.41m11.32-11.32 1.41-1.41M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/>',
+  chart: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9M13 17V5M8 17v-3"/>',
+  line: '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="m19 9-5 5-4-4-3 3"/>',
+  brain: '<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+  pulse: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+};
+const ic = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
+
+const S = { more: false, optOpen: false, page: "dash", t: ORDER[0], ran: {}, running: false, prog: null, tab: "signal", log: [], view: "Ensemble", overlays: new Set(), win: 120, unit: "price", base: true, band: true, naive: false, sort: { k: "day7", dir: -1 } };
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const D = () => DATA[S.t];
+const fmtP = v => v == null ? "–" : (Math.abs(v) < 10 ? v.toFixed(3) : v.toFixed(2));
+const fmtPct = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(d) + "%";
+const cls = v => v == null ? "flat" : v > 0.0005 ? "up" : v < -0.0005 ? "down" : "flat";
+const tone = sig => ({ BUY: "buy", SELL: "sell", HOLD: "hold" }[sig] || "");
+const dShort = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const dLong = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+const defaultOverlays = d => new Set((d.forecast.top_models || []).filter(m => d.forecast.paths[m]).slice(0, 3));
+S.overlays = defaultOverlays(D());
+
+/* ---------- primitives ---------- */
+const card = (title, sub, action, body, extra = "") => `<section class="card ${extra}">${title ? `<div class="ch"><div><h3>${title}</h3>${sub ? `<p>${sub}</p>` : ""}</div>${action || ""}</div>` : ""}${body}</section>`;
+const statCard = (label, value, hint, t, icon) => `<div class="card stat"><div style="min-width:0"><p class="k">${label}</p><p class="v ${t || ""}">${value}</p>${hint ? `<p class="h">${hint}</p>` : ""}</div><div class="ico">${ic(icon)}</div></div>`;
+const sigBadge = sig => `<span class="badge sig ${tone(sig)}"><i></i>${sig || "N/A"}</span>`;
+const emptyState = (icon, title, desc, action = "") => `<div class="empty"><div class="ic">${ic(icon)}</div><p class="tt">${title}</p>${desc ? `<p class="dd">${desc}</p>` : ""}${action}</div>`;
+function ring(sig, pct, label, size = 84) {
+  const sw = 7, r = (size - sw) / 2, c = 2 * Math.PI * r, col = { BUY: "var(--buy)", SELL: "var(--sell)", HOLD: "var(--hold)" }[sig] || "var(--faint)";
+  const p = Math.min(1, Math.max(0, pct));
+  return `<div class="ring" style="width:${size}px;height:${size}px"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--border)" stroke-width="${sw}"/><circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-dasharray="${c * p} ${c}" stroke-linecap="round"/></svg><div class="c"><b style="color:${col}">${Math.round(p * 100)}</b><span>${label}</span></div></div>`;
+}
+function spark(vals, w = 120, h = 28) {
+  const lo = Math.min(...vals), hi = Math.max(...vals), sp = (hi - lo) || 1;
+  const pts = vals.map((v, i) => `${(i * w / (vals.length - 1)).toFixed(1)},${(h - 3 - (v - lo) / sp * (h - 6)).toFixed(1)}`);
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;margin-left:auto" aria-hidden="true"><polyline points="${pts.join(" ")}" fill="none" stroke="${vals[vals.length - 1] >= vals[0] ? "var(--buy)" : "var(--sell)"}" stroke-width="1.5"/></svg>`;
+}
+
+/* ---------- series & chart ---------- */
+function mainSeries(d) {
+  const f = d.forecast, last = f.last_price;
+  if (S.view === "Agent" && d.agent && d.agent.plan && d.agent.plan.path_ret) {
+    const p = d.agent.plan;
+    return { name: "Reviewed agent", vals: p.path_ret.map(r => last * (1 + r)), band: (p.band_ret || []).map(b => [last * (1 + b[0]), last * (1 + b[1])]) };
+  }
+  if (S.view === "Best") return { name: f.best_model, vals: f.paths[f.best_model] };
+  return { name: S.view, vals: f.paths[S.view] };
+}
+const overlayList = () => [...S.overlays].filter(m => D().forecast.paths[m]);
+const tr = (v, last) => S.unit === "pct" ? (v / last - 1) * 100 : v;
+const trFmt = v => S.unit === "pct" ? fmtPct(v) : fmtP(v);
+function niceTicks(lo, hi, n = 5) {
+  const span = hi - lo || 1, raw = span / (n - 1), p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(s => s >= raw) || raw;
+  const out = []; for (let v = Math.floor(lo / step) * step; v <= hi + step * 0.5; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function drawChart(host) {
+  const d = D(), f = d.forecast, last = f.last_price, F = !!S.ran[S.t];
+  const hist = d.history.slice(-S.win), hn = hist.length, total = hn + (F ? 7 : 0);
+  const W = Math.max(300, host.clientWidth || 700), H = W < 520 ? 270 : 340;
+  const padL = 56, padR = F ? 64 : 58, padT = 14, padB = 26;
+  const ms = mainSeries(d);
+  const ov = F ? overlayList().filter(m => m !== ms.name) : [];
+  const drawBase = F && S.base ? BASE.filter(m => f.paths[m] && !S.overlays.has(m) && m !== ms.name) : [];
+  const hv = hist.map(h => tr(h[1], last));
+  const mv = F ? ms.vals.map(v => tr(v, last)) : [];
+  const allv = [...hv, ...mv];
+  [...ov, ...drawBase].forEach(m => f.paths[m].forEach(v => allv.push(tr(v, last))));
+  const showBand = F && S.band && S.view === "Agent" && ms.band && ms.band.length;
+  if (showBand) ms.band.forEach(b => allv.push(tr(b[0], last), tr(b[1], last)));
+  if (F && S.naive) allv.push(tr(last, last));
+  let lo = Math.min(...allv), hi = Math.max(...allv);
+  const core = [...hv, ...mv], cl = Math.min(...core), ch = Math.max(...core), cs = (ch - cl) || 1;
+  lo = Math.max(lo, cl - cs * 0.9); hi = Math.min(hi, ch + cs * 0.9);
+  const pad = (hi - lo) * 0.06 || 1; lo -= pad; hi += pad;
+  const ticks = niceTicks(lo, hi).filter(v => v >= lo && v <= hi);
+  const plotW = W - padL - padR, histW = plotW * (F ? 0.7 : 1), xEnd = padL + plotW;
+  const x = i => i < hn ? padL + i * histW / (hn - 1) : padL + histW + (i - hn + 1) * (plotW - histW) / 7;
+  const y = v => padT + (hi - Math.min(hi, Math.max(lo, v))) * (H - padT - padB) / (hi - lo);
+  const dates = [...hist.map(h => h[0]), ...(F ? f.dates : [])];
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Price history${F ? " and 7-day forecast" : ""} for ${esc(S.t)}${F ? ". Daily values are in the 7-day forecast tab." : ""}"><defs><linearGradient id="hfill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity="0.35"/><stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>`;
+  ticks.forEach(v => { s += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border-soft)"/><text class="ax" x="${padL - 8}" y="${y(v) + 3}" text-anchor="end">${S.unit === "pct" ? v.toFixed(1) + "%" : fmtP(v)}</text>`; });
+  s += `<line x1="${padL}" x2="${W - padR}" y1="${H - padB}" y2="${H - padB}" stroke="var(--border)"/>`;
+  const nx = W < 420 ? 3 : W < 620 ? 4 : 6;
+  for (let k = 0; k < nx; k++) { const i = Math.round(k * (total - 1) / (nx - 1)); s += `<text class="ax" x="${x(i)}" y="${H - 8}" text-anchor="${k === 0 ? "start" : k === nx - 1 ? "end" : "middle"}">${dShort(dates[i])}</text>`; }
+  if (F) {
+    s += `<rect x="${x(hn - 1)}" y="${padT}" width="${xEnd - x(hn - 1)}" height="${H - padT - padB}" fill="var(--accent-soft)"/>`;
+    s += `<line x1="${x(hn - 1)}" x2="${x(hn - 1)}" y1="${padT}" y2="${H - padB}" stroke="var(--faint)" stroke-dasharray="3 3"/>`;
+    s += `<text class="ax" x="${x(hn - 1) - 6}" y="${padT + 10}" text-anchor="end">last close</text>`;
+  }
+  const hp = hv.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
+  s += `<polygon points="${hp.join(" ")} ${x(hn - 1)},${H - padB} ${x(0)},${H - padB}" fill="url(#hfill)"/>`;
+  s += `<polyline points="${hp.join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>`;
+  if (showBand) {
+    const up = ms.band.map((b, i) => `${x(hn + i).toFixed(1)},${y(tr(b[1], last)).toFixed(1)}`);
+    const dn = ms.band.map((b, i) => `${x(hn + i).toFixed(1)},${y(tr(b[0], last)).toFixed(1)}`).reverse();
+    s += `<polygon points="${x(hn - 1)},${y(tr(last, last))} ${up.join(" ")} ${dn.join(" ")}" fill="var(--text)" opacity="0.12"/>`;
+  }
+  if (F && S.naive) s += `<line x1="${x(hn - 1)}" x2="${xEnd}" y1="${y(tr(last, last))}" y2="${y(tr(last, last))}" stroke="var(--faint)" stroke-dasharray="5 4"/>`;
+  const path = (vals, color, w, op = 1) => `<polyline points="${[[hn - 1, last], ...vals.map((v, i) => [hn + i, v])].map(p => `${x(p[0]).toFixed(1)},${y(tr(p[1], last)).toFixed(1)}`).join(" ")}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" opacity="${op}"/>`;
+  drawBase.forEach(m => { s += path(f.paths[m], "var(--base-line)", 1, 0.9); });
+  ov.forEach((m, k) => { s += path(f.paths[m], `var(${COLORS[k % COLORS.length]})`, 1.8); });
+  if (F) {
+    s += path(ms.vals, "var(--text)", 2.8);
+    const ey = y(tr(ms.vals[6], last));
+    s += `<circle cx="${xEnd}" cy="${ey}" r="4.5" fill="var(--text)" stroke="var(--solid)" stroke-width="2"/><text class="ax" x="${xEnd + 8}" y="${ey + 3}" style="fill:var(--text)">${trFmt(tr(ms.vals[6], last))}</text>`;
+  } else {
+    const ex = x(hn - 1), ey = y(hv[hn - 1]);
+    s += `<circle cx="${ex}" cy="${ey}" r="4" fill="var(--accent)" stroke="var(--solid)" stroke-width="2"/><text class="ax" x="${ex + 8}" y="${ey + 3}" style="fill:var(--text)">${trFmt(hv[hn - 1])}</text>`;
+  }
+  s += `<line id="xh" x1="0" x2="0" y1="${padT}" y2="${H - padB}" stroke="var(--faint)" opacity="0"/><rect id="hit" x="${padL}" y="${padT}" width="${plotW}" height="${H - padT - padB}" fill="transparent"/></svg>`;
+  host.innerHTML = s + `<div class="tip" hidden></div>`;
+  const svg = host.querySelector("svg"), tip = host.querySelector(".tip"), xh = host.querySelector("#xh"), hit = host.querySelector("#hit");
+  const move = ev => {
+    const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width;
+    let i = 0, bd = 1e9; for (let j = 0; j < total; j++) { const dd = Math.abs(x(j) - px); if (dd < bd) { bd = dd; i = j; } }
+    xh.setAttribute("x1", x(i)); xh.setAttribute("x2", x(i)); xh.setAttribute("opacity", "0.6");
+    let rows = "";
+    if (i < hn) rows += `<div class="r"><span>Close</span><span>${trFmt(hv[i])}</span></div>`;
+    else {
+      const fi = i - hn;
+      rows += `<div class="r"><span>${esc(ms.name)}</span><span>${trFmt(mv[fi])}</span></div>`;
+      if (showBand) rows += `<div class="r"><span>10–90% band</span><span>${trFmt(tr(ms.band[fi][0], last))} – ${trFmt(tr(ms.band[fi][1], last))}</span></div>`;
+      ov.forEach((m, k) => { rows += `<div class="r" style="color:var(${COLORS[k % COLORS.length]})"><span>${esc(m)}</span><span>${trFmt(tr(f.paths[m][fi], last))}</span></div>`; });
+    }
+    tip.innerHTML = `<div class="d">${dLong(dates[i])}${i >= hn ? ` · day ${i - hn + 1}` : ""}</div>${rows}`;
+    tip.hidden = false;
+    tip.style.left = Math.min(r.width - tip.offsetWidth - 4, Math.max(4, x(i) * r.width / W + 12)) + "px"; tip.style.top = "8px";
+  };
+  hit.addEventListener("pointermove", move); hit.addEventListener("pointerdown", move);
+  hit.addEventListener("pointerleave", () => { tip.hidden = true; xh.setAttribute("opacity", "0"); });
+  const lg = [`<span><i style="background:var(--accent)"></i>Close</span>`];
+  if (F) lg.push(`<span><i style="background:var(--text)"></i>${esc(ms.name)}</span>`);
+  ov.forEach((m, k) => lg.push(`<span><i style="background:var(${COLORS[k % COLORS.length]})"></i>${esc(m)}</span>`));
+  if (drawBase.length) lg.push(`<span><i style="background:var(--base-line)"></i>other base models (${drawBase.length})</span>`);
+  if (showBand) lg.push(`<span><i style="background:var(--text);opacity:.25;height:8px"></i>10–90% band</span>`);
+  if (F && S.naive) lg.push(`<span><i style="background:var(--faint)"></i>no change</span>`);
+  $("#legend").innerHTML = lg.join("");
+}
+
+/* ---------- shell ---------- */
+function themeIcon() {
+  const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  $("#theme").innerHTML = ic(dark ? "sun" : "moon");
+}
+
+/* ---------- ticker page ---------- */
+function progressCard() {
+  const p = S.prog, pct = Math.round(p.i / STEPS.length * 100), cur = STEPS[Math.min(p.i, STEPS.length - 1)];
+  return `<section class="card progress"><div class="top"><div class="ttl"><span class="dotc warn"></span>Forecast in progress</div><span class="mono" style="font-size:12px;color:var(--muted)">${pct}%</span></div>
+    <div class="bar"><div style="width:${pct}%"></div></div>
+    <p class="msg" role="status"><b>${esc(cur[0])}</b> · ${esc(cur[1])}</p>
+    <ol class="events">${p.events.map(e => `<li><span class="mono">${esc(e.ts)}</span><span>${esc(e.name)}</span></li>`).join("")}</ol></section>`;
+}
+function renderTicker() {
+  const d = D(), f = d.forecast, ran = !!S.ran[S.t], age = daysBetween(f.last_date, ASOF);
+  const venue = d.meta.source === "dse" ? "Dhaka Stock Exchange" : ({ "2222.SR": "Tadawul", "0300.HK": "HKEX" }[S.t] || "US market");
+  const chips = BASE.filter(m => f.paths[m]).map(m => {
+    const on = S.overlays.has(m), k = overlayList().indexOf(m);
+    return `<button type="button" class="pillbtn mdl" data-ov="${esc(m)}" aria-pressed="${on}"><i style="${on ? `background:var(${COLORS[k % COLORS.length]})` : ""}"></i>${esc(m)}</button>`;
+  }).join("");
+  const missing = [];  // models outside a run are simply not listed
+  const viewBtns = VIEWS.filter(v => v[0] !== "Agent" || (d.agent && d.agent.plan)).map(v => `<button type="button" class="pillbtn" data-view="${v[0]}" aria-pressed="${S.view === v[0]}"><i></i>${esc(v[1])}</button>`).join("");
+  const collapsed = ran && !S.optOpen;
+  const live = typeof LIVE !== "undefined" && LIVE.ok, fcBusy = live && !!LIVE.busy["fc:" + S.t];
+  const nAll = live ? LIVE.models.forecast.length : 0, nSel = live ? lfcModels().size : 0;
+  const form = card("Forecast options", `${esc(d.meta.name)} · ${esc(S.t)} · ${venue}${collapsed ? ` · ${esc((VIEWS.find(v => v[0] === S.view) || ["", S.view])[1])}, ${overlayList().length} models compared, ${S.win} days` : ""}`, ran ? `<button type="button" class="btn secondary sm" data-act="opt-toggle" aria-expanded="${!collapsed}">${collapsed ? "Edit options" : "Hide options"}</button>` : "", `
+    <div class="formgrid" ${collapsed ? "hidden" : ""}>
+      <div class="field"><span class="lbl">Forecast shown ${hint(GLOSS.views)}</span><div class="pills">${viewBtns}</div></div>
+      <div class="field"><span class="lbl">Compare models <button type="button" class="link" data-pick="top">top 3</button><button type="button" class="link" data-pick="all">all</button><button type="button" class="link" data-pick="none">none</button></span><div class="pills">${chips}</div>${missing.length ? `<p class="sub" style="margin-top:8px">Not available for this ticker: ${esc(missing.join(", "))}</p>` : ""}</div>
+      <div class="field"><label for="win">History window</label><select id="win">${[30, 60, 120, 180].map(n => `<option value="${n}" ${S.win === n ? "selected" : ""}>${n} trading days</option>`).join("")}</select>
+        <div style="height:14px"></div><label for="unit">Chart units</label><select id="unit"><option value="price" ${S.unit === "price" ? "selected" : ""}>Price (${esc(d.meta.currency)})</option><option value="pct" ${S.unit === "pct" ? "selected" : ""}>Change from last close (%)</option></select></div>
+      <div class="field"><span class="lbl">Chart layers</span><div class="checks">
+        <label><input type="checkbox" id="o-base" ${S.base ? "checked" : ""}> Other base models in grey</label>
+        <label><input type="checkbox" id="o-band" ${S.band ? "checked" : ""} ${S.view === "Agent" ? "" : "disabled"}> 10–90% band (reviewed agent only)</label>
+        <label><input type="checkbox" id="o-naive" ${S.naive ? "checked" : ""}> “No change” line</label></div></div>
+    </div>
+    ${live ? `<div class="field" style="margin-top:14px"><span class="lbl">Models to run ${hint(GLOSS.runfc)}</span><div class="pills">
+        <button type="button" class="pillbtn" data-act="lfc-all" aria-pressed="${nSel === nAll}"><i></i>All ${nAll} models (as in the forecast notebook)</button>
+        <button type="button" class="pillbtn" data-act="lfc-best" aria-pressed="${nSel !== nAll && lfcModels().size === 6}"><i></i>Best 6 (faster)</button></div>
+        <div class="checks" style="margin-top:10px"><label><input type="checkbox" id="lfc-force" data-bind="lfc-force" ${X.lfc.force ? "checked" : ""}> Run again even if the same models ran today</label></div>${tokenRow()}</div>` : ""}
+    <div class="runbar"><button type="button" class="btn primary" id="run" ${S.running || fcBusy ? "disabled" : ""}>${S.running || fcBusy ? "Running…" : live ? `Run ${nSel} models` : ran ? "Run again" : "Run forecast"}</button>
+      <p class="note">${live ? `Runs the models now on the server's price data (about 2 to 3 minutes for all ${nAll}). The Ensemble is the average of the two models with the lowest holdout error, as in the forecast notebook.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(ASOF)}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(ASOF)} results: daily signal, 6 forecast models, fusion, reviewer and track record.`}</p></div>
+    ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
+  return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
+  <div class="strip">${tkrPills(S.t, "data-t")}</div>
+  <div class="stats">
+    ${statCard("Last close", fmtP(f.last_price), esc(d.meta.currency), "", "chart")}
+    ${statCard("Price data to", dShort(f.last_date), age > 5 ? `${age} days before export` : "up to date", age > 5 ? "hold" : "buy", "clock")}
+    ${statCard("Daily rows", f.n_rows, "price history used", "", "db")}
+    ${statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain")}
+  </div>
+  ${form}
+  <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
+  ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}
+  ${card(ran ? "7-day price path" : "Price history", ran ? `Day 1 to day 7 after ${dLong(f.last_date)}. Hover or tap the chart for values.` : `Last ${S.win} trading days.`, "", `<div class="chartwrap" id="chart"></div><div class="legend" id="legend"></div><p class="src">Source: data/ and daily_data/ price files${ran ? "; forecast_lib.forecast_ticker()" : ""}.</p>`)}
+  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "No forecast yet", "Press Run forecast to add the 7-day paths, the daily signal, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
+}
+
+/* ---------- result panels ---------- */
+function signalPanel(d) {
+  const k = d.daily, sig = k.final_signal, thr = k.signal_threshold, r = k.final_expected_return, cur = d.meta.currency;
+  const max = Math.max(thr * 2.2, Math.abs(r) * 1.25), pos = v => Math.max(1.5, Math.min(98.5, 50 + v / max * 50));
+  const sw = pos(-thr), bw = 100 - pos(thr), hold = pos(thr) - pos(-thr);
+  const rows = DAILY_MODELS.map(([key, nm]) => ({ key, nm, ret: k[key + "_pred_return"], acc: k[key + "_direction_acc"] })).filter(x => x.ret != null);
+  const rmax = Math.max(...rows.map(x => Math.abs(x.ret)), 0.001), win = (k.winner_model || "").toLowerCase();
+  const stale = daysBetween(k.data_end_date, ASOF) > 5;
+  const band = d.agent && d.agent.plan && d.agent.plan.band_ret ? d.agent.plan.band_ret[6] : null, last = d.forecast.last_price;
+  const pc = to => `${to >= last ? "+" : ""}${((to / last - 1) * 100).toFixed(1)}%`;
+  const rec = card(`Recommendation ${hint(GLOSS.rec)}`, "", sigBadge(sig), `
+    <div class="sigrow">${ring(sig, k.winner_direction_acc, "dir acc")}
+      <div class="sigtext"><p class="conf">holdout direction accuracy ${(k.winner_direction_acc * 100).toFixed(0)}% · ${esc((k.winner_model || "").toUpperCase())}</p>
+      <p class="sum">${esc(sig)} for the next 7 days: expected ${fmtPct(r * 100)}, to about ${fmtP(k.pred_price_7d)} ${esc(cur)}. ${esc(k.winner_model)} had the best holdout direction accuracy of the five daily models.</p>
+      <p style="margin-top:6px;font-size:12px;color:var(--faint)">Time horizon: 7 trading days</p></div></div>
+    <div class="sect"><p class="l">Entry${stale ? ` (close on ${dShort(k.data_end_date)})` : ""}</p><p class="v">${fmtP(k.last_price)} ${esc(cur)}</p></div>
+    ${band ? `<div class="sect"><p class="l">7-day range (est., 10–90%)</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><p class="l" style="margin:0">If it drops</p><p class="v down">${fmtP(last * (1 + band[0]))}</p><p class="vs down">${pc(last * (1 + band[0]))}</p></div>
+      <div><p class="l" style="margin:0">If it rises</p><p class="v up">${fmtP(last * (1 + band[1]))}</p><p class="vs up">${pc(last * (1 + band[1]))}</p></div></div>
+      <p class="small">A range from this stock's own past forecast errors, not a prediction of where the price will end up.</p></div>` : ""}
+    <div class="sect"><p class="l">Why ${esc(sig)}</p><p class="why">${esc(k.signal_basis)}. ${esc(k.memory_note)}</p></div>
+    ${stale ? `<div class="sect"><div class="card warn" style="padding:12px;font-size:12px;color:var(--muted)">This signal was computed on prices up to ${dLong(k.data_end_date)} (${daysBetween(k.data_end_date, ASOF)} days before export). daily.py reads only the data snapshot, so later closes from the notebook logs are not in it.</div></div>` : ""}`);
+  const models = card(`Five daily models ${hint(GLOSS.daily)}`, "Predicted cumulative 7-day return per model. ★ = used for the signal.", "", `
+    <div class="kvs"><div class="kv"><p class="k">Expected return</p><p class="v ${cls(r)}">${fmtPct(r * 100)}</p></div><div class="kv"><p class="k">Signal threshold</p><p class="v">±${(thr * 100).toFixed(2)}%</p></div><div class="kv"><p class="k">30-day volatility</p><p class="v">${(k.volatility_30d * 100).toFixed(2)}%</p><p class="s">per day</p></div></div>
+    <div class="zones"><div class="gtrack"><b class="gz-s" style="width:${sw}%"></b><b class="gz-h" style="width:${hold}%"></b><b class="gz-b" style="width:${bw}%"></b><span class="gmark" style="left:${pos(r)}%"></span></div>
+      <div class="glabels"><span style="left:${sw / 2}%">SELL</span><span style="left:${pos(-thr)}%">−${(thr * 100).toFixed(2)}%</span><span style="left:50%">HOLD</span><span style="left:${pos(thr)}%">+${(thr * 100).toFixed(2)}%</span><span style="left:${pos(thr) + bw / 2}%">BUY</span></div></div>
+    <div class="rows" style="margin-top:14px">${rows.map(x => `<div class="row"><span>${x.nm}${x.key === win ? " ★" : ""}</span>
+      <div class="dv"><b class="${x.ret >= 0 ? "pos" : "neg"}" style="${x.ret >= 0 ? `left:50%;width:${Math.min(50, x.ret / rmax * 50)}%` : `right:50%;width:${Math.min(50, -x.ret / rmax * 50)}%`}"></b></div>
+      <span class="val"><span class="${cls(x.ret)}">${fmtPct(x.ret * 100)}</span> · ${(x.acc * 100).toFixed(0)}% dir</span></div>`).join("")}</div>
+    <p class="src">Source: predictor_lib.run_pipeline() and decide_signal(), as in daily.py.</p>`);
+  return `<div class="two">${rec}${models}</div>`;
+}
+function forecastPanel(d) {
+  const f = d.forecast, ms = mainSeries(d), last = f.last_price, ret = ms.vals[6] / last - 1, showB = S.view === "Agent" && ms.band;
+  const note = S.view === "Ensemble" ? `Average of ${(f.ensemble_members || []).join(" + ")}, the two lowest-error models on the common holdout.` :
+    S.view === "Agent" ? `Reviewed average of ${(d.agent.plan.members || []).join(", ")}; confidence ${d.agent.plan.confidence}.` :
+    S.view === "Best" ? `Best direction accuracy on its own holdout: ${f.best_model}.` : "Blend of the base models, fitted on the first half of the common holdout.";
+  const extra = overlayList().filter(m => m !== ms.name);
+  return card(`7-day forecast: ${esc(ms.name)} ${hint(GLOSS.fc)}`, esc(note), "", `
+    <div class="kvs"><div class="kv"><p class="k">Day 7 price</p><p class="v">${fmtP(ms.vals[6])} <span class="s">${esc(d.meta.currency)}</span></p></div>
+      <div class="kv"><p class="k">Move from last close</p><p class="v ${cls(ret)}">${fmtPct(ret * 100)}</p></div>
+      <div class="kv"><p class="k">Direction</p><p class="v ${cls(ret)}">${ret > 0.0005 ? "UP" : ret < -0.0005 ? "DOWN" : "FLAT"}</p></div>
+      <div class="kv"><p class="k">Always-UP scores</p><p class="v">${(f.always_up_holdout_acc * 100).toFixed(0)}%</p><p class="s">holdout direction</p></div></div>
+    <div class="scroll"><table><thead><tr><th>Day</th><th>Date</th><th>${esc(ms.name)}</th><th>Change</th>${showB ? "<th>Low 10%</th><th>High 90%</th>" : ""}${extra.map(m => `<th>${esc(m)}</th>`).join("")}</tr></thead><tbody>
+    ${ms.vals.map((v, i) => `<tr><td>${i + 1}</td><td class="t">${dShort(f.dates[i])}</td><td>${fmtP(v)}</td><td class="${cls(v / last - 1)}">${fmtPct((v / last - 1) * 100)}</td>${showB ? `<td>${fmtP(ms.band[i][0])}</td><td>${fmtP(ms.band[i][1])}</td>` : ""}${extra.map(m => `<td>${fmtP(f.paths[m][i])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+    ${f.failed_models && Object.keys(f.failed_models).length ? `<div class="card warn" style="margin-top:12px;padding:12px;font-size:12px;color:var(--muted)">Models that failed on this run: ${esc(Object.keys(f.failed_models).join(", "))}.</div>` : ""}
+    <p class="src">Source: forecast_lib.forecast_ticker(), ${f.n_rows} rows to ${dLong(f.last_date)}.</p>`);
+}
+function modelTable(d) {
+  const f = d.forecast, cur = d.meta.currency;
+  const rows = (f.all_models || []).map(r => ({ name: r.model, role: r.role, d1: r["day1_" + cur], d7: r["day7_" + cur], mv: r["move_7d_%"], err: r.error_vs_naive, acc: r.holdout_direction_acc }));
+  const key = { model: "name", day1: "d1", day7: "d7", move: "mv", err: "err", dir: "acc" }[S.sort.k] || "d7";
+  rows.sort((a, b) => S.sort.k === "model" ? S.sort.dir * a.name.localeCompare(b.name) : S.sort.dir * ((a[key] ?? -1e9) - (b[key] ?? -1e9)));
+  const th = (k, t) => `<th><button type="button" data-sort="${k}" aria-label="Sort by ${t}">${t}${S.sort.k === k ? (S.sort.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`;
+  const ems = overlayList();
+  const members = f.ensemble_members || [];
+  return card(`All models ${hint(GLOSS.models)}`, `Every model's prediction for ${dShort(f.dates[0])} to ${dShort(f.dates[6])}. ★ = one of the two models the Ensemble averages (${esc(members.join(" + ") || "n/a")}). Click a model to add or remove it from the chart. Error vs naive below 1.00 beats “no change”.`, "", `
+    <div class="scroll"><table><thead><tr>${th("model", "Model")}${th("day1", "Day 1")}${th("day7", "Day 7")}${th("move", "7-day move")}${th("err", "Error vs naive")}${th("dir", "Direction hit")}</tr></thead><tbody>
+    ${rows.map(r => {
+      const isBase = BASE.includes(r.name), k = ems.indexOf(r.name);
+      return `<tr class="${S.overlays.has(r.name) ? "sel" : ""}"><td>${isBase ? `<button type="button" class="mname" data-ov="${esc(r.name)}"><i style="${k >= 0 ? `background:var(${COLORS[k % COLORS.length]})` : ""}"></i>${esc(r.name)}${members.includes(r.name) ? " ★" : ""}</button>` : `<span class="mname"><i style="background:var(--accent)"></i><b style="font-weight:600">${esc(r.name)}</b> <span class="sub">${esc(r.role || "")}</span></span>`}</td>
+        <td>${fmtP(r.d1)}</td><td>${fmtP(r.d7)}</td><td class="${cls(r.mv)}">${fmtPct(r.mv)}</td>
+        <td>${r.err == null ? "–" : r.err.toFixed(2)}<span class="nbar ${r.err < 1 ? "good" : "bad"}" style="width:${Math.min(60, (r.err || 0) * 30)}px"></span></td>
+        <td>${r.acc == null ? "–" : (r.acc * 100).toFixed(0) + "%"}</td></tr>`;
+    }).join("")}</tbody></table></div>
+    <p class="src">Source: forecast_lib.all_models_table(). Error and direction are scored on holdout dates the model did not train on; Ensemble and fusions use the later half of the common holdout.</p>`);
+}
+function agentPanel(d) {
+  if (!d.agent || !d.agent.plan) return card("Reviewer", "", "", emptyState("alert", "No reviewer output", "The forecast agent did not run for this ticker."));
+  const p = d.agent.plan, log = p.log || [];
+  const st = s => ({ OK: "buy", PASS: "buy", WARN: "hold", FAIL: "sell" }[String(s).toUpperCase()] || "hold");
+  return card(`Forecast agent and reviewer ${hint(GLOSS.agent)}`, "Picks the 3 lowest-error models, averages their paths, then audits and adjusts the result.", `<span class="badge ${p.confidence === "HIGH" ? "buy" : p.confidence === "LOW" ? "hold" : "accent"}">Confidence ${esc(p.confidence)}</span>`, `
+    <div class="kvs"><div class="kv"><p class="k">Members</p><p class="v" style="font-size:14px">${esc((p.members || []).join(", "))}</p></div>
+      <div class="kv"><p class="k">Shrink toward no change</p><p class="v">${p.shrink == null ? "–" : p.shrink.toFixed(2)}</p></div>
+      <div class="kv"><p class="k">Holdout error vs naive</p><p class="v">${p.holdout_mae_vs_naive == null ? "–" : p.holdout_mae_vs_naive.toFixed(2)}</p></div>
+      <div class="kv"><p class="k">Holdout day-7 direction</p><p class="v">${p.holdout_dir_acc == null ? "–" : (p.holdout_dir_acc * 100).toFixed(0) + "%"}</p></div></div>
+    <ul class="checklist">${log.map(c => `<li><span class="badge ${st(c.status)}" style="justify-content:center">${esc(c.status)}</span><span><span class="c">${esc(c.check)}.</span> ${esc(c.detail)}</span></li>`).join("")}</ul>
+    <p class="src">Source: forecast_agent.forecast_agent() and reviewer_agent(). Code only, no LLM.</p>`);
+}
+function trackPanel(d) {
+  const h = d.hitrate, pm = (h.per_model || []).slice().sort((a, b) => (b.graded_calls || 0) - (a.graded_calls || 0)), hz = h.by_horizon || [];
+  const edge = v => v == null ? "–" : `<span class="${cls(v)}">${v > 0 ? "+" : ""}${v.toFixed(1)}</span>`;
+  const recent = (h.recent_calls || []).slice(0, 8);
+  return card(`Track record ${hint(GLOSS.track)}`, "How past forecasts did against the actual closes.", "", `
+    <p class="verdict-text">${esc(h.verdict)}</p>
+    <div class="two" style="margin-top:18px">
+      <div><p class="sub" style="margin-bottom:10px">Direction hit rate by days ahead (all models pooled). Tick = always-UP.</p>
+        <div class="rows">${hz.map(r => `<div class="hz"><span class="mono">day ${r.days_ahead}</span><div class="tr"><b style="width:${r["direction_hit_%"] ?? 0}%"></b><u style="left:${r["always_up_%"] ?? 0}%"></u></div><span class="mono" style="text-align:right">${r["direction_hit_%"] == null ? "–" : r["direction_hit_%"].toFixed(0)}% · ${r.graded_calls}</span></div>`).join("")}</div></div>
+      <div><p class="sub" style="margin-bottom:6px">Recent graded calls</p><div class="scroll"><table><thead><tr><th>Target</th><th>Day</th><th>Pred</th><th>Actual</th><th>Result</th></tr></thead><tbody>
+        ${recent.map(r => `<tr><td class="t">${dShort(r.target_date)}</td><td>${r.days_ahead}</td><td>${fmtP(r.predicted)}</td><td>${fmtP(r.actual)}</td><td><span class="badge ${r.within_1pct === "HIT" ? "buy" : "hold"}">${esc(r.within_1pct)}</span></td></tr>`).join("")}</tbody></table></div></div></div>
+    <div class="scroll" style="margin-top:20px"><table><thead><tr><th>Model</th><th>Forecasts</th><th>Graded</th><th>Within 1%</th><th>Mean error</th><th>Direction hit</th><th>Always-UP</th><th>Edge (pts)</th><th>p (day 7)</th></tr></thead><tbody>
+    ${pm.map(r => `<tr><td class="t">${esc(r.model)}</td><td>${r.forecasts}</td><td>${r.graded_calls}</td><td>${r["hit_within_1pct_%"] ?? "–"}%</td><td>${r["mean_abs_error_%"] ?? "–"}%</td><td>${r["direction_hit_%"] == null ? "–" : r["direction_hit_%"] + "%"}</td><td>${r["always_up_%"] == null ? "–" : r["always_up_%"] + "%"}</td><td>${edge(r["edge_vs_always_up_pts"])}</td><td>${r.p_value_day7 == null ? "–" : r.p_value_day7.toFixed(3)}</td></tr>`).join("")}</tbody></table></div>
+    <p class="src">Source: forecast_log/${esc(S.t)}_forecasts.csv via forecast_lib.hit_rate_report(). Most rows are walk-forward replays from Ridge, ARIMA and Kalman; other models only have live runs, so a high edge on a handful of graded calls means little. Within 1% means the close landed within ±1% of the prediction.</p>`);
+}
+function resultsHtml() {
+  const d = D();
+  const body = { signal: signalPanel, forecast: forecastPanel, models: modelTable, agent: agentPanel, track: trackPanel }[S.tab](d);
+  return `<div><div class="tabs" role="tablist">${TABS.map((t, i) => `<button type="button" class="tab" role="tab" id="tab-${t[0]}" data-tab="${t[0]}" aria-selected="${S.tab === t[0]}" aria-controls="tabpanel" tabindex="${S.tab === t[0] ? 0 : -1}"><b>${i + 1}</b>${t[1]}</button>`).join("")}</div><div class="tabpanel" role="tabpanel" id="tabpanel" aria-labelledby="tab-${S.tab}" tabindex="0">${body}</div></div>`;
+}
+
+/* ---------- render & run ---------- */
+function render(keepScroll = true) {
+  const sc = $("#scroller"), top = sc.scrollTop;
+  renderNav(); themeIcon();
+  $("#main").innerHTML = S.page === "dash" ? renderDash() : renderTicker();
+  if (S.page === "tk") drawChart($("#chart"));
+  try {
+    const h = S.page === "tk" ? "tk-" + S.t : S.page;
+    if (decodeURIComponent(location.hash.slice(1)) !== h) history.replaceState(null, "", "#" + h);
+  } catch (e) { /* links are a convenience */ }
+  if (keepScroll) sc.scrollTop = top;
+}
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const wait = ms => new Promise(r => setTimeout(r, reduce ? 0 : ms));
+const nowT = () => new Date().toLocaleTimeString("en-US", { hour12: false });
+async function run(t) {
+  if (S.running) return;
+  if (typeof LIVE !== "undefined" && LIVE.ok) { liveForecast(t); return; }  // the hosted site runs the models for real
+  S.running = true; S.prog = { i: 0, events: [] };
+  if (S.page === "tk" && S.t === t) render();
+  for (let i = 0; i < STEPS.length; i++) {
+    S.prog.i = i; S.prog.events.unshift({ ts: nowT(), name: STEPS[i][0] });
+    const slot = $("#progslot"); if (slot && S.page === "tk" && S.t === t) slot.innerHTML = progressCard();
+    await wait(320);
+  }
+  S.running = false; S.prog = null; S.ran[t] = true; S.tab = "signal";
+  S.log.unshift({ t, msg: "forecast completed", ts: nowT() });
+  render();
+  const r = $("#results"); if (r && S.page === "tk" && S.t === t) r.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+}
+function openTicker(t) { if (S.running) return; S.more = false; S.page = "tk"; S.t = t; S.overlays = defaultOverlays(D()); S.tab = "signal"; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; }
+
+/* ---------- events ---------- */
+document.addEventListener("click", e => {
+  const b = e.target.closest("button, tr[data-t]"); if (!b) return;
+  if (b.dataset.page === "dash") { if (S.running) return; S.page = "dash"; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; return; }
+  if (b.dataset.t) { openTicker(b.dataset.t); return; }
+  if (b.id === "run" || b.id === "run2") { run(S.t); return; }
+  if (b.id === "runall") { ORDER.forEach(t => { if (!S.ran[t]) S.log.unshift({ t, msg: "forecast completed", ts: nowT() }); S.ran[t] = true; }); render(); return; }
+  if (b.id === "theme") { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; render(); return; }
+  if (b.id === "menu") { $("#app").classList.add("open"); b.setAttribute("aria-expanded", "true"); return; }
+  if (b.dataset.view) { S.view = b.dataset.view; render(); return; }
+  if (b.dataset.ov) { const m = b.dataset.ov; S.overlays.has(m) ? S.overlays.delete(m) : S.overlays.add(m); render(); return; }
+  if (b.dataset.pick) { const all = BASE.filter(m => D().forecast.paths[m]); S.overlays = b.dataset.pick === "all" ? new Set(all) : b.dataset.pick === "none" ? new Set() : defaultOverlays(D()); render(); return; }
+  if (b.dataset.sort) { S.sort = { k: b.dataset.sort, dir: S.sort.k === b.dataset.sort ? -S.sort.dir : (b.dataset.sort === "model" ? 1 : -1) }; render(); return; }
+  if (b.dataset.tab) { S.tab = b.dataset.tab; render(); return; }
+});
+$("#backdrop").addEventListener("click", () => $("#app").classList.remove("open"));
+document.addEventListener("change", e => {
+  const id = e.target.id;
+  if (id === "win") S.win = +e.target.value; else if (id === "unit") S.unit = e.target.value;
+  else if (id === "o-base") S.base = e.target.checked; else if (id === "o-band") S.band = e.target.checked; else if (id === "o-naive") S.naive = e.target.checked;
+  else return;
+  render();
+});
+$("#search").addEventListener("submit", e => {
+  e.preventDefault();
+  const q = $("#q").value.trim().toUpperCase(), miss = $("#miss");
+  if (!q) return;
+  const hit = ORDER.find(t => t === q) || ORDER.find(t => t.startsWith(q) || DATA[t].meta.name.toUpperCase().includes(q));
+  if (hit) { miss.hidden = true; $("#q").value = ""; openTicker(hit); }
+  else { miss.textContent = `No ${q} in this export. Available: ${ORDER.join(", ")}`; miss.hidden = false; }
+});
+$("#q").addEventListener("input", () => { $("#miss").hidden = true; });
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { const c = $("#chart"); if (c && S.page === "tk") drawChart(c); }, 120); });
+
+$("#menu").innerHTML = ic("menu");
+$("#savedAt").textContent = "Results saved " + dLong(ASOF);
+function pageFromHash() {
+  try {
+    const h = decodeURIComponent(location.hash.slice(1));
+    if (h.startsWith("tk-") && DATA[h.slice(3)]) { S.page = "tk"; S.t = h.slice(3); S.overlays = defaultOverlays(D()); return true; }
+    if (h === "dash" || NAVS.some(n => n[0] === h)) { S.page = h; return true; }
+  } catch (e) { /* ignore a bad link */ }
+  return false;
+}
+addEventListener("hashchange", () => { if (!S.running && pageFromHash()) render(false); });
+pageFromHash();
+render(false);
+liveInit();
+</script>

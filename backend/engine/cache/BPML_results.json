@@ -1,0 +1,45 @@
+{
+  "horizon": 7,
+  "ticker": "BPML",
+  "data_end_date": "2026-09-17",
+  "n_rows": 476,
+  "cached_at": "2026-10-20 11:52:39",
+  "results": {
+    "xgb_ret": 0.0026794164441525936,
+    "xgb_mae": 0.0777894783813356,
+    "xgb_dacc": 0.47619047619047616,
+    "xgb_params": {
+      "max_depth": 2,
+      "learning_rate": 0.02,
+      "n_estimators": 300,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "random_state": 42
+    },
+    "lstm_ret": -0.05992822349071503,
+    "lstm_mae": 0.06745004653930664,
+    "lstm_dacc": 0.36666666666666664,
+    "lstm_params": {
+      "hidden": 16,
+      "lr": 0.0005
+    },
+    "arima_ret": 0.0005330988920888569,
+    "arima_mae": 0.024862510169265686,
+    "arima_dacc": 0.5079365079365079,
+    "arima_order": [
+      1,
+      1,
+      0
+    ],
+    "ridge_ret": -0.009786221065284694,
+    "ridge_mae": 0.02486314072061636,
+    "ridge_dacc": 0.6190476190476191,
+    "ridge_params": {
+      "alpha": 100.0
+    },
+    "kalman_ret": -5.588729479200083e-11,
+    "kalman_mae": 0.024778330614167017,
+    "kalman_dacc": 0.38095238095238093,
+    "kalman_level": "local level"
+  }
+}

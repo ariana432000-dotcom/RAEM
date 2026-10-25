@@ -1,0 +1,45 @@
+{
+  "horizon": 7,
+  "ticker": "0300.HK",
+  "data_end_date": "2026-10-16",
+  "n_rows": 503,
+  "cached_at": "2026-10-20 11:51:46",
+  "results": {
+    "xgb_ret": 0.013510282151401043,
+    "xgb_mae": 0.03113807845698689,
+    "xgb_dacc": 0.4444444444444444,
+    "xgb_params": {
+      "max_depth": 2,
+      "learning_rate": 0.02,
+      "n_estimators": 300,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "random_state": 42
+    },
+    "lstm_ret": 0.03189212828874588,
+    "lstm_mae": 0.03439557924866676,
+    "lstm_dacc": 0.43333333333333335,
+    "lstm_params": {
+      "hidden": 64,
+      "lr": 0.0005
+    },
+    "arima_ret": -0.00047171326270256664,
+    "arima_mae": 0.02809016626771319,
+    "arima_dacc": 0.5079365079365079,
+    "arima_order": [
+      2,
+      1,
+      0
+    ],
+    "ridge_ret": 0.019714818826880746,
+    "ridge_mae": 0.03300522237788952,
+    "ridge_dacc": 0.30158730158730157,
+    "ridge_params": {
+      "alpha": 0.1
+    },
+    "kalman_ret": -0.00037993539533875964,
+    "kalman_mae": 0.027996870586748265,
+    "kalman_dacc": 0.4603174603174603,
+    "kalman_level": "local level"
+  }
+}

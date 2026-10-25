@@ -1,0 +1,40 @@
+# Web server
+fastapi>=0.115
+uvicorn[standard]>=0.30
+
+# Forecasting code (engine/: predictor_lib, forecast_lib, advanced_forecast, forecast_agent)
+numpy>=2.4
+pandas>=3.0
+scipy>=1.18
+scikit-learn>=1.9
+statsmodels>=0.15
+xgboost>=3.4
+torch>=2.13           # CPU build is enough; see the Dockerfile
+matplotlib>=3.11
+yfinance>=1.4
+chromadb>=1.5
+python-dateutil>=2.9
+arch>=8.0             # optional; advanced_forecast works without it
+
+# AI analysis: running the company notebooks headlessly (exporter/run_notebook.py)
+nbclient>=0.10
+nbformat>=5.10
+ipykernel>=6.29
+networkx>=3.3          # Graph Analyst
+# packages the notebooks install with %pip (the runner skips %pip lines, so they must be here)
+langchain>=0.3
+langchain-core>=0.3.81
+langchain-ollama>=0.3
+langchain-openai>=0.3.23
+langchain-anthropic>=0.3.15
+beautifulsoup4>=4.12
+lxml>=5.0
+bdshare>=1.2           # Dhaka Stock Exchange data
+ddgs>=9.0              # web news search in the DSE notebooks
+# vendored TradingAgents (engine/TradingAgents-main/tradingagents)
+langgraph>=0.4.8
+langchain-google-genai>=2.0
+stockstats>=0.6.5
+python-dotenv>=1.0
+requests>=2.32
+huggingface_hub>=0.30          # free storage on a Hugging Face Space (backend/tools/hf_sync.py)

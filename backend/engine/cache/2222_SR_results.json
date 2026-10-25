@@ -1,0 +1,45 @@
+{
+  "horizon": 7,
+  "ticker": "2222.SR",
+  "data_end_date": "2026-10-18",
+  "n_rows": 525,
+  "cached_at": "2026-10-20 11:51:21",
+  "results": {
+    "xgb_ret": -0.007933697663247585,
+    "xgb_mae": 0.010420628042614146,
+    "xgb_dacc": 0.6229508196721312,
+    "xgb_params": {
+      "max_depth": 2,
+      "learning_rate": 0.02,
+      "n_estimators": 300,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "random_state": 42
+    },
+    "lstm_ret": 0.0012164413928985596,
+    "lstm_mae": 0.012515484355390072,
+    "lstm_dacc": 0.46551724137931033,
+    "lstm_params": {
+      "hidden": 64,
+      "lr": 0.0005
+    },
+    "arima_ret": -0.00085704151703625,
+    "arima_mae": 0.009771584833724591,
+    "arima_dacc": 0.5245901639344263,
+    "arima_order": [
+      1,
+      1,
+      0
+    ],
+    "ridge_ret": -0.00045663575971759997,
+    "ridge_mae": 0.010136632679204553,
+    "ridge_dacc": 0.4918032786885246,
+    "ridge_params": {
+      "alpha": 0.1
+    },
+    "kalman_ret": -0.0009984331869939966,
+    "kalman_mae": 0.009765318828597484,
+    "kalman_dacc": 0.5573770491803278,
+    "kalman_level": "local level"
+  }
+}

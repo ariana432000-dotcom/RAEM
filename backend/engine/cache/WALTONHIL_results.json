@@ -1,0 +1,45 @@
+{
+  "horizon": 7,
+  "ticker": "WALTONHIL",
+  "data_end_date": "2026-09-17",
+  "n_rows": 475,
+  "cached_at": "2026-10-20 11:53:05",
+  "results": {
+    "xgb_ret": -0.006097957491874695,
+    "xgb_mae": 0.01823003137042799,
+    "xgb_dacc": 0.5555555555555556,
+    "xgb_params": {
+      "max_depth": 2,
+      "learning_rate": 0.02,
+      "n_estimators": 300,
+      "subsample": 0.8,
+      "colsample_bytree": 0.8,
+      "random_state": 42
+    },
+    "lstm_ret": 0.0107668936252594,
+    "lstm_mae": 0.02450341172516346,
+    "lstm_dacc": 0.6,
+    "lstm_params": {
+      "hidden": 64,
+      "lr": 0.0005
+    },
+    "arima_ret": -9.776629051239105e-05,
+    "arima_mae": 0.019077933663145787,
+    "arima_dacc": 0.4444444444444444,
+    "arima_order": [
+      1,
+      1,
+      1
+    ],
+    "ridge_ret": -0.005119357144552401,
+    "ridge_mae": 0.01904940568625917,
+    "ridge_dacc": 0.6349206349206349,
+    "ridge_params": {
+      "alpha": 100.0
+    },
+    "kalman_ret": -1.220348266883775e-10,
+    "kalman_mae": 0.019034278597149935,
+    "kalman_dacc": 0.5238095238095238,
+    "kalman_level": "local level"
+  }
+}
