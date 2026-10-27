@@ -8,7 +8,6 @@ document.addEventListener("click", e => {
   else if (a === "ai-hold") { liveHold(X.ai.t); return; }
   else if (a === "ai-resume") { X.ai.model = selFromKey(v); liveAnalysis(X.ai.t); return; }
   else if (a === "ai-load") { loadAiRun(v); return; }
-  else if (a === "lfc-run") { liveForecast(X.ptForm.t); return; }
   else if (a === "lfc-m") { const m = lfcModels(); m.has(v) ? m.delete(v) : m.add(v); }
   else if (a === "lfc-best") { X.lfc.models = new Set(LIVE.models.forecast.filter(x => x.default).map(x => x.key)); }
   else if (a === "lfc-all") { X.lfc.models = new Set(LIVE.models.forecast.map(x => x.key)); }
@@ -27,10 +26,6 @@ document.addEventListener("click", e => {
   else if (a === "wl-del") { X.wl = X.wl.filter(t => t !== v); lsSet("raem:wl", X.wl); X.wlMsg = ""; }
   else if (a === "wl-add") { if (!X.wl.includes(v)) X.wl.push(v); lsSet("raem:wl", X.wl); X.wlMsg = ""; }
   else if (a === "wl-reset") { X.wl = ORDER.slice(); lsDel("raem:wl"); X.wlMsg = ""; }
-  else if (a === "pt-side") { X.ptForm.side = v; X.ptForm.msg = ""; }
-  else if (a === "pt-go") placeOrder();
-  else if (a === "pt-view") X.ptView = v;
-  else if (a === "pt-reset") { X.pt = { cash: 100000, pos: {}, orders: [], realized: 0 }; lsDel("raem:pt"); X.ptForm.msg = "Account reset."; X.ptForm.ok = true; }
   else if (a === "bt-m") { X.bt.sel.has(v) ? X.bt.sel.delete(v) : X.bt.sel.add(v); }
   else if (a === "bt-t") { X.bt.t = v; X.bt.sel = new Set(["Ensemble"]); }
   else if (a === "fund-t") X.fund.t = v;
@@ -46,8 +41,7 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => {
   const b = e.target.dataset.bind; if (!b) return;
   const v = e.target.value;
-  if (b === "pt-t") { X.ptForm.t = v; X.ptForm.date = ""; X.ptForm.msg = ""; } else if (b === "pt-d") { X.ptForm.date = v; X.ptForm.msg = ""; } else if (b === "pt-q") { X.ptForm.qty = v; X.ptForm.msg = ""; }
-  else if (b === "ds-from") { X.ds.from = v; X.ds.page = 0; } else if (b === "ds-to") { X.ds.to = v; X.ds.page = 0; }
+  if (b === "ds-from") { X.ds.from = v; X.ds.page = 0; } else if (b === "ds-to") { X.ds.to = v; X.ds.page = 0; }
   else if (b === "mem-t") X.mem.t = v;
   else if (b === "lfc-force") X.lfc.force = e.target.checked;
   else if (b === "ai-model") X.ai.model = v;
@@ -62,8 +56,7 @@ document.addEventListener("change", e => {
 });
 document.addEventListener("input", e => {
   const b = e.target.dataset.bind;
-  if (b === "pt-q") X.ptForm.qty = e.target.value;
-  else if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
+  if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
   else if (b === "inv-amt") { X.inv.amt = e.target.value; render(); const i = $("#inv-a"); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (err) { /* number inputs have no caret */ } } }
   else if (b === "mem-q") { X.mem.q = e.target.value; render(); const i = $("#mem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 });
