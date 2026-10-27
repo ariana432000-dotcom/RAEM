@@ -17,7 +17,7 @@ import sys
 
 BACKEND = os.path.dirname(os.path.abspath(__file__))
 FRONTEND = os.path.join(os.path.dirname(BACKEND), "frontend")
-WEB = BACKEND  # exporter/ and engine/ live here
+WEB = BACKEND  # app/pipeline/ and engine/ live here
 ROOT = os.environ.get("RAEM_ENGINE") or os.path.join(BACKEND, "engine")  # forecasting code + its data; fill with tools/sync_engine.py
 PY = sys.executable
 
@@ -37,9 +37,9 @@ def steps(tickers: list[str] | None = None, extra: bool = True, top_up: bool = T
             code = ("import sys; sys.path.insert(0, r'%s'); import predictor_lib as pl\n"
                     "for t in %r:\n    pl.top_up_data_csv(t, verbose=True)") % (ROOT, tks)
             out.append(("Top up prices (yfinance tickers)", [PY, "-c", code]))
-        out.append((f"Forecast {len(tks)} ticker(s)", [PY, "-W", "ignore", os.path.join(WEB, "exporter", "export_ticker.py"), *tks]))
+        out.append((f"Forecast {len(tks)} ticker(s)", [PY, "-W", "ignore", os.path.join(WEB, "app", "pipeline", "export_ticker.py"), *tks]))
         if extra:
-            out.append(("Extra pages", [PY, "-W", "ignore", os.path.join(WEB, "exporter", "export_extra.py")]))
+            out.append(("Extra pages", [PY, "-W", "ignore", os.path.join(WEB, "app", "pipeline", "export_extra.py")]))
     out.append(("Merge page sources", [PY, os.path.join(FRONTEND, "src", "merge.py")]))
     out.append(("Build page", [PY, os.path.join(FRONTEND, "src", "build.py")]))
     return out

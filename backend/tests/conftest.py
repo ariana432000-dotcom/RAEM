@@ -27,7 +27,10 @@ def isolated_archive(tmp_path, monkeypatch):
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
-    from app import config, db, jobs, main
+    from app.core import config
+    from app.db import runs as db
+    from app.workers import jobs
+    from app import main
 
     db.set_path(tmp_path / "test.db")
     monkeypatch.setattr(config, "RUN_TOKEN", "")
@@ -48,7 +51,11 @@ def client(tmp_path, monkeypatch):
     def fake_refresh(run):
         return {"ok": True}, {}
 
-    monkeypatch.setattr(jobs, "RUNNERS", {"forecast": fake_forecast, "analysis": fake_analysis, "refresh": fake_refresh})
+    def fake_company(run):
+        time.sleep(0.2)
+        return {"ticker": run["ticker"], "ready": True}, {"name": run["ticker"]}
+
+    monkeypatch.setattr(jobs, "RUNNERS", {"forecast": fake_forecast, "analysis": fake_analysis, "refresh": fake_refresh, "company": fake_company})
     with TestClient(main.app) as c:
         yield c
         # let queued runs finish with the fake runners before they are swapped back for the real ones

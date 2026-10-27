@@ -67,6 +67,12 @@ FEATURES = ["lag_ret_1", "lag_ret_2", "lag_ret_3", "lag_ret_5", "lag_ret_10",
 
 FX_PAIRS = {"USD": None, "SAR": "USDSAR=X", "HKD": "USDHKD=X", "BDT": "USDBDT=X"}
 
+try:  # companies added on the website (backend/data/companies.json); the eight above are never replaced
+    import raem_companies as _raem_companies
+    _raem_companies.register(TICKERS, FX_PAIRS)
+except ImportError:  # the research project has no such module
+    pass
+
 RUNS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs")
 
 

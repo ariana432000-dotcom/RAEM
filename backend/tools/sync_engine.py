@@ -18,7 +18,8 @@ ENGINE = os.path.join(BACKEND, "engine")
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(BACKEND))
 
 LIBS = ["predictor_lib.py", "forecast_lib.py", "advanced_forecast.py", "forecast_agent.py"]
-DIRS = ["data", "daily_data", "forecast_log", "cache", "chroma_memory", "paper", os.path.join("notebooks", "raem_chroma_db")]
+DIRS = ["data", "daily_data", "forecast_log", "cache", "chroma_memory", "paper", os.path.join("notebooks", "raem_chroma_db"),
+        os.path.join("notebooks", "raem_analysts")]   # the analyst code the notebooks share
 NOTEBOOK_FILES = ["trading_log_*.json", "trading_log_*.csv", "analyst_cache.json"]
 # per-company notebooks the AI-analysis runner executes (backups, Forecast and agent scratch notebooks are left out)
 SKIP_NOTEBOOKS = {"Forecast.ipynb", "agent.ipynb"}
@@ -30,12 +31,25 @@ if not os.path.exists(os.path.join(SRC, "forecast_lib.py")):
     sys.exit(f"{SRC} does not look like the RAEM project (no forecast_lib.py).")
 os.makedirs(os.path.join(ENGINE, "notebooks"), exist_ok=True)
 # keep the engine's own sessions (from runs on the website) and the project's before any log is overwritten
-sys.path.insert(0, os.path.join(BACKEND, "exporter"))
+sys.path.insert(0, os.path.join(BACKEND, "app", "pipeline"))
 from sessions import archive_logs  # noqa: E402
 archive_logs(os.path.join(ENGINE, "notebooks"))
 archive_logs(os.path.join(SRC, "notebooks"))
 for f in LIBS:
     shutil.copy2(os.path.join(SRC, f), os.path.join(ENGINE, f))
+# the website registers companies added from its search box (engine/raem_companies.py): put the hook back into the copied library
+_ANCHOR = 'FX_PAIRS = {"USD": None, "SAR": "USDSAR=X", "HKD": "USDHKD=X", "BDT": "USDBDT=X"}\n'
+_HOOK = _ANCHOR + (
+    "\ntry:  # companies added on the website (backend/data/companies.json); the eight above are never replaced\n"
+    "    import raem_companies as _raem_companies\n"
+    "    _raem_companies.register(TICKERS, FX_PAIRS)\n"
+    "except ImportError:  # the research project has no such module\n"
+    "    pass\n")
+_pl = os.path.join(ENGINE, "predictor_lib.py")
+_txt = open(_pl, encoding="utf-8").read()
+if "raem_companies" not in _txt and _ANCHOR in _txt:
+    open(_pl, "w", encoding="utf-8", newline="\n").write(_txt.replace(_ANCHOR, _HOOK))
+    print("predictor_lib.py: company registry hook added")
 for d in DIRS:
     src = os.path.join(SRC, d)
     if os.path.isdir(src):

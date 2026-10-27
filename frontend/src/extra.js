@@ -72,7 +72,7 @@ function renderAI() {
   if (choices.length && !choices.includes(X.ai.t)) X.ai.t = choices[0];
   const t = X.ai.t, a = EXTRA.ai[t];
   const head = `<div class="page-h"><h1>AI Analysis</h1><p>The company notebooks' LLM analyst panel (TradingAgents with the LLM you choose: a local Ollama model or a cloud model): analysts, Graph Analyst, Forecasting Agent, debate, trader, risk, portfolio manager, verifier and position sizing. Research output, not advice.</p></div>
-    ${card("", "", "", `<div class="field"><span class="lbl">Company</span>${tkrPills(t, "data-ai", choices)}</div>${!live && !ORDER.every(x => AI_T.includes(x)) ? `<p class="sub" style="margin-top:10px">No saved session for ${ORDER.filter(x => !AI_T.includes(x)).join(", ")} yet. Run it on the hosted site.</p>` : ""}`)}`;
+    ${card("", "", "", `<div class="field"><span class="lbl">Company</span>${tkrPills(t, "data-ai", choices)}</div>${!live && !ORDER.every(x => AI_T.includes(x)) ? `<p class="sub" style="margin-top:10px">No saved session for ${ORDER.filter(x => !AI_T.includes(x)).join(", ")} yet. Run it on the hosted site.</p>` : ""}`)}${live ? aiAnyCard() : ""}`;
   if (live) {
     if (!a) return head + aiLiveCard(t, a) + aiHistoryCard(t) + (LIVE.busy["ai:" + t] ? "" : nonEmpty("brain", "No session for this company yet", "Choose a model and run the analysis above to create the first one."));
     return aiResults(t, a, head + aiLiveCard(t, a), aiHistoryCard(t));
@@ -170,7 +170,7 @@ function renderWatch() {
   }).join("");
   const missing = ORDER.filter(t => !X.wl.includes(t));
   return `<div class="page-h"><h1>Watchlist</h1><p>Your pinned tickers with the latest close. Saved in this browser.</p></div>
-    ${card("Add ticker", "This export has 8 tickers. Add back any you removed.", "", `<form class="toolbar" id="wlform"><input class="inp grow" id="wlq" placeholder="Ticker (e.g. IBM)" aria-label="Ticker to add" style="text-transform:uppercase"><button class="btn primary" type="submit">Add</button>${missing.length ? `<span class="sub">Removed: ${missing.map(m => `<button type="button" class="link" data-act="wl-add" data-v="${esc(m)}">${esc(m)}</button>`).join(" ")}</span>` : ""}</form>${X.wlMsg ? `<p class="err" role="alert" style="margin-top:8px">${esc(X.wlMsg)}</p>` : ""}`)}
+    ${card("Add ticker", `This site has ${ORDER.length} companies. Add back any you removed; to add a new company use the search box at the top.`, "", `<form class="toolbar" id="wlform"><input class="inp grow" id="wlq" placeholder="Ticker (e.g. IBM)" aria-label="Ticker to add" style="text-transform:uppercase"><button class="btn primary" type="submit">Add</button>${missing.length ? `<span class="sub">Removed: ${missing.map(m => `<button type="button" class="link" data-act="wl-add" data-v="${esc(m)}">${esc(m)}</button>`).join(" ")}</span>` : ""}</form>${X.wlMsg ? `<p class="err" role="alert" style="margin-top:8px">${esc(X.wlMsg)}</p>` : ""}`)}
     ${X.wl.length ? card("Quotes", "Last close per ticker. Click a row to open the forecast.", "", `<div class="scroll"><table><thead><tr><th>Ticker</th><th>Last close</th><th>1 day</th><th>30 days</th><th>Volume</th><th>1-year range</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: data/ and daily_data/ price files. Closes are as of the last saved bar, not live quotes.</p>`) : nonEmpty("inbox", "Your watchlist is empty", "Add a ticker above to see its quote here.")}`;
 }
 
@@ -348,7 +348,7 @@ function renderSet() {
       ${row("Default history window", "Trading days of history on the price chart.", `<select data-bind="set-win" aria-label="History window">${[30, 60, 120, 180].map(n => `<option value="${n}" ${settings.win === n ? "selected" : ""}>${n} trading days</option>`).join("")}</select>`)}
       ${row("Default chart units", "Show price or change from the last close.", `<select data-bind="set-unit" aria-label="Chart units"><option value="price" ${settings.unit === "price" ? "selected" : ""}>Price</option><option value="pct" ${settings.unit === "pct" ? "selected" : ""}>Change from last close (%)</option></select>`)}`)}
     ${card("Saved data", "Stored in this browser only. Clearing site data removes it.", "", `
-      ${row("Watchlist", `${X.wl.length} of ${ORDER.length} tickers pinned.`, `<button type="button" class="btn secondary sm" data-act="wl-reset">Pin all 8</button>`)}
+      ${row("Watchlist", `${X.wl.length} of ${ORDER.length} tickers pinned.`, `<button type="button" class="btn secondary sm" data-act="wl-reset">Pin all ${ORDER.length}</button>`)}
       ${row("All settings", "Back to defaults.", `<button type="button" class="btn secondary sm" data-act="set-reset">Reset settings</button>`)}`)}
     ${LIVE.ok ? card("Server", LIVE.health.run_token_required ? "This server asks for an access token before it runs models." : "This server runs models for anyone who opens the page.", "", `
       ${row("Connection", `Live server, date ${esc(LIVE.health.date)}. LLMs connected: ${esc(llmProviders().map(p => p.label).join(", ") || "none")}. Runs waiting: ${LIVE.health.queue}.`, `<span class="badge ${llmProviders().length ? "buy" : "hold"}">${llmProviders().length ? "AI ready" : "forecasts only"}</span>`)}
@@ -595,9 +595,9 @@ function renderDash() {
   return `<section class="hero">
     <div><span class="eyebrow"><span class="dotc"></span>Data as of ${dLong(ASOF)}</span>
       <h1>Seven-day stock forecasts, <em>clearly explained</em>.</h1>
-      <p class="lead">See what six forecasting models expect for eight stocks across four markets, the daily BUY, HOLD or SELL signal, and a graded record of how past calls turned out.</p>
+      <p class="lead">See what six forecasting models expect for ${ORDER.length} stocks across ${new Set(ORDER.map(t => DATA[t].meta.currency)).size} markets, the daily BUY, HOLD or SELL signal, and a graded record of how past calls turned out. Search any other company in the box above to add it.</p>
       <div class="cta"><button type="button" class="btn primary" id="runall">Show all signals</button><button type="button" class="btn secondary" data-page="help">How it works</button></div>
-      <div class="herostats"><div><b>8</b><span>stocks</span></div><div><b>6</b><span>models and 3 blends</span></div><div><b>${graded.toLocaleString()}</b><span>past calls graded</span></div></div></div>
+      <div class="herostats"><div><b>${ORDER.length}</b><span>stocks</span></div><div><b>6</b><span>models and 3 blends</span></div><div><b>${graded.toLocaleString()}</b><span>past calls graded</span></div></div></div>
     <div class="card herochart"><div class="field" style="margin-bottom:14px">${pillTabs(ORDER.map(t => [t, t]), ht, "data-home")}</div>
       <div class="hc-top"><div><div class="sub">${esc(hd.meta.name)}</div><div class="hc-px mono">${fmtP(hf.last_price)} <span class="sub">${esc(hd.meta.currency)}</span></div></div>
         <span class="chip ${hr == null ? "flat" : hr > 0.0005 ? "up" : hr < -0.0005 ? "down" : "flat"}">${hr == null ? "–" : fmtPct(hr * 100)} expected in 7 days</span></div>
@@ -627,3 +627,4 @@ function drawHome() {
   lineChart(h, labels, series, opts);
   $("#homechart-l").innerHTML = series.filter(s => !s.noline).map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("") + (opts.band ? `<span><i style="background:var(--text);opacity:.25;height:8px"></i>10–90% range</span>` : "");
 }
+

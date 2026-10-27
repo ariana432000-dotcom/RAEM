@@ -16,7 +16,7 @@ chromadb>=1.5
 python-dateutil>=2.9
 arch>=8.0             # optional; advanced_forecast works without it
 
-# AI analysis: running the company notebooks headlessly (exporter/run_notebook.py)
+# AI analysis: running the company notebooks headlessly (app/ai_engine/run_notebook.py)
 nbclient>=0.10
 nbformat>=5.10
 ipykernel>=6.29

@@ -276,8 +276,9 @@ tr.click:hover td { background: var(--panel-hover); }
       <nav class="links" id="nav" aria-label="Main"></nav>
       <form class="search" id="search" autocomplete="off">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input id="q" placeholder="Jump to stock, e.g. AAPL" aria-label="Jump to stock" spellcheck="false">
+        <input id="q" placeholder="Search any company, e.g. AAPL, TSLA" aria-label="Search any company" spellcheck="false">
         <span class="miss" id="miss" role="alert" hidden></span>
+        <div class="addbox" id="addbox" hidden></div>
       </form>
       <button class="iconbtn" id="theme" type="button" aria-label="Toggle theme"></button>
     </div>
@@ -293,7 +294,9 @@ tr.click:hover td { background: var(--panel-hover); }
 <script>
 const DATA = /*__DATA__*/null;
 const ASOF = /*__ASOF__*/"2026-10-20";
-const ORDER = ["AAPL","IBM","2222.SR","0300.HK","ABBANK","BATBC","BPML","WALTONHIL"].filter(t => DATA[t]);
+const BASE_ORDER = ["AAPL","IBM","2222.SR","0300.HK","ABBANK","BATBC","BPML","WALTONHIL"];
+// the eight research companies first, then any company added from the search box (saved in the page after a rebuild)
+const ORDER = BASE_ORDER.filter(t => DATA[t]).concat(Object.keys(DATA).filter(t => !BASE_ORDER.includes(t)).sort());
 // The six models the site shows (best average rank across the 8 tickers); see ui/export_ticker.py KEEP_MODELS.
 const BASE = ["N-BEATS","LASSO","Ridge","RandomForest","Theta","ARIMA","Kalman","ARIMAX","WSAE-LSTM","XGBoost","LSTM","DNN","TFT","RegimeSwitch"];  // listed when present in a run; the default export has the first six
 const VIEWS = [["Ensemble","Ensemble"],["Fusion","Fusion"],["Fusion-Top3","Fusion Top 3"],["Agent","Reviewed agent"],["Best","Best single model"]];
@@ -676,11 +679,13 @@ $("#search").addEventListener("submit", e => {
   e.preventDefault();
   const q = $("#q").value.trim().toUpperCase(), miss = $("#miss");
   if (!q) return;
-  const hit = ORDER.find(t => t === q) || ORDER.find(t => t.startsWith(q) || DATA[t].meta.name.toUpperCase().includes(q));
-  if (hit) { miss.hidden = true; $("#q").value = ""; openTicker(hit); }
+  const exact = ORDER.find(t => t === q), hit = exact || ORDER.find(t => t.startsWith(q) || DATA[t].meta.name.toUpperCase().includes(q));
+  const live = typeof LIVE !== "undefined" && LIVE.ok;
+  if (exact || (hit && !live)) { miss.hidden = true; $("#q").value = ""; openTicker(hit); }
+  else if (live) { miss.hidden = true; addPrompt(q); }   // the server can add any company: show matches and web suggestions
   else { miss.textContent = `No ${q} in this export. Available: ${ORDER.join(", ")}`; miss.hidden = false; }
 });
-$("#q").addEventListener("input", () => { $("#miss").hidden = true; });
+$("#q").addEventListener("input", () => { $("#miss").hidden = true; if (typeof hideAddBox === "function") hideAddBox(); });
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { const c = $("#chart"); if (c && S.page === "tk") drawChart(c); }, 120); });
 
 $("#menu").innerHTML = ic("menu");
