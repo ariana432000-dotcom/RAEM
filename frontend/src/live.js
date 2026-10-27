@@ -1,4 +1,3 @@
-
 /* ----- live backend: used only when this page is served by the FastAPI app (web/backend) ----- */
 const LIVE = { ok: false, health: null, models: null, token: lsGet("raem:token", ""), fc: {}, ai: {}, busy: {}, err: {}, hist: {} };
 X.lfc = { models: null, force: false };
@@ -117,7 +116,7 @@ function tokenRow() {
   return LIVE.health && LIVE.health.run_token_required && !LIVE.token ? `<div class="field" style="margin-top:12px"><label for="run-token">Access token</label><input class="inp" type="password" id="run-token" data-bind="set-token" placeholder="This server asks for a token before it runs models" autocomplete="off"></div>` : "";
 }
 
-/* forecast runs (Forecast page and Portfolio) */
+/* forecast runs (Forecast page) */
 function lfcModels() {  // all models by default, as the forecast notebook runs them (the Ensemble then picks the best two of all)
   if (!X.lfc.models) X.lfc.models = new Set(LIVE.models.forecast.map(m => m.key));
   return X.lfc.models;
@@ -134,8 +133,6 @@ async function liveForecast(t) {
     if (res.reused === "stored") {
       applyForecastRun(t, res.run);
       showForecast(t);
-      X.ptForm.msg = `Showing the run stored at ${(res.run.finished_at || "").slice(11, 16)} today with the same models.`;
-      X.ptForm.ok = true;
       render();
       return;
     }
@@ -153,25 +150,9 @@ function watchForecast(t, id) {
     applyForecastRun(t, full);
     showForecast(t);
     S.log.unshift({ t, msg: `forecast run with ${(full.params || {}).models.length} models`, ts: nowT() });
-    X.ptForm.msg = `New forecast for ${t} finished and stored.`;
-    X.ptForm.ok = true;
     render();
   });
 }
-function liveForecastPanel(t) {
-  const key = "fc:" + t;
-  if (!LIVE.ok) return `<div class="sect"><p class="l">Run the forecast ${hint(GLOSS.runfc)}</p><p class="small">This copy shows the saved forecast. On the hosted site you can choose models and run them on the server's CSV price files.</p></div>`;
-  const sel = lfcModels(), busy = !!LIVE.busy[key], fc = LIVE.fc[t];
-  const chips = LIVE.models.forecast.map(m => `<button type="button" class="pillbtn mdl" data-act="lfc-m" data-v="${esc(m.key)}" aria-pressed="${sel.has(m.key)}"><i style="${sel.has(m.key) ? "background:var(--accent)" : ""}"></i>${esc(m.label)}</button>`).join("");
-  const now = fc ? `Showing the run of ${esc(fc.date === LIVE.health.date ? "today" : dShort(fc.date))} at ${esc(fc.at.slice(11, 16))} (${fc.models.length} models).` : `Showing the saved export of ${dLong(ASOF)}.`;
-  return `<div class="sect"><p class="l">Run the forecast ${hint(GLOSS.runfc)}</p>
-    <div class="field"><span class="lbl">Models <button type="button" class="link" data-act="lfc-best">best 6</button><button type="button" class="link" data-act="lfc-all">all 14</button></span><div class="pills">${chips}</div></div>
-    <div class="checks" style="margin-top:12px"><label><input type="checkbox" id="lfc-force" data-bind="lfc-force" ${X.lfc.force ? "checked" : ""}> Run again even if the same models ran today</label></div>${tokenRow()}
-    <div class="runbar"><button type="button" class="btn primary" data-act="lfc-run" ${busy || !sel.size ? "disabled" : ""}>${busy ? "Running…" : `Run ${esc(t)} with ${sel.size} model${sel.size === 1 ? "" : "s"}`}</button><p class="note">${now} Uses the server's CSV price files. About 1 to 3 minutes; TFT and LSTM add time.</p></div>
-    ${LIVE.err[key] ? `<p class="err" role="alert">${esc(LIVE.err[key])}</p>` : ""}
-    <div id="live-${liveId(key)}">${liveStatus(key)}</div></div>`;
-}
-
 /* AI analysis runs */
 async function liveAnalysis(t) {
   const key = "ai:" + t;
