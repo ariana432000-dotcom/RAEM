@@ -25,7 +25,7 @@ rep('if (b.dataset.page === "dash") { if (S.running) return; S.page = "dash"; $(
     'if (b.dataset.page) { goPage(b.dataset.page); return; }')
 rep('r.dataset.theme = dark ? "light" : "dark"; render(); return; }',
     'r.dataset.theme = dark ? "light" : "dark"; settings.theme = r.dataset.theme; saveSettings(); render(); return; }')
-rep('if (c && S.page === "tk") drawChart(c); }, 120); });', 'if (c && S.page === "tk") drawChart(c); if (S.page === "bt") drawBT(); if (S.page === "paper") drawPT(); if (S.page === "inv") drawInv(); if (S.page === "dash") drawHome(); }, 120); });')
+rep('if (c && S.page === "tk") drawChart(c); }, 120); });', 'if (c && S.page === "tk") drawChart(c); if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); if (S.page === "dash") drawHome(); }, 120); });')
 rep("let rz; addEventListener", rd("handlers.js") + "let rz; addEventListener")
 rep('$("#menu").innerHTML = ic("menu");', '$("#menu").innerHTML = ic("menu");\napplySettings(true);')
 open(os.path.join(HERE, "template3.html"), "w", encoding="utf-8", newline="\n").write(t)
