@@ -101,11 +101,14 @@ for col in c2.list_collections():
 for p in sorted(glob.glob(os.path.join(ROOT, "paper", "*.pdf"))):
     out["papers"].append({"file": os.path.basename(p), "mb": round(os.path.getsize(p) / 1e6, 2)})
 
+out["asof"] = pd.Timestamp.now().strftime("%Y-%m-%d")   # the page's "Data as of" date (frontend/src/build.py reads it)
+
 # FX rates (currency units per USD), used by the paper-trading page
 out["fx"] = {}
 for cur in sorted({v["currency"] for v in pl.TICKERS.values()}):
     try:
-        out["fx"][cur] = float(pl.get_fx_rate_to_usd(cur))
+        rate = float(pl.get_fx_rate_to_usd(cur))
+        out["fx"][cur] = rate if rate == rate and rate > 0 else None   # NaN/0 (no cached rate) -> null, not invalid JSON
     except Exception:
         out["fx"][cur] = None
 json.dump(out, open(os.path.join(os.path.dirname(HERE), "data", "extra.json"), "w", encoding="utf-8"), ensure_ascii=False)
