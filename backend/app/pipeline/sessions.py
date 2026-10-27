@@ -34,10 +34,9 @@ STEP_LABELS = {
     "Prediction Engine": "Prediction engine",
     "Forecast Graph": "7-day forecast",
     "Decision Verifier": "Verifier",
-    "Position Sizing (rule + RL overlay)": "Position sizing",
     "10-Day Scenario Estimate": "10-day scenario",
 }
-SKIP_STEPS = {"LLM Setup"}
+SKIP_STEPS = {"LLM Setup", "Position Sizing (rule + RL overlay)"}   # sizing was removed from the notebooks; older saved sessions still carry it
 LONG_STEPS = {"News"}
 
 

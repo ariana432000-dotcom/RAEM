@@ -1,5 +1,5 @@
 /* ---------- extra pages ---------- */
-const NAVS = [["dash", "Home", "dash"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["inv", "Return Calculator", "pulse"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["papers", "Research Papers", "file"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
+const NAVS = [["dash", "Home", "dash"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["inv", "Return Calculator", "pulse"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
 Object.assign(ICONS, {
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
@@ -71,7 +71,7 @@ function renderAI() {
   const choices = live ? LIVE.models.analysis_tickers : AI_T;
   if (choices.length && !choices.includes(X.ai.t)) X.ai.t = choices[0];
   const t = X.ai.t, a = EXTRA.ai[t];
-  const head = `<div class="page-h"><h1>AI Analysis</h1><p>The company notebooks' LLM analyst panel (TradingAgents with the LLM you choose: a local Ollama model or a cloud model): analysts, Graph Analyst, Forecasting Agent, debate, trader, risk, portfolio manager, verifier and position sizing. Research output, not advice.</p></div>
+  const head = `<div class="page-h"><h1>AI Analysis</h1><p>The company notebooks' LLM analyst panel (TradingAgents with the LLM you choose: a local Ollama model or a cloud model): analysts, Graph Analyst, Forecasting Agent, debate, trader, risk, portfolio manager and verifier. Research output, not advice.</p></div>
     ${card("", "", "", `<div class="field"><span class="lbl">Company</span>${tkrPills(t, "data-ai", choices)}</div>${!live && !ORDER.every(x => AI_T.includes(x)) ? `<p class="sub" style="margin-top:10px">No saved session for ${ORDER.filter(x => !AI_T.includes(x)).join(", ")} yet. Run it on the hosted site.</p>` : ""}`)}${live ? aiAnyCard() : ""}`;
   if (live) {
     if (!a) return head + aiLiveCard(t, a) + aiHistoryCard(t) + (LIVE.busy["ai:" + t] ? "" : nonEmpty("brain", "No session for this company yet", "Choose a model and run the analysis above to create the first one."));
@@ -305,12 +305,6 @@ function renderFund() {
   return `<div class="page-h"><h1>Fundamentals Check</h1><p>Company figures the fundamentals analyst pulled in its latest session. "N/A" means the data source had no value.</p></div>
     ${card("All tickers", "Click a row to read that analyst's write-up below. The marker shows the last close inside its 52-week range.", "", `<div class="scroll"><table class="fund-grid"><thead><tr><th>Ticker</th><th>Market cap</th><th>P/E</th><th>EPS (TTM)</th><th>Revenue (TTM)</th><th>Beta</th><th>Div. yield</th><th>52-week range</th><th>Net debt</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: notebooks/trading_log_*.json, summary_table.fundamentals_analyst. Values are shown as the source wrote them, in each company's currency.</p>`)}
     ${a ? card(`${esc(t)} analyst write-up`, `Session of ${dLong(a.latest.date)}.`, "", `<div class="scrollbox"><div class="pre">${md(ft ? ft.text : "No fundamentals text.")}</div></div>`) : ""}`;
-}
-
-/* ----- papers ----- */
-function renderPapers() {
-  return `<div class="page-h"><h1>Research Papers</h1><p>The papers the model designs come from. This project has no annual-report PDFs.</p></div>
-    ${card("paper/ folder", `${EXTRA.papers.length} PDF files.`, "", `<div class="scroll"><table><thead><tr><th>File</th><th>Size</th></tr></thead><tbody>${EXTRA.papers.map(p => `<tr><td class="t"><span class="mname"><i style="background:var(--accent)"></i>${esc(p.file)}</span></td><td>${p.mb} MB</td></tr>`).join("")}</tbody></table></div><p class="src">PDFs cannot be opened from this page. Open them from the project's paper/ folder. See CLAUDE.md for which model each paper inspired (LASSO, RandomForest, DNN, WSAE-LSTM).</p>`)}`;
 }
 
 /* ----- memory ----- */
@@ -553,7 +547,7 @@ function renderHelp() {
 /* ----- router ----- */
 function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; }
 function renderExtra() {
-  return ({ ai: renderAI, watch: renderWatch, inv: renderInv, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, papers: renderPapers, mem: renderMem, set: renderSet, help: renderHelp })[S.page]();
+  return ({ ai: renderAI, watch: renderWatch, inv: renderInv, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp })[S.page]();
 }
 function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); if (S.page === "dash") drawHome(); markRows(); }
 

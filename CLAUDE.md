@@ -122,7 +122,7 @@ web/
 │   ├── requirements.txt
 │   ├── engine/               forecasting code, per-company notebooks, TradingAgents package and their data (copied from the research project)
 │   │                         predictor_lib.py, forecast_lib.py, advanced_forecast.py, forecast_agent.py,
-│   │                         data/, daily_data/, forecast_log/, cache/, chroma_memory/, notebooks/, paper/
+│   │                         data/, daily_data/, forecast_log/, cache/, chroma_memory/, notebooks/
 │   ├── storage/              raem.db + executed notebook copies (runtime, git-ignored)
 │   ├── tests/                API tests with fake runners
 │   ├── data/                 saved results the page is built from: tickers/*.json, extra.json
@@ -200,7 +200,7 @@ Shared analyst code: the company notebooks in `backend/engine/notebooks/` hold o
 6. **Both themes.** A design is not done until it exists in dark and light. Check both after building (set `data-theme` on `<html>`).
 7. **Accessibility is part of the spec.** Text 4.5:1, control borders and focus ring 3:1, touch targets 44px on coarse pointers, visible `:focus-visible`, every control with a label or `aria-label`, buttons that toggle use `aria-pressed`, tabs use `role="tab"` with arrow keys, status messages use `role="status"`/`"alert"`. New clickable table rows need `tr.click` (it gets `tabindex` and Enter/Space handling from `markRows()`).
 8. **Charts are SVG.** Do not look for a chart component to map. Match the Figma chart's colours, axes and tooltip by editing `drawChart()` / `lineChart()`. The current style: area gradient under the close line, forecast zone shaded with `--accent-soft`, main forecast in `--text`, overlays in `--c1..--c8`, grey base models, tooltip card with `--panel` and `--border`.
-9. **Code to Figma.** To push the live page into Figma, capture it from the published artifact (desktop 1280, phone 390, dark and light) rather than from the template, because the DOM is generated at runtime. Name frames after pages: `Dashboard`, `Ticker`, `AI Analysis`, `Watchlist`, `Portfolio`, `Backtest`, `Dataset Explorer`, `News`, `Fundamentals`, `Papers`, `Memory`, `Settings`.
+9. **Code to Figma.** To push the live page into Figma, capture it from the published artifact (desktop 1280, phone 390, dark and light) rather than from the template, because the DOM is generated at runtime. Name frames after pages: `Dashboard`, `Ticker`, `AI Analysis`, `Watchlist`, `Portfolio`, `Backtest`, `Dataset Explorer`, `News`, `Fundamentals`, `Memory`, `Settings`.
 10. **Copy and units.** Plain, specific English; sentence case; no emoji. Prices keep each ticker's own currency (USD, SAR, HKD, BDT). Only paper-trading equity converts to USD.
 
 ## 3. Content and honesty rules

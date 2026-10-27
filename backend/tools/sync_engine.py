@@ -18,7 +18,7 @@ ENGINE = os.path.join(BACKEND, "engine")
 SRC = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(BACKEND))
 
 LIBS = ["predictor_lib.py", "forecast_lib.py", "advanced_forecast.py", "forecast_agent.py"]
-DIRS = ["data", "daily_data", "forecast_log", "cache", "chroma_memory", "paper", os.path.join("notebooks", "raem_chroma_db"),
+DIRS = ["data", "daily_data", "forecast_log", "cache", "chroma_memory", os.path.join("notebooks", "raem_chroma_db"),
         os.path.join("notebooks", "raem_analysts")]   # the analyst code the notebooks share
 NOTEBOOK_FILES = ["trading_log_*.json", "trading_log_*.csv", "analyst_cache.json"]
 # per-company notebooks the AI-analysis runner executes (backups, Forecast and agent scratch notebooks are left out)
