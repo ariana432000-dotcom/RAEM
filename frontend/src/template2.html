@@ -292,7 +292,7 @@ tr.click:hover td { background: var(--panel-hover); }
 
 <script>
 const DATA = /*__DATA__*/null;
-const ASOF = "2026-10-20";
+const ASOF = /*__ASOF__*/"2026-10-20";
 const ORDER = ["AAPL","IBM","2222.SR","0300.HK","ABBANK","BATBC","BPML","WALTONHIL"].filter(t => DATA[t]);
 // The six models the site shows (best average rank across the 8 tickers); see ui/export_ticker.py KEEP_MODELS.
 const BASE = ["N-BEATS","LASSO","Ridge","RandomForest","Theta","ARIMA","Kalman","ARIMAX","WSAE-LSTM","XGBoost","LSTM","DNN","TFT","RegimeSwitch"];  // listed when present in a run; the default export has the first six
