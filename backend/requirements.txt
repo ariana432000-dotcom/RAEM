@@ -20,6 +20,7 @@ arch>=8.0             # optional; advanced_forecast works without it
 nbclient>=0.10
 nbformat>=5.10
 ipykernel>=6.29
+psutil>=5.9          # run_notebook/jobs kill the whole process tree on cancel
 networkx>=3.3          # Graph Analyst
 # packages the notebooks install with %pip (the runner skips %pip lines, so they must be here)
 langchain>=0.3
