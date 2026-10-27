@@ -593,7 +593,7 @@ def test_hf_dataset_keeps_state_across_restarts(tmp_path, monkeypatch):
     c = sqlite3.connect(web / "backend" / "storage" / "raem.db"); c.execute("create table runs(id)"); c.execute("insert into runs values ('r1')"); c.commit(); c.close()
     monkeypatch.setattr(hf_sync, "WEB", web)
     monkeypatch.setattr(hf_sync, "BOOT", tmp_path / "boot.json")
-    monkeypatch.setenv("RAEM_HF_DATASET", "me/ream-data")
+    monkeypatch.setenv("RAEM_HF_DATASET", "me/raem-data")
     monkeypatch.setenv("HF_TOKEN", "hf_test")
     remote = tmp_path / "remote"
 
