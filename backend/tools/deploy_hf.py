@@ -1,11 +1,11 @@
 """Put this folder on a Hugging Face Space (Docker; the free CPU has 2 vCPU and 16 GB of memory).
 
     $env:HF_TOKEN = "hf_..."                              # a token with write access: huggingface.co/settings/tokens
-    python backend/tools/deploy_hf.py <hf-username>/ream   # creates the Space if needed and uploads the app
+    python backend/tools/deploy_hf.py <hf-username>/raem   # creates the Space if needed and uploads the app
 
     # optional: copy API keys and RAEM_RUN_TOKEN from this shell into the Space's secrets
     $env:ANTHROPIC_API_KEY = "sk-ant-..."; $env:RAEM_RUN_TOKEN = "..."
-    python backend/tools/deploy_hf.py <hf-username>/ream --secrets
+    python backend/tools/deploy_hf.py <hf-username>/raem --secrets
 
 It uploads the files git would push (no .env, no run database) and gives the Space the README header Hugging Face
 reads (sdk: docker, app_port 8000). Run it again after a change to update the Space; it rebuilds by itself.
@@ -90,7 +90,7 @@ def wait_for_space(api, space: str, minutes: int = 40) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("space", nargs="?", help="<hf-username>/<space-name>; default <your-hf-username>/ream")
+    ap.add_argument("space", nargs="?", help="<hf-username>/<space-name>; default <your-hf-username>/raem")
     ap.add_argument("--private", action="store_true", help="create the Space as private (only you can open it)")
     ap.add_argument("--secrets", action="store_true", help="copy API keys, HF_TOKEN and RAEM_RUN_TOKEN (shell or web/.env) into the Space")
     ap.add_argument("--wait", action="store_true", help="follow the build until the Space runs or fails")
@@ -107,7 +107,7 @@ def main() -> int:
     except Exception:
         sys.exit("Not logged in to Hugging Face: put HF_TOKEN=hf_... (a Write token from huggingface.co/settings/tokens) in web/.env.")
     print(f"Hugging Face account: {who}")
-    a.space = a.space or f"{who}/ream"
+    a.space = a.space or f"{who}/raem"
     if a.space.count("/") != 1:
         sys.exit("Give the Space as <hf-username>/<space-name>.")
     api.create_repo(a.space, repo_type="space", space_sdk="docker", private=a.private, exist_ok=True)
