@@ -204,6 +204,12 @@ def _stream(rid: str, argv: list[str], timeout: int, env: dict | None = None) ->
     return code == 0
 
 
+def _cause(rid: str) -> str:
+    """The reason a child process printed before it failed (run_notebook's `!! Cause:` line and its hint), for the run's error text."""
+    lines = [l[3:].strip() for l in _live.get(rid, []) if l.startswith("!! Cause:") or l.startswith("!! The provider refused")]
+    return " ".join(lines[-2:])
+
+
 def _rebuild(rid: str) -> None:
     for script in ("merge.py", "build.py"):
         subprocess.run([PY, str(config.WEB / "frontend" / "src" / script)], cwd=str(config.WEB), capture_output=True,
@@ -253,7 +259,7 @@ def _run_analysis(run: dict) -> tuple[dict, dict]:
             argv += ["--market", params.get("market") or "auto"] + (["--name", params["name"]] if params.get("name") else [])
         ok = _stream(run["id"], argv, config.NOTEBOOK_TIMEOUT, env={"OLLAMA_BASE_URL": config.OLLAMA_URL, "RAEM_LLM_CACHE": str(cache)})
         if not ok or not os.path.exists(out):
-            raise RuntimeError("The notebook run did not finish. See the log for the failing cell.")
+            raise RuntimeError("The notebook run did not finish. " + (_cause(run["id"]) or "See the log for the failing cell."))
         result = json.load(open(out, encoding="utf-8"))
     try:  # finished: the next run of this company and model starts fresh
         cache.unlink(missing_ok=True)

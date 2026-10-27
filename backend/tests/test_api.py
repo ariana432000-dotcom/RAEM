@@ -650,3 +650,20 @@ def test_archive_is_read_from_the_snapshot_when_there_is_no_database(tmp_path, m
     got = sessions.archived("AAPL")
     assert [d["n"] for d, _ in got] == [1, 2] and [g for _, g in got] == ["BUY", "HOLD"]
     assert sessions.archived("NOPE") == []
+
+
+def test_failed_analysis_error_carries_the_cause(monkeypatch):
+    """The run's error names the reason the notebook runner printed, not just 'did not finish'."""
+    from app.workers import jobs
+    lines = ["== [41/51] Prediction Engine", "   Traceback ...", "!! A notebook cell failed:",
+             "!! Cause: DeadKernelError: Kernel died  (in step: Prediction Engine)", "!! Executed copy saved: /x.ipynb"]
+
+    def fake_stream(rid, argv, timeout, env=None):
+        jobs._live[rid] = list(lines)
+        return False
+    monkeypatch.setattr(jobs, "_stream", fake_stream)
+    run = {"id": "r1", "ticker": "AAPL", "model_key": "kimi:kimi-k3", "params": {"provider": "kimi", "llm_model": "kimi-k3", "notebook": "AAPL.ipynb"}}
+    with pytest.raises(RuntimeError) as e:
+        jobs._run_analysis(run)
+    assert "Cause: DeadKernelError: Kernel died (in step: Prediction Engine)" in str(e.value).replace("  (", " (")
+    jobs._live.pop("r1", None)
