@@ -1,5 +1,5 @@
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-inv-t],[data-inv-src],[data-home]");
+  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-inv-t],[data-inv-src],[data-inv-h],[data-home]");
   if (!el || el.disabled) return;
   const d = el.dataset, a = d.act, v = d.v;
   if (d.ai) { if (X.ai.running) return; X.ai.t = d.ai; }
@@ -20,6 +20,7 @@ document.addEventListener("click", e => {
   else if (d.home) X.home.t = d.home;
   else if (d.invT) X.inv.t = d.invT;
   else if (d.invSrc) X.inv.src = d.invSrc;
+  else if (d.invH) X.inv.h = d.invH === "7" ? 7 : 5;
   else if (d.mem) X.mem.tab = d.mem;
   else if (d.setTheme) { settings.theme = d.setTheme; saveSettings(); applySettings(false); }
   else if (d.setView) { settings.view = d.setView; S.view = d.setView; saveSettings(); }
