@@ -1,10 +1,11 @@
 import glob
 import json
 import os
+import re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 data = {}
-for p in glob.glob(os.path.join(HERE, "..", "..", "backend", "data", "tickers", "*.json")):
+for p in sorted(glob.glob(os.path.join(HERE, "..", "..", "backend", "data", "tickers", "*.json"))):   # sorted: same bytes on every OS
     d = json.load(open(p, encoding="utf-8"))
     d["forecast"].pop("scoreboard", None)
     shown = {"N-BEATS", "LASSO", "Ridge", "RandomForest", "Theta", "ARIMA", "Ensemble", "Fusion", "Fusion-Top3"}
@@ -18,6 +19,11 @@ out = tpl.replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False, separ
 extra = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "extra.json"), encoding="utf-8"))
 shown = {"N-BEATS", "LASSO", "Ridge", "RandomForest", "Theta", "ARIMA", "Ensemble", "Fusion", "Fusion-Top3"}
 extra["backtest"] = {t: {m: r for m, r in v.items() if m in shown} for t, v in extra["backtest"].items()}
+# "Data as of" date: written by export_extra.py on each refresh; the newest price date is the fallback for older exports
+asof = extra.get("asof") or max(d["forecast"]["last_date"] for d in data.values())
+assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof), asof
+assert out.count('/*__ASOF__*/"2026-10-20"') == 1
+out = out.replace('/*__ASOF__*/"2026-10-20"', json.dumps(asof))
 out = out.replace("/*__EXTRA__*/null", json.dumps(extra, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/"))
 # The template is a page fragment (the claude.ai artifact viewer adds the document skeleton). A hosted page needs its own:
 # without a doctype browsers render in quirks mode, and without the viewport tag phones show the desktop layout zoomed out.
