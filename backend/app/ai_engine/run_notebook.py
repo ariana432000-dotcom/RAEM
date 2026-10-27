@@ -360,6 +360,18 @@ def labels(nb) -> dict[int, str]:
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
+def add_engine_to_path() -> str:
+    """Put the engine folder (predictor_lib, forecast_lib, ...) on the notebook kernel's import path.
+
+    The Prediction Engine and hit-rate cells find predictor_lib through `os.path.abspath("..")`. When the notebooks folder
+    is a link to a persistent volume (Railway), the kernel's working directory is the volume's real path and ".." then
+    has no predictor_lib, so the cell failed with `No module named 'predictor_lib'`. The kernel inherits PYTHONPATH."""
+    parts = [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p]
+    if str(ENGINE) not in parts:
+        os.environ["PYTHONPATH"] = os.pathsep.join([str(ENGINE)] + parts)
+    return os.environ["PYTHONPATH"]
+
+
 def prepare_notebook(ticker: str, market: str = "auto", name: str | None = None) -> str | None:
     """The notebook file name of `ticker`. A company without one gets it made now (prices, registry, notebook from the
     shared analyst files: pipeline/add_company.py --prepare), so no company is tied to a hand-made notebook file."""
@@ -462,6 +474,7 @@ def main() -> int:
     os.environ["RAEM_FULL_OUT"] = full_out
     os.environ.setdefault("TRADINGAGENTS_PATH", str(ENGINE / "TradingAgents-main"))
     os.environ["MPLBACKEND"] = "Agg"
+    add_engine_to_path()
     os.environ["PYTHONIOENCODING"] = "utf-8"
 
     client = NotebookClient(nb, timeout=CELL_TIMEOUT, kernel_name="python3", allow_errors=False,
