@@ -15,7 +15,7 @@ def rep(a, b, cnt=1):
 js = js.replace(", F = k => (tk => ((EXTRA.ai[tk] || {}).latest || { summary: {} }).summary.fundamentals_analyst || {})", "")
 js = js.replace('wl: lsGet("raem:wl", null) || ORDER.slice(),', 'wl: (lsGet("raem:wl", null) || ORDER.slice()).filter(x => ORDER.includes(x)),')
 
-rep('const ASOF = "2026-10-20";', 'const ASOF = "2026-10-20";\nconst EXTRA = /*__EXTRA__*/null;')
+rep('const ASOF = /*__ASOF__*/"2026-10-20";', 'const ASOF = /*__ASOF__*/"2026-10-20";\nconst EXTRA = /*__EXTRA__*/null;')
 rep("@media (max-width: 767px) {", css + "\n@media (max-width: 767px) {")
 
 rep("/* ---------- render & run ---------- */", js + "\n/* ---------- render & run ---------- */")
