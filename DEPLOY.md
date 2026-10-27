@@ -62,6 +62,8 @@ visit wakes them in a minute or two.
 
 Railway notes:
 - Give the service at least **4 GB of memory** (Settings → Resources): the forecast models and a notebook run use 2 to 3 GB.
+- The **Hobby plan** is enough (up to 48 vCPU / 48 GB per service). It bills CPU and memory by use, so each model run
+  uses only 2 threads (`RAEM_THREADS`; more did not make the models faster, they only cost more CPU time).
 - Keep **one replica** and leave **App Sleeping off**; a sleeping or second container would stop or split the run queue.
 - The volume keeps the run database, held runs, AI sessions, prices, trading logs and memory across redeploys
   (`backend/tools/persist.py`). A file you change in git and push replaces the volume copy on the next deploy.

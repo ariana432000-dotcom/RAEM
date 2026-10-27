@@ -101,12 +101,20 @@ def llm_key(provider: str, model: str) -> str:
     return model if provider == "ollama" else f"{provider}:{model}"
 
 
+RUN_THREADS = 2  # the models are small: a six-model forecast took 18 s on 1 thread, 20 s on 2 or 4, 66 s on 12
+
+
 def cpu_limit() -> int:
-    """CPUs this container may really use. A hosted container (Railway) sees every core of the host machine, but its plan
-    allows only a few; numpy, torch and scikit-learn would start a thread per host core and spend the run being throttled.
-    RAEM_THREADS overrides; else the cgroup CPU quota, else the CPUs the process may run on."""
+    """Threads for one model run. A hosted container (Railway) sees every core of the host machine, so numpy, torch and
+    scikit-learn would start a thread per core; that made a run slower, and on a usage-billed plan (Railway Hobby bills
+    CPU by the second) dearer. RAEM_THREADS overrides; else RUN_THREADS, or fewer when the cgroup CPU quota or the
+    CPUs the process may run on are fewer."""
     if os.environ.get("RAEM_THREADS", "").isdigit() and int(os.environ["RAEM_THREADS"]) > 0:
         return int(os.environ["RAEM_THREADS"])
+    return min(RUN_THREADS, _cpus())
+
+
+def _cpus() -> int:
     try:  # cgroup v2: "<quota> <period>" or "max <period>"
         quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()[:2]
         if quota != "max":

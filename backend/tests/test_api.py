@@ -53,7 +53,7 @@ def test_model_runs_use_the_container_cpu_limit(monkeypatch):
     monkeypatch.setenv("OMP_NUM_THREADS", "1")                # a value set on the server wins
     assert config.thread_env()["OMP_NUM_THREADS"] == "1" and config.thread_env()["LOKY_MAX_CPU_COUNT"] == "2"
     monkeypatch.delenv("RAEM_THREADS")
-    assert config.cpu_limit() >= 1
+    assert 1 <= config.cpu_limit() <= config.RUN_THREADS   # a 48-vCPU plan still gets 2 threads
 
 
 def test_forecast_run_then_same_date_reuse(client):
