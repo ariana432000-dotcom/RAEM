@@ -170,8 +170,10 @@ function closeOn(t, date) {
 const nextDays = (iso, n) => { const out = []; const d = new Date(iso + "T00:00:00Z"); while (out.length < n) { d.setUTCDate(d.getUTCDate() + 1); if (d.getUTCDay() % 6) out.push(d.toISOString().slice(0, 10)); } return out; };
 const fcPath = t => { const f = DATA[t].forecast; return f.paths.Ensemble || f.paths.Fusion || null; };
 function fcBand(t) {
-  const d = DATA[t], last = d.forecast.last_price, p = d.agent && d.agent.plan && d.agent.plan.band_ret;
-  return p ? p.map(b => [last * (1 + b[0]), last * (1 + b[1])]) : null;
+  // band_ret holds the forecast-error quantiles around the forecast, so the price range is the reviewed path plus them
+  // (as forecast_table() in forecast_agent.py does); without the path the range would sit around today's price instead
+  const d = DATA[t], last = d.forecast.last_price, pl = d.agent && d.agent.plan, p = pl && pl.band_ret, pr = pl && pl.path_ret;
+  return p && pr ? p.map((b, i) => [last * (1 + pr[i] + b[0]), last * (1 + pr[i] + b[1])]) : null;
 }
 function ptValueAt(prices) { let v = X.pt.cash; Object.entries(X.pt.pos).forEach(([t, p]) => { v += usd(t, p.qty * prices(t)); }); return v; }
 const ptEquity = () => ptValueAt(t => lastClose(t));
@@ -539,7 +541,7 @@ function renderSet() {
 }
 
 /* ----- return calculator: "if I put in 100" per company ----- */
-X.inv = { amt: 100, basis: "usd", src: "Ensemble", t: AI_T[0] };
+X.inv = { amt: 100, basis: "usd", src: "Ensemble", t: AI_T[0], h: 5 };  // h = days ahead the calculator shows (5 or 7)
 const INV_SRC = [["Ensemble", "Ensemble"], ["AI", "AI-adjusted"], ["Fusion", "Fusion"], ["Fusion-Top3", "Fusion Top 3"], ["Agent", "Reviewed agent"], ["Daily", "Daily 5-model signal"]];
 function invFc(t, src) {
   const d = DATA[t], f = d.forecast, last = f.last_price, band = fcBand(t);
@@ -548,8 +550,8 @@ function invFc(t, src) {
   else if (src === "Agent" && d.agent && d.agent.plan && d.agent.plan.path_ret) path = d.agent.plan.path_ret.map(r => last * (1 + r));
   else if (src === "Daily") { const r = d.daily.final_expected_return; path = Array.from({ length: 7 }, (_, i) => last * (1 + r * (i + 1) / 7)); }
   else path = f.paths[src] || f.paths.Ensemble;
-  const hb = band && src !== "Daily";
-  return { last, path, end: path[6], lo: hb ? band[6][0] : null, hi: hb ? band[6][1] : null };
+  const hb = band && src !== "Daily", k = (X.inv.h === 7 ? 7 : 5) - 1;  // day-5 or day-7 point of the 7-day path and of its error band
+  return { last, path, end: path[k], lo: hb ? band[k][0] : null, hi: hb ? band[k][1] : null };
 }
 const invAmt = () => Math.max(0, +X.inv.amt || 0);
 const invShow = (t, v) => X.inv.basis === "usd" ? "$" + v.toFixed(2) : v.toFixed(2) + " " + DATA[t].meta.currency;
@@ -613,7 +615,7 @@ function aiEffectCard(t) {
         <div class="kv"><p class="k">AI-adjusted 7 days</p><p class="v ${cls(b.adj)}">${fmtPct(b.adj * 100)}</p><p class="s">${fmtP(b.price)} ${esc(cur)} · ${aiWhy(b)}</p></div></div>`);
 }
 function renderInv() {
-  const A = invAmt(), x = X.inv;
+  const A = invAmt(), x = X.inv, H = x.h === 7 ? 7 : 5;
   const rows = ORDER.map(t => {
     const fc = invFc(t, x.src), ret = fc.end / fc.last - 1, dly = DATA[t].daily, dRet = dly.final_expected_return;
     const llm = EXTRA.ai[t] ? EXTRA.ai[t].latest : null, bt = (EXTRA.backtest[t] || {}).Ensemble;
@@ -623,13 +625,13 @@ function renderInv() {
   });
   rows.sort((a, b) => b.ret - a.ret);
   const mx = Math.max(...rows.flatMap(r => [Math.abs(r.ret), r.lo == null ? 0 : Math.abs(r.lo / A - 1), r.hi == null ? 0 : Math.abs(r.hi / A - 1)]), 0.001) * 1.1, pos = v => Math.max(1, Math.min(99, 50 + v / mx * 50));
-  const srcNote = x.src === "Daily" ? "the daily 5-model signal's expected 7-day return" : x.src === "Agent" ? "the reviewed agent path" : x.src === "AI" ? "the Ensemble path tilted by each company's latest AI rating (the Ensemble alone where there is no recent rating)" : `the ${x.src} path from forecast_lib`;
+  const srcNote = x.src === "Daily" ? "the daily 5-model signal's expected 7-day return, spread evenly over the 7 days" : x.src === "Agent" ? "the reviewed agent path" : x.src === "AI" ? "the Ensemble path tilted by each company's latest AI rating (the Ensemble alone where there is no recent rating)" : `the ${x.src} path from forecast_lib`;
   const tk = x.t, trk = invTrack(tk), bt = EXTRA.backtest[tk] || {};
   const best = rows[0], worst = rows[rows.length - 1];
   const table = rows.map(r => `<tr class="click" data-t="${esc(r.t)}"><td><span class="tkr">${esc(r.t)}</span><div class="sub">${esc(DATA[r.t].meta.name)}</div></td>
     <td class="${r.age > 5 ? "" : ""}" style="${r.age > 5 ? "color:var(--hold)" : ""}">${dShort(DATA[r.t].forecast.last_date)}</td>
-    <td>${invShow(r.t, r.val)}</td><td class="${cls(r.ret)}">${fmtPct(r.ret * 100)}</td>
-    <td>${r.lo == null ? "–" : `${invShow(r.t, r.lo)} to ${invShow(r.t, r.hi)}`}</td>
+    <td>${invShow(r.t, r.val)}</td><td class="${cls(r.ret)}">${invSigned(r.t, r.val - A)}</td><td class="${cls(r.ret)}">${fmtPct(r.ret * 100)}</td>
+    <td>${r.lo == null ? "–" : `${invSigned(r.t, r.lo - A)} to ${invSigned(r.t, r.hi - A)}`}</td>
     <td>${sigBadge(r.dly.final_signal)} <span class="sub">${invShow(r.t, r.dVal)}</span></td>
     <td>${r.llm ? `${ratingBadge(r.llm.rating)} <span class="sub">${dShort(r.llm.date)}</span>` : '<span class="sub">no session</span>'}</td>
     <td class="votes" title="forecast / daily model / LLM rating">${r.votes.map(voteTxt).join(" ")}</td>
@@ -641,19 +643,20 @@ function renderInv() {
       <td>${o.pending ? "–" : invShow(tk, A * f)}</td><td>${o.pending ? "–" : invShow(tk, A * (1 + o.r))}</td><td><span class="badge ${tone}">${o.pending ? "pending" : o.rating === "HOLD" ? "no trade" : f > 1 ? "right" : "wrong"}</span></td></tr>`;
   }).join("") : "";
   const btRows = Object.entries(bt).map(([m, r]) => `<tr><td class="t">${esc(m)}</td><td>${r.n}</td><td>${invShow(tk, A * r.equity[r.equity.length - 1])}</td><td>${invShow(tk, A * r.buyhold_eq[r.buyhold_eq.length - 1])}</td><td class="${cls(r.strategy_pct)}">${fmtPct(r.strategy_pct, 1)}</td></tr>`).join("");
-  return `<div class="page-h"><h1>Return Calculator</h1><p>If you put in ${A} today, what each company's forecast, daily model, notebook LLM and past record say you would have in 7 days.</p></div>
+  return `<div class="page-h"><h1>Return Calculator</h1><p>If you put in ${A} today, what each company's forecast, daily model, notebook LLM and past record say you would have in ${H} days.</p></div>
     ${card("Your investment", "Change the amount, the money basis or the forecast used.", "", `<div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
       <div class="field"><label for="inv-a">Amount per company</label><input class="inp w-sm" id="inv-a" data-bind="inv-amt" type="number" min="1" step="any" value="${esc(x.amt)}"></div>
       <div class="field"><label for="inv-b">Amount is in</label><select id="inv-b" data-bind="inv-basis"><option value="usd" ${x.basis === "usd" ? "selected" : ""}>US dollars (converted to each currency)</option><option value="local" ${x.basis === "local" ? "selected" : ""}>Each company's own currency</option></select></div></div>
+      <div class="field" style="margin-top:16px"><span class="lbl">Days ahead</span>${pillTabs([["5", "5 days"], ["7", "7 days"]], String(H), "data-inv-h")}</div>
       <div class="field" style="margin-top:16px"><span class="lbl">Forecast used</span>${pillTabs(INV_SRC.map(([id, l]) => [id, l]), x.src, "data-inv-src")}</div>`)}
     <div class="stats">
       ${statCard("Best expected", esc(best.t), `${fmtPct(best.ret * 100)} · ${invSigned(best.t, best.val - A)}`, best.ret > 0 ? "buy" : "sell", "line")}
       ${statCard("Worst expected", esc(worst.t), `${fmtPct(worst.ret * 100)} · ${invSigned(worst.t, worst.val - A)}`, worst.ret > 0 ? "buy" : "sell", "chart")}
-      ${statCard("All 8 together", invAmt() ? fmtPct(rows.reduce((q, r) => q + r.ret, 0) / rows.length * 100) : "–", "average 7-day return", "accent", "wallet")}
+      ${statCard("All 8 together", invAmt() ? fmtPct(rows.reduce((q, r) => q + r.ret, 0) / rows.length * 100) : "–", `average ${H}-day return`, "accent", "wallet")}
       ${statCard("Amount in", x.basis === "usd" ? "$" + A : A + " each", x.basis === "usd" ? "converted at saved FX" : "own currency", "", "db")}
     </div>
-    ${card(`Company by company ${hint(GLOSS.votes)}${hint(GLOSS.past)}`, `Value of ${A} after 7 days using ${esc(srcNote)}. Click a row to open that ticker.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Price as of</th><th>Value in 7 days</th><th>Return</th><th>10–90% range</th><th>Daily model</th><th>Notebook LLM</th><th>Votes</th><th>Past record</th></tr></thead><tbody>${table}</tbody></table></div>
-      <p class="src">Votes show forecast, daily model and LLM rating in that order (↑ up, ↓ down, – flat or hold). "Past record" is what the amount would be if you had followed the Ensemble's saved day-7 calls since the log began, then (smaller) what buying and holding on the same dates would give. Forecasts start from each company's own last close, so DSE companies start from Oct 4. The range comes from the reviewer's past forecast errors and is not a promise.</p>`)}
+    ${card(`Company by company ${hint(GLOSS.votes)}${hint(GLOSS.past)}`, `Value of ${A} after ${H} days using ${esc(srcNote)}. Click a row to open that ticker.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Price as of</th><th>Value in ${H} days</th><th>Profit / loss</th><th>Return</th><th>10–90% range (profit / loss)</th><th>Daily model</th><th>Notebook LLM</th><th>Votes</th><th>Past record</th></tr></thead><tbody>${table}</tbody></table></div>
+      <p class="src">Votes show forecast, daily model and LLM rating in that order (↑ up, ↓ down, – flat or hold). "Past record" is what the amount would be if you had followed the Ensemble's saved day-7 calls since the log began, then (smaller) what buying and holding on the same dates would give. Forecasts start from each company's own last close, so DSE companies start from Oct 4. The range comes from the reviewer's past forecast errors on a small test set, so a result outside it is possible. Costs and tax are not included. Research output, not investment advice.</p>`)}
     <div class="two">
       ${card("Expected gain per company", `On ${A}. Bar = expected return, line = 10–90% range.`, "", `<div class="rows">${bars}</div>`)}
       ${card(`Growth of ${A} over 7 days`, "Each company's forecast path, day by day.", "", `<div class="chartbox" id="invgrow"></div><div class="legend" id="invgrow-l"></div>`)}
@@ -719,6 +722,7 @@ function plainSummary(d) {
   const r = p[6] / last - 1, conf = d.agent && d.agent.plan ? d.agent.plan.confidence : null, age = daysBetween(f.last_date, ASOF);
   return `<section class="card summary"><span class="fi">${ic("check")}</span><div><p class="l">In plain words</p>
     <p class="lead2">Over the next 7 trading days the Ensemble expects ${esc(d.meta.name)} to <b>${moveWord(r)}</b> (${fmtPct(r * 100)}, to about ${fmtP(p[6])} ${esc(cur)}). The daily signal is ${sigBadge(d.daily.final_signal)}.${conf ? ` Confidence is <b>${esc(conf.toLowerCase())}</b>.` : ""}${band ? ` In past tests the price usually ended between ${fmtP(band[6][0])} and ${fmtP(band[6][1])} ${esc(cur)}.` : ""}</p>
+    <p class="lead2" style="margin-top:6px">After 5 trading days: <b>${fmtPct((p[4] / last - 1) * 100)}</b> (about ${fmtP(p[4])} ${esc(cur)})${band ? `, usually between ${fmtP(band[4][0])} and ${fmtP(band[4][1])}` : ""}.${band ? ` As a profit or loss on the amount invested, that is about ${fmtPct((p[4] / last - 1) * 100)} with a range of ${fmtPct((band[4][0] / last - 1) * 100)} to ${fmtPct((band[4][1] / last - 1) * 100)}, ` : " "}before costs.</p>
     ${(b => b && !b.stale ? `<p class="lead2" style="margin-top:6px">The latest AI analysis rated it ${ratingBadge(b.rating)} on ${dShort(b.date)}; with that view the forecast becomes <b>${fmtPct(b.adj * 100)}</b> (about ${fmtP(b.price)} ${esc(cur)}; ${aiWhy(b)}).</p>` : "")(aiBlend(t))}
     ${age > 5 ? `<p class="sub" style="margin-top:6px;color:var(--hold)">These prices are from ${dLong(f.last_date)}, ${age} days before the export.</p>` : ""}</div></section>`;
 }
@@ -807,4 +811,3 @@ function drawHome() {
   lineChart(h, labels, series, opts);
   $("#homechart-l").innerHTML = series.filter(s => !s.noline).map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("") + (opts.band ? `<span><i style="background:var(--text);opacity:.25;height:8px"></i>10–90% range</span>` : "");
 }
-
