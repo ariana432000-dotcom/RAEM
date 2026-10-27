@@ -748,7 +748,7 @@ function resultsHtml() {
 }
 
 /* ---------- extra pages ---------- */
-const NAVS = [["dash", "Home", "dash"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["paper", "Portfolio", "wallet"], ["inv", "Return Calculator", "pulse"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["papers", "Research Papers", "file"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
+const NAVS = [["dash", "Home", "dash"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["inv", "Return Calculator", "pulse"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["papers", "Research Papers", "file"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
 Object.assign(ICONS, {
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
@@ -772,8 +772,6 @@ const tkrPills = (cur, attr, only) => pillTabs(ORDER.map(t => [t, t, only && !on
 const X = {
   ai: { t: AI_T[0], stage: "Fundamentals" },
   wl: (lsGet("raem:wl", null) || ORDER.slice()).filter(x => ORDER.includes(x)),
-  pt: lsGet("raem:pt", null) || { cash: 100000, pos: {}, orders: [], realized: 0 },
-  ptForm: { t: ORDER[0], side: "buy", qty: 10, msg: "", ok: true },
   bt: { t: ORDER[0], sel: new Set(["Ensemble"]) },
   ds: { t: ORDER[0], page: 0, from: "", to: "" },
   news: { t: AI_T[0] },
@@ -842,6 +840,24 @@ function mdField(text, label) {  // the text after "**Label**:" up to the next "
   return m ? m[1].trim() : "";
 }
 const aiSignal = L => L.signal || SIGNAL_OF[String(L.rating || "").toUpperCase()] || "";
+/* "If I buy now, what could the next 5 trading days bring?" on the Decision card. Uses the amount and currency set on the
+   Return calculator page (default $100), the AI-adjusted path when the AI analysis is fresh, else the Ensemble. */
+function aiFiveDay(t) {
+  const d = DATA[t], f = d.forecast, last = f.last_price, cur = d.meta.currency, b = aiBlend(t), band = fcBand(t);
+  const useAI = b && !b.stale && b.path, path = useAI ? b.path : fcPath(t);
+  if (!path) return "";
+  // Dhaka stocks are shown in taka on a 10,000 Tk stake; the others use the Return calculator's amount and currency
+  const tk = cur === "BDT", A = tk ? 10000 : (invAmt() || 100), k = 4, r = path[k] / last - 1, age = daysBetween(f.last_date, ASOF);
+  const lo = band ? band[k][0] / last - 1 : null, hi = band ? band[k][1] / last - 1 : null;
+  const money2 = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : invSigned(t, v);
+  const pl = x => money2(A * x), stake = tk ? `${A.toLocaleString("en-US")} Tk` : invShow(t, A);
+  return `<div class="sect"><p class="l">If you buy now: next 5 trading days (to ${dShort(f.dates[k])})</p>
+    <p class="v ${cls(r)}">${pl(r)} <span class="vs">${fmtPct(r * 100)} on ${stake}</span></p>
+    ${band ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
+      <div><p class="l" style="margin:0">Likely worst (10%)</p><p class="v ${cls(lo)}">${pl(lo)}</p><p class="vs ${cls(lo)}">${fmtPct(lo * 100)} · price ${fmtP(band[k][0])} ${esc(cur)}</p></div>
+      <div><p class="l" style="margin:0">Likely best (90%)</p><p class="v ${cls(hi)}">${pl(hi)}</p><p class="vs ${cls(hi)}">${fmtPct(hi * 100)} · price ${fmtP(band[k][1])} ${esc(cur)}</p></div></div>` : ""}
+    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days before export, so the real start price may differ)` : ""}. The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. ${tk ? "" : "Change the amount on the Return calculator page. "}Not investment advice.</p></div>`;
+}
 function aiDecisionCard(t, L) {
   const sig = aiSignal(L), d = DATA[t], cur = d.meta.currency, entry = d.forecast.last_price, seen = +(L.summary || {}).market_latest_close || null;
   const fd = L.final_decision || "", summ = mdField(fd, "Executive Summary"), why = mdField(fd, "Investment Thesis"), hor = mdField(fd, "Time Horizon");
@@ -854,6 +870,7 @@ function aiDecisionCard(t, L) {
     <div class="sect"><p class="l">Entry (close of ${dShort(d.forecast.last_date)})</p><p class="v">${fmtP(entry)} ${esc(cur)}</p>
       ${seen && Math.abs(seen / entry - 1) > 0.01 ? `<p class="small">The notebook saw ${fmtP(seen)} ${esc(cur)} on ${dShort(L.date)}; the forecast uses closes to ${dShort(d.forecast.last_date)}. Run the forecast again for the newer prices.</p>` : ""}</div>
     ${b && !b.stale ? `<div class="sect"><p class="l">7-day outlook with this decision</p><p class="v ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</p>${band ? `<p class="small">Range from past forecast errors: ${fmtP(band[6][0])} to ${fmtP(band[6][1])} ${esc(cur)}.</p>` : ""}</div>` : ""}
+    ${aiFiveDay(t)}
     ${why ? `<div class="sect"><p class="l">Why ${esc(sig || L.rating || "")}</p><p class="why">${esc(why)}</p></div>` : ""}`);
 }
 const turnHtml = x => `<li class="turn ${SIDE_TONE[x.side] || "hold"}"><div class="who"><b>${esc(x.speaker)}</b><span class="badge ${SIDE_TONE[x.side] || "hold"}">${esc(x.side)}</span>${x.round ? `<span class="sub">round ${x.round}</span>` : ""}</div><div class="pre">${md(x.text)}</div></li>`;
@@ -906,10 +923,7 @@ function renderWatch() {
     ${X.wl.length ? card("Quotes", "Last close per ticker. Click a row to open the forecast.", "", `<div class="scroll"><table><thead><tr><th>Ticker</th><th>Last close</th><th>1 day</th><th>30 days</th><th>Volume</th><th>1-year range</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: data/ and daily_data/ price files. Closes are as of the last saved bar, not live quotes.</p>`) : nonEmpty("inbox", "Your watchlist is empty", "Add a ticker above to see its quote here.")}`;
 }
 
-/* ----- portfolio (virtual trading) ----- */
-X.pt.realized = X.pt.realized || 0;
-X.ptView = "equity";
-X.ptForm.date = "";
+/* ----- price helpers ----- */
 const rowsOf = t => EXTRA.dataset[t];
 function closeOn(t, date) {
   const r = rowsOf(t); let lo = 0, hi = r.length - 1, ans = -1;
@@ -924,203 +938,6 @@ function fcBand(t) {
   const d = DATA[t], last = d.forecast.last_price, pl = d.agent && d.agent.plan, p = pl && pl.band_ret, pr = pl && pl.path_ret;
   return p && pr ? p.map((b, i) => [last * (1 + pr[i] + b[0]), last * (1 + pr[i] + b[1])]) : null;
 }
-function ptValueAt(prices) { let v = X.pt.cash; Object.entries(X.pt.pos).forEach(([t, p]) => { v += usd(t, p.qty * prices(t)); }); return v; }
-const ptEquity = () => ptValueAt(t => lastClose(t));
-function ptCurve() {
-  const od = X.pt.orders; if (!od.length) return null;
-  const start = od[0].date || DATA[od[0].t].forecast.last_date, set = new Set();
-  ORDER.forEach(t => rowsOf(t).forEach(r => { if (r[0] >= start) set.add(r[0]); }));
-  const dates = [...set].sort(), ptr = {}, eq = []; ORDER.forEach(t => { ptr[t] = -1; });
-  let cash = 100000, oi = 0; const pos = {};
-  dates.forEach(d => {
-    while (oi < od.length && (od[oi].date || DATA[od[oi].t].forecast.last_date) <= d) {
-      const o = od[oi++], c = usd(o.t, o.qty * o.px), p = pos[o.t] || { qty: 0 };
-      if (o.side === "buy") { cash -= c; p.qty += o.qty; } else { cash += c; p.qty -= o.qty; }
-      pos[o.t] = p;
-    }
-    let v = cash;
-    Object.entries(pos).forEach(([t, p]) => {
-      if (!p.qty) return; const r = rowsOf(t);
-      while (ptr[t] + 1 < r.length && r[ptr[t] + 1][0] <= d) ptr[t]++;
-      v += usd(t, p.qty * (ptr[t] >= 0 ? r[ptr[t]][4] : od.find(o => o.t === t).px));
-    });
-    eq.push(v);
-  });
-  return { dates, eq };
-}
-function ptProject() {
-  const hold = Object.entries(X.pt.pos).filter(([t]) => fcPath(t)); if (!hold.length) return null;
-  const mid = [], lo = [], hi = [];
-  for (let i = 0; i < 7; i++) {
-    let m = X.pt.cash, l = X.pt.cash, h = X.pt.cash;
-    Object.entries(X.pt.pos).forEach(([t, p]) => {
-      const path = fcPath(t), b = fcBand(t); const px = path ? path[i] : lastClose(t);
-      m += usd(t, p.qty * px); l += usd(t, p.qty * (b ? b[i][0] : px)); h += usd(t, p.qty * (b ? b[i][1] : px));
-    });
-    mid.push(m); lo.push(l); hi.push(h);
-  }
-  return { mid, lo, hi };
-}
-const ema = (a, n) => { const k = 2 / (n + 1); let e = a[0]; return a.map((v, i) => (e = i ? v * k + e * (1 - k) : v)); };
-const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
-const std = a => { const m = mean(a); return Math.sqrt(mean(a.map(v => (v - m) ** 2))); };
-function techIndicators(t) {  // from the closes in the page data: the indicators the notebook's market analyst reads
-  const c = DATA[t].history.map(h => h[1]), n = c.length, last = c[n - 1];
-  if (n < 60) return null;
-  let ag = 0, al = 0;
-  for (let i = 1; i <= 14; i++) { const d = c[i] - c[i - 1]; ag += Math.max(d, 0) / 14; al += Math.max(-d, 0) / 14; }
-  for (let i = 15; i < n; i++) { const d = c[i] - c[i - 1]; ag = (ag * 13 + Math.max(d, 0)) / 14; al = (al * 13 + Math.max(-d, 0)) / 14; }
-  const rsi = al ? 100 - 100 / (1 + ag / al) : 100;
-  const e12 = ema(c, 12), e26 = ema(c, 26), macdLine = c.map((_, i) => e12[i] - e26[i]), sig = ema(macdLine, 9);
-  const s20 = mean(c.slice(-20)), s50 = mean(c.slice(-50)), sd20 = std(c.slice(-20)), up = s20 + 2 * sd20, lo = s20 - 2 * sd20;
-  const rets = c.slice(-31).map((v, i, a) => (i ? v / a[i - 1] - 1 : null)).slice(1), y = c.slice(-252);
-  return { last, rsi, macd: macdLine[n - 1], macdSig: sig[n - 1], s20, s50, pctB: (last - lo) / ((up - lo) || 1), up, lo,
-           vol: std(rets), hi52: Math.max(...y), lo52: Math.min(...y) };
-}
-function indicatorsCard(t) {
-  const k = techIndicators(t), d = DATA[t], cur = d.meta.currency, p = fcPath(t), b = aiBlend(t);
-  if (!k) return "";
-  const read = (txt, tone) => `<span class="badge ${tone}">${txt}</span>`;
-  const rows = [
-    ["RSI (14)", k.rsi.toFixed(1), k.rsi >= 70 ? read("Overbought", "hold") : k.rsi <= 30 ? read("Oversold", "hold") : read("Neutral", "")],
-    ["MACD (12, 26, 9)", `${k.macd.toFixed(2)} vs ${k.macdSig.toFixed(2)}`, k.macd >= k.macdSig ? read("Upward momentum", "buy") : read("Downward momentum", "sell")],
-    ["Price vs 50-day average", `${fmtP(k.last)} vs ${fmtP(k.s50)} (${fmtPct((k.last / k.s50 - 1) * 100)})`, k.last >= k.s50 ? read("Above", "buy") : read("Below", "sell")],
-    ["Price vs 20-day average", `${fmtPct((k.last / k.s20 - 1) * 100)}`, k.last >= k.s20 ? read("Above", "buy") : read("Below", "sell")],
-    ["Bollinger %B (20, 2)", k.pctB.toFixed(2), k.pctB > 1 ? read("Above the upper band", "hold") : k.pctB < 0 ? read("Below the lower band", "hold") : read(`Inside ${fmtP(k.lo)}–${fmtP(k.up)}`, "")],
-    ["Volatility (30 days)", `${(k.vol * 100).toFixed(2)}% a day`, read(`≈ ${(k.vol * Math.sqrt(252) * 100).toFixed(0)}% a year`, "")],
-    ["52-week range", `${fmtP(k.lo52)} – ${fmtP(k.hi52)}`, read(`${fmtPct((k.last / k.hi52 - 1) * 100)} from the high`, "")],
-    ["Daily model signal", fmtPct(d.daily.final_expected_return * 100) + " in 7 days", sigBadge(d.daily.final_signal)],
-    ["Ensemble 7-day forecast", p ? `${fmtP(p[6])} ${esc(cur)}` : "–", p ? read(fmtPct((p[6] / d.forecast.last_price - 1) * 100), cls(p[6] / d.forecast.last_price - 1) === "up" ? "buy" : cls(p[6] / d.forecast.last_price - 1) === "down" ? "sell" : "") : ""],
-    ["AI decision", b ? `${esc(b.rating)} · ${dShort(b.date)}` : "–", b ? (b.stale ? read("too old to count", "") : read(`with AI ${fmtPct(b.adj * 100)}`, cls(b.adj) === "up" ? "buy" : cls(b.adj) === "down" ? "sell" : "")) : ""],
-  ];
-  return card(`Indicators: ${esc(t)} ${hint(GLOSS.ind)}`, `From ${d.history.length} daily closes to ${dShort(d.forecast.last_date)}, plus the models' and the AI's calls.`, "",
-    `<div class="scroll"><table><thead><tr><th>Indicator</th><th>Value</th><th>Reading</th></tr></thead><tbody>${rows.map(r => `<tr><td class="t">${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</tbody></table></div>`);
-}
-function ptMetrics(eq) {
-  const cv = ptCurve(), sells = X.pt.orders.filter(o => o.side === "sell" && o.rl != null), wins = sells.filter(o => o.rl > 0).length;
-  let peak = 100000, mdd = 0;
-  (cv ? cv.eq : []).concat([eq]).forEach(v => { peak = Math.max(peak, v); mdd = Math.min(mdd, v / peak - 1); });
-  const invested = Object.entries(X.pt.pos).reduce((a, [tk, p]) => a + usd(tk, p.qty * lastClose(tk)), 0);
-  return { ret: eq / 100000 - 1, mdd, sells: sells.length, wins, exposure: eq ? invested / eq : 0, invested, trades: X.pt.orders.length };
-}
-function ptModelOutputs(t) {  // every model of the forecast now shown (the saved export, or the run made on this page)
-  const f = DATA[t].forecast, last = f.last_price, blends = ["Ensemble", "Fusion", "Fusion-Top3"], b = aiBlend(t);
-  const names = Object.keys(f.paths || {}).sort((x, y) => (blends.includes(y) - blends.includes(x)) || x.localeCompare(y));
-  if (!names.length) return "";
-  const row = (n, p, note) => `<tr><td class="t">${esc(n)}${note ? ` <span class="sub">${note}</span>` : ""}</td><td>${fmtP(p[0])}</td><td>${fmtP(p[6])}</td><td class="${cls(p[6] / last - 1)}">${fmtPct((p[6] / last - 1) * 100)}</td></tr>`;
-  const fc = LIVE.fc[t];
-  return `<div class="sect"><p class="l">Model outputs${fc ? ` · run of ${esc(fc.date === (LIVE.health || {}).date ? "today" : dShort(fc.date))} ${esc(fc.at.slice(11, 16))}` : ""}</p>
-    <div class="scroll"><table><thead><tr><th>Model</th><th>Day 1</th><th>Day 7</th><th>7-day move</th></tr></thead><tbody>
-    ${names.map(n => row(n, f.paths[n], blends.includes(n) ? "blend" : "")).join("")}${b && !b.stale ? row("AI-adjusted", b.path, esc(b.rating)) : ""}</tbody></table></div>
-    <p class="src">From the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(DATA[t].meta.currency)}.</p></div>`;
-}
-function renderPaper() {
-  const f = X.ptForm, t = f.t, last = DATA[t].forecast.last_date, cur = DATA[t].meta.currency, k = DATA[t].daily;
-  const fill = closeOn(t, f.date && f.date <= last ? f.date : last) || { date: last, px: lastClose(t) }, px = fill.px;
-  const eq = ptEquity(), pnl = eq - 100000, pos = Object.entries(X.pt.pos), proj = ptProject();
-  const path = fcPath(t), band = fcBand(t), qty = Math.max(0, Math.floor(+f.qty) || 0);
-  const f7 = path ? path[6] : null, exp = f7 == null ? null : qty * (f7 - px), lo7 = band ? qty * (band[6][0] - px) : null, hi7 = band ? qty * (band[6][1] - px) : null;
-  const unreal = pos.reduce((a, [tk, p]) => a + usd(tk, (lastClose(tk) - p.avg) * p.qty), 0);
-  const posRows = pos.map(([tk, p]) => {
-    const l = lastClose(tk), pn = (l - p.avg) * p.qty, ph = fcPath(tk), e7 = ph ? usd(tk, p.qty * (ph[6] - l)) : null;
-    return `<tr><td><span class="tkr">${esc(tk)}</span></td><td>${p.qty}</td><td>${fmtP(p.avg)}</td><td>${fmtP(l)}</td><td class="${cls(pn)}">${pn >= 0 ? "+" : "−"}${fmtP(Math.abs(pn))} <span class="sub">${esc(DATA[tk].meta.currency)}</span></td><td class="${cls(pn)}">${fmtPct((l / p.avg - 1) * 100)}</td><td>${ph ? fmtP(ph[6]) : "–"}</td><td class="${cls(e7)}">${e7 == null ? "–" : (e7 >= 0 ? "+" : "−") + money(Math.abs(e7))}</td><td>${money(usd(tk, p.qty * l))}</td></tr>`;
-  }).join("");
-  const alloc = [{ n: "Cash", v: X.pt.cash }, ...pos.map(([tk, p]) => ({ n: tk, v: usd(tk, p.qty * lastClose(tk)) }))].filter(a => a.v > 0.5);
-  const tot = alloc.reduce((a, b) => a + b.v, 0) || 1;
-  const pv = X.ptView;
-  return `<div class="page-h"><h1>Portfolio</h1><p>Trade with virtual money and follow your P&amp;L, risk and each stock's indicators. Orders fill at a saved close, on any date in the data. Nothing is sent to a broker.</p></div>
-    <div class="stats">
-      ${statCard("Equity", money(eq), "cash + positions, in USD", "", "wallet")}
-      ${statCard("Total P&amp;L", (pnl >= 0 ? "+" : "−") + money(Math.abs(pnl)), `realized ${money(X.pt.realized)} · open ${money(unreal)}`, pnl > 0 ? "buy" : pnl < 0 ? "sell" : "", "line")}
-      ${statCard("Projected day 7", proj ? money(proj.mid[6]) : "–", proj ? `${proj.mid[6] - eq >= 0 ? "+" : "−"}$${Math.abs(Math.round(proj.mid[6] - eq)).toLocaleString()} vs now (Ensemble)` : "no positions to project", proj ? (proj.mid[6] >= eq ? "buy" : "sell") : "", "chart")}
-      ${statCard("Cash", money(X.pt.cash), `${pos.length} open positions`, "", "db")}
-    </div>
-    ${(m => `<div class="stats">
-      ${statCard("Return", fmtPct(m.ret * 100), "since the $100,000 start", m.ret > 0 ? "buy" : m.ret < 0 ? "sell" : "", "pulse")}
-      ${statCard(`Max drawdown ${hint(GLOSS.dd)}`, fmtPct(m.mdd * 100), "largest fall from a peak", m.mdd < -0.05 ? "sell" : "", "chart")}
-      ${statCard("Win rate", m.sells ? `${Math.round(m.wins / m.sells * 100)}%` : "–", m.sells ? `${m.wins} of ${m.sells} sells at a profit` : "no closed trades yet", "", "check")}
-      ${statCard("Exposure", `${Math.round(m.exposure * 100)}%`, `${money(m.invested)} in stocks · ${m.trades} orders`, "", "wallet")}
-    </div>`)(ptMetrics(eq))}
-    <div class="two">
-      ${card("New order", "Long only. Sell closes part or all of a position.", "", `
-        <div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
-          <div class="field"><label for="pt-t">Ticker</label><select id="pt-t" data-bind="pt-t">${ORDER.map(x => `<option ${x === t ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
-          <div class="field"><span class="lbl">Side</span><div class="seg2"><button type="button" class="buy" data-act="pt-side" data-v="buy" aria-pressed="${f.side === "buy"}">Buy</button><button type="button" class="sell" data-act="pt-side" data-v="sell" aria-pressed="${f.side === "sell"}">Sell</button></div></div>
-          <div class="field"><label for="pt-q">Quantity</label><input class="inp w-sm" id="pt-q" data-bind="pt-q" type="number" min="1" step="1" value="${f.qty}"></div>
-          <div class="field"><label for="pt-d">Fill date</label><input class="inp" id="pt-d" data-bind="pt-d" type="date" min="${esc(rowsOf(t)[0][0])}" max="${esc(last)}" value="${esc(fill.date)}"></div></div>
-        <div class="sect"><p class="l">Fill price</p><p class="v">${fmtP(px)} ${esc(cur)} <span class="sub">close of ${dShort(fill.date)}</span></p>
-          <p class="small">Order value ${fmtP(qty * px)} ${esc(cur)} (${money(usd(t, qty * px))}). Daily model: ${sigBadge(k.final_signal)} ${fmtPct(k.final_expected_return * 100)} expected over 7 days.</p></div>
-        ${exp == null ? "" : `<div class="sect"><p class="l">If the Ensemble forecast is right</p><div class="kvs" style="margin:0"><div class="kv"><p class="k">Day-7 price</p><p class="v">${fmtP(f7)}</p></div><div class="kv"><p class="k">${qty} ${esc(t)} P&amp;L vs fill</p><p class="v ${cls(exp)}">${exp >= 0 ? "+" : "−"}${fmtP(Math.abs(exp))} ${esc(cur)}</p><p class="s">${fmtPct((f7 / px - 1) * 100)}</p></div>${lo7 == null ? "" : `<div class="kv"><p class="k">10–90% range</p><p class="v" style="font-size:14px"><span class="down">${fmtP(lo7)}</span> to <span class="up">${fmtP(hi7)}</span></p></div>`}</div>
-          ${(b => b && !b.stale ? `<div class="kvs" style="margin:10px 0 0"><div class="kv"><p class="k">With the AI view (${esc(b.rating)})</p><p class="v">${fmtP(b.price)}</p><p class="s">${fmtPct((b.price / px - 1) * 100)} vs fill</p></div><div class="kv"><p class="k">${qty} ${esc(t)} P&amp;L</p><p class="v ${cls(qty * (b.price - px))}">${qty * (b.price - px) >= 0 ? "+" : "−"}${fmtP(Math.abs(qty * (b.price - px)))} ${esc(cur)}</p><p class="s">${aiWhy(b)}</p></div></div>` : "")(aiBlend(t))}
-          <p class="small">Forecast starts from the ${dShort(DATA[t].forecast.last_date)} close. A range from past forecast errors, not a promise.</p></div>`}
-        <div class="runbar"><button type="button" class="btn primary" data-act="pt-go">Place ${f.side} order</button><span class="${f.ok ? "okmsg" : "err"}" role="status">${esc(f.msg)}</span></div>`)}
-      ${card(`${esc(t)} forecast`, "Last 60 closes, then the Ensemble path with its 10–90% range.", "", `<div class="chartbox" id="ptfc"></div><div class="legend" id="ptfc-l"></div><p class="src">Source: forecast_lib Ensemble and forecast_agent range. Dashed line = your fill price.</p>${ptModelOutputs(t)}${liveForecastPanel(t)}`)}
-    </div>
-    ${indicatorsCard(t)}
-    ${card(`Portfolio curve ${hint(GLOSS.dd)}`, "Account value from your first order to the last saved close, then the 7-day projection from the model forecasts.", `<div class="pills">${[["equity", "Equity"], ["pnl", "P&L"], ["dd", "Drawdown"]].map(([id, l]) => `<button type="button" class="pillbtn" data-act="pt-view" data-v="${id}" aria-pressed="${pv === id}"><i></i>${l}</button>`).join("")}</div>`, X.pt.orders.length ? `<div class="chartbox" id="ptcurve"></div><div class="legend" id="ptcurve-l"></div><p class="src">Past values use closes of the dates in the data (last known close carried over on days a market is closed). The projection adds each position's Ensemble path and sums their 10–90% ranges, which assumes all positions move together. Each forecast starts from its own ticker's last close.</p>` : emptyState("chart", "No curve yet", "Place an order. Pick an earlier fill date to see how it would have done."))}
-    <div class="two">
-      ${card("Allocation", "Share of account value.", "", `<div class="gtrack" style="height:18px;border-radius:9px">${alloc.map((a, i) => `<b style="width:${a.v / tot * 100}%;background:${a.n === "Cash" ? "var(--base-line)" : `var(${COLORS[i % 8]})`}" title="${esc(a.n)}"></b>`).join("")}</div>
-        <div class="legend" style="margin-top:12px">${alloc.map((a, i) => `<span><i style="background:${a.n === "Cash" ? "var(--base-line)" : `var(${COLORS[i % 8]})`}"></i>${esc(a.n)} ${(a.v / tot * 100).toFixed(1)}%</span>`).join("")}</div>`)}
-      ${card("Account", "Prices stay in each ticker's own currency. Equity converts to USD.", `<button type="button" class="btn secondary sm" data-act="pt-reset">Reset account</button>`, `<div class="kvs"><div class="kv"><p class="k">Starting cash</p><p class="v">$100,000</p></div><div class="kv"><p class="k">FX used</p><p class="v" style="font-size:12px">${Object.entries(EXTRA.fx).filter(([c]) => c !== "USD").map(([c, v]) => `${c} ${v.toFixed(2)}`).join(" · ")} per USD</p></div></div><p class="src">No fees or slippage. A rough exercise, not a trading record.</p>`)}
-    </div>
-    ${card("Positions", "With the day-7 forecast for each holding.", "", pos.length ? `<div class="scroll"><table><thead><tr><th>Ticker</th><th>Qty</th><th>Avg cost</th><th>Last</th><th>P&amp;L</th><th>P&amp;L %</th><th>Day-7 forecast</th><th>Expected P&amp;L (USD)</th><th>Value (USD)</th></tr></thead><tbody>${posRows}</tbody></table></div>` : emptyState("inbox", "No open positions", "Place a buy order to open one."))}
-    ${card("Order history", "", "", X.pt.orders.length ? `<div class="scroll"><table><thead><tr><th>Fill date</th><th>Side</th><th>Ticker</th><th>Qty</th><th>Price</th><th>Realized (USD)</th></tr></thead><tbody>${X.pt.orders.slice().reverse().slice(0, 20).map(o => `<tr><td class="t">${esc(o.date || "")}</td><td><span class="badge ${o.side === "buy" ? "buy" : "sell"}">${esc(o.side)}</span></td><td>${esc(o.t)}</td><td>${o.qty}</td><td>${fmtP(o.px)}</td><td class="${cls(o.rl)}">${o.rl == null ? "–" : (o.rl >= 0 ? "+" : "−") + "$" + Math.abs(Math.round(o.rl)).toLocaleString()}</td></tr>`).join("")}</tbody></table></div>` : emptyState("inbox", "No orders yet"))}`;
-}
-function placeOrder() {
-  const f = X.ptForm, t = f.t, qty = Math.floor(+f.qty), last = DATA[t].forecast.last_date;
-  if (!(qty >= 1)) { f.msg = "Enter a quantity of 1 or more."; f.ok = false; return; }
-  const want = f.date && f.date <= last ? f.date : last, fill = closeOn(t, want);
-  if (!fill) { f.msg = `No ${t} price on or before ${want}. Pick a later date.`; f.ok = false; return; }
-  const prev = X.pt.orders.length ? (X.pt.orders[X.pt.orders.length - 1].date || "") : "";
-  if (fill.date < prev) { f.msg = `Orders go in date order. Your last order was on ${prev}; pick that date or later.`; f.ok = false; return; }
-  const px = fill.px, p = X.pt.pos[t]; let rl = null;
-  if (f.side === "buy") {
-    const c = usd(t, qty * px);
-    if (c > X.pt.cash) { f.msg = `Not enough cash: need ${money(c)}, have ${money(X.pt.cash)}.`; f.ok = false; return; }
-    X.pt.cash -= c; X.pt.pos[t] = p ? { qty: p.qty + qty, avg: (p.avg * p.qty + px * qty) / (p.qty + qty) } : { qty, avg: px };
-  } else {
-    if (!p || qty > p.qty) { f.msg = `You hold ${p ? p.qty : 0} of ${t}. Cannot sell ${qty}.`; f.ok = false; return; }
-    rl = usd(t, (px - p.avg) * qty); X.pt.realized += rl; X.pt.cash += usd(t, qty * px); p.qty -= qty; if (p.qty === 0) delete X.pt.pos[t];
-  }
-  X.pt.orders.push({ ts: nowT(), date: fill.date, side: f.side, t, qty, px, rl });
-  f.msg = `${f.side === "buy" ? "Bought" : "Sold"} ${qty} ${t} at ${fmtP(px)} (close of ${fill.date}).`; f.ok = true; lsSet("raem:pt", X.pt);
-}
-function drawPT() {
-  const h = $("#ptfc"); if (!h) return;
-  const t = X.ptForm.t, d = DATA[t], f = d.forecast, path = fcPath(t), band = fcBand(t);
-  const hist = d.history.slice(-60), n = hist.length, labels = [...hist.map(r => r[0]), ...(path ? f.dates : [])], N = labels.length;
-  const pad = a => a.concat(Array(N - a.length).fill(null)), fillPx = (closeOn(t, X.ptForm.date && X.ptForm.date <= f.last_date ? X.ptForm.date : f.last_date) || {}).px;
-  const series = [{ name: "Close", v: pad(hist.map(r => r[1])), color: "var(--accent)", w: 2 }];
-  if (path) series.push({ name: "Ensemble", v: [...Array(n - 1).fill(null), hist[n - 1][1], ...path], color: "var(--text)", w: 2.6 });
-  const ab = path && aiBlend(t);
-  if (ab && !ab.stale) series.push({ name: `With AI (${ab.rating})`, v: [...Array(n - 1).fill(null), hist[n - 1][1], ...ab.path], color: "var(--hold)", w: 2, dash: true });
-  if (fillPx != null) series.push({ name: "Your fill", v: Array(N).fill(fillPx), color: "var(--faint)", dash: true, w: 1.2 });
-  const opts = { label: `${t} price and Ensemble forecast`, fmt: v => fmtP(v) };
-  if (path && band) {
-    const lo = [...Array(n).fill(null), ...band.map(b => b[0])], hi = [...Array(n).fill(null), ...band.map(b => b[1])];
-    opts.band = { lo, hi }; series.push({ name: "Low 10%", v: lo, color: "var(--sell)", noline: true }, { name: "High 90%", v: hi, color: "var(--buy)", noline: true });
-  }
-  lineChart(h, labels, series, opts);
-  $("#ptfc-l").innerHTML = series.filter(s => !s.noline).map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("") + (opts.band ? `<span><i style="background:var(--text);opacity:.25;height:8px"></i>10–90% range</span>` : "");
-  const c = $("#ptcurve"); if (!c) return;
-  const cv = ptCurve(); if (!cv) return;
-  const v = X.ptView, base = 100000, pj = v === "dd" ? null : ptProject();
-  let m = -1e18; const ddv = cv.eq.map(e => { m = Math.max(m, e); return (e / m - 1) * 100; });
-  const hs = v === "equity" ? cv.eq : v === "pnl" ? cv.eq.map(e => e - base) : ddv, off = v === "pnl" ? base : 0;
-  const fut = pj ? nextDays(cv.dates[cv.dates.length - 1], 7) : [], L = [...cv.dates, ...fut], M = L.length;
-  const padn = a => a.concat(Array(M - a.length).fill(null)), cn = cv.dates.length;
-  const ser = [{ name: v === "dd" ? "Drawdown" : v === "pnl" ? "P&L" : "Equity", v: padn(hs), color: "var(--accent)", w: 2.2 }];
-  const co = { label: "Portfolio curve", base: v === "dd" ? 0 : (v === "pnl" ? 0 : base), fmt: v === "dd" ? (x => x.toFixed(1) + "%") : v === "pnl" ? (x => (x >= 0 ? "+" : "−") + "$" + Math.abs(Math.round(x)).toLocaleString()) : (x => "$" + Math.round(x).toLocaleString()) };
-  if (pj) {
-    const sh = a => a.map(x => x - off), mid = [...Array(cn - 1).fill(null), hs[cn - 1], ...sh(pj.mid)];
-    ser.push({ name: "Projected", v: mid, color: "var(--text)", dash: true, w: 2.2 });
-    const lo = [...Array(cn).fill(null), ...sh(pj.lo)], hi = [...Array(cn).fill(null), ...sh(pj.hi)];
-    co.band = { lo, hi }; ser.push({ name: "Low 10%", v: lo, color: "var(--sell)", noline: true }, { name: "High 90%", v: hi, color: "var(--buy)", noline: true });
-  }
-  lineChart(c, L, ser, co);
-  $("#ptcurve-l").innerHTML = ser.filter(s => !s.noline).map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("") + (co.band ? `<span><i style="background:var(--text);opacity:.25;height:8px"></i>projected 10–90% range</span>` : "");
-}
-
 /* ----- generic line chart ----- */
 function lineChart(host, labels, series, opts = {}) {
   const W = Math.max(300, host.clientWidth || 700), H = 280, padL = 52, padR = 16, padT = 12, padB = 24;
@@ -1280,7 +1097,6 @@ function renderSet() {
       ${row("Default history window", "Trading days of history on the price chart.", `<select data-bind="set-win" aria-label="History window">${[30, 60, 120, 180].map(n => `<option value="${n}" ${settings.win === n ? "selected" : ""}>${n} trading days</option>`).join("")}</select>`)}
       ${row("Default chart units", "Show price or change from the last close.", `<select data-bind="set-unit" aria-label="Chart units"><option value="price" ${settings.unit === "price" ? "selected" : ""}>Price</option><option value="pct" ${settings.unit === "pct" ? "selected" : ""}>Change from last close (%)</option></select>`)}`)}
     ${card("Saved data", "Stored in this browser only. Clearing site data removes it.", "", `
-      ${row("Portfolio account", `${X.pt.orders.length} orders, ${Object.keys(X.pt.pos).length} positions.`, `<button type="button" class="btn secondary sm" data-act="pt-reset">Reset account</button>`)}
       ${row("Watchlist", `${X.wl.length} of ${ORDER.length} tickers pinned.`, `<button type="button" class="btn secondary sm" data-act="wl-reset">Pin all 8</button>`)}
       ${row("All settings", "Back to defaults.", `<button type="button" class="btn secondary sm" data-act="set-reset">Reset settings</button>`)}`)}
     ${LIVE.ok ? card("Server", LIVE.health.run_token_required ? "This server asks for an access token before it runs models." : "This server runs models for anyone who opens the page.", "", `
@@ -1480,18 +1296,18 @@ function renderHelp() {
   return `<div class="page-h"><h1>Help and glossary</h1><p>How to use this site, and what each term means, in plain language.</p></div>
     ${card("How to use this site", "", "", `<ol class="steps4">${steps.map(([h, p], i) => `<li><span class="num">${i + 1}</span><div><h3>${h}</h3><p>${p}</p></div></li>`).join("")}</ol>`)}
     ${card("Glossary", "Hover or focus the ? next to a heading anywhere on the site to see the same text.", "", `<dl class="gloss">${Object.values(GLOSS).map(([h, p]) => `<div><dt>${esc(h)}</dt><dd>${esc(p)}</dd></div>`).join("")}</dl>`)}
-    ${card("About the data", "", "", `<ul class="plain"><li>All numbers were exported from the project's Python code on ${dLong(ASOF)}. This site replays them; it does not train models or fetch live prices.</li><li>US, Saudi and Hong Kong prices run to mid-October. The four Dhaka Stock Exchange stocks stop at ${dLong(DATA.ABBANK ? DATA.ABBANK.forecast.last_date : ASOF)}, so their forecasts start from older prices.</li><li>The portfolio, the watchlist and your settings are saved only in this browser.</li><li>This is a research tool. Nothing here is investment advice.</li></ul>`)}`;
+    ${card("About the data", "", "", `<ul class="plain"><li>All numbers were exported from the project's Python code on ${dLong(ASOF)}. This site replays them; it does not train models or fetch live prices.</li><li>US, Saudi and Hong Kong prices run to mid-October. The four Dhaka Stock Exchange stocks stop at ${dLong(DATA.ABBANK ? DATA.ABBANK.forecast.last_date : ASOF)}, so their forecasts start from older prices.</li><li>The watchlist and your settings are saved only in this browser.</li><li>This is a research tool. Nothing here is investment advice.</li></ul>`)}`;
 }
 
 /* ----- router ----- */
 function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; }
 function renderExtra() {
-  return ({ ai: renderAI, watch: renderWatch, paper: renderPaper, inv: renderInv, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, papers: renderPapers, mem: renderMem, set: renderSet, help: renderHelp })[S.page]();
+  return ({ ai: renderAI, watch: renderWatch, inv: renderInv, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, papers: renderPapers, mem: renderMem, set: renderSet, help: renderHelp })[S.page]();
 }
-function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "paper") drawPT(); if (S.page === "inv") drawInv(); if (S.page === "dash") drawHome(); markRows(); }
+function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); if (S.page === "dash") drawHome(); markRows(); }
 
 /* ---------- top nav ---------- */
-const NAV_MAIN = [["dash", "Home"], ["tk", "Forecast"], ["inv", "Calculator"], ["paper", "Portfolio"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
+const NAV_MAIN = [["dash", "Home"], ["tk", "Forecast"], ["inv", "Calculator"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
 const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg>';
 function renderNav() {
   const cur = id => (S.page === id ? ' aria-current="page"' : "");
@@ -1517,7 +1333,7 @@ function renderDash() {
       <div class="sub" style="${age > 5 ? "color:var(--hold)" : ""}">price as of ${dShort(f.last_date)}${age > 5 ? ` (${age} days old)` : ""}</div>
       ${(b => b ? `<div class="sub ailine">AI ${ratingBadge(b.rating)} ${b.stale ? "too old to count" : `→ <b class="${cls(b.adj)}">${fmtPct(b.adj * 100)}</b> with AI`}</div>` : "")(aiBlend(t))}</button>`;
   }).join("");
-  const feats = [["inv", "pulse", "Return Calculator", "Put in 100 and see what each company's forecast, model and notebook say you would have in a week."], ["paper", "wallet", "Portfolio", "Trade with virtual money: P&L, drawdown, win rate, indicators and forecast ranges."], ["bt", "chart", "Backtest", "How each model's past calls would have done against buy and hold."], ["ai", "line", "AI Analysis", "Read what the LLM analyst panel decided, stage by stage."], ["news", "news", "News and fundamentals", "News sentiment, P/E, EPS and 52-week ranges per company."], ["mem", "brain", "Memory", "Past predictions graded against what really happened."]];
+  const feats = [["inv", "pulse", "Return Calculator", "Put in 100 and see what each company's forecast, model and notebook say you would have in a week."], ["bt", "chart", "Backtest", "How each model's past calls would have done against buy and hold."], ["ai", "line", "AI Analysis", "Read what the LLM analyst panel decided, stage by stage."], ["news", "news", "News and fundamentals", "News sentiment, P/E, EPS and 52-week ranges per company."], ["mem", "brain", "Memory", "Past predictions graded against what really happened."]];
   const rows = ORDER.map(t => {
     const d = DATA[t], f = d.forecast, ran = S.ran[t], cl = d.history.slice(-30).map(h => h[1]);
     const ch = (cl[cl.length - 1] / cl[0] - 1) * 100, p = fcPath(t), ens = p ? (p[6] / f.last_price - 1) * 100 : null, age = daysBetween(f.last_date, ASOF);
@@ -1680,7 +1496,7 @@ function tokenRow() {
   return LIVE.health && LIVE.health.run_token_required && !LIVE.token ? `<div class="field" style="margin-top:12px"><label for="run-token">Access token</label><input class="inp" type="password" id="run-token" data-bind="set-token" placeholder="This server asks for a token before it runs models" autocomplete="off"></div>` : "";
 }
 
-/* forecast runs (Forecast page and Portfolio) */
+/* forecast runs (Forecast page) */
 function lfcModels() {  // all models by default, as the forecast notebook runs them (the Ensemble then picks the best two of all)
   if (!X.lfc.models) X.lfc.models = new Set(LIVE.models.forecast.map(m => m.key));
   return X.lfc.models;
@@ -1697,8 +1513,6 @@ async function liveForecast(t) {
     if (res.reused === "stored") {
       applyForecastRun(t, res.run);
       showForecast(t);
-      X.ptForm.msg = `Showing the run stored at ${(res.run.finished_at || "").slice(11, 16)} today with the same models.`;
-      X.ptForm.ok = true;
       render();
       return;
     }
@@ -1716,25 +1530,9 @@ function watchForecast(t, id) {
     applyForecastRun(t, full);
     showForecast(t);
     S.log.unshift({ t, msg: `forecast run with ${(full.params || {}).models.length} models`, ts: nowT() });
-    X.ptForm.msg = `New forecast for ${t} finished and stored.`;
-    X.ptForm.ok = true;
     render();
   });
 }
-function liveForecastPanel(t) {
-  const key = "fc:" + t;
-  if (!LIVE.ok) return `<div class="sect"><p class="l">Run the forecast ${hint(GLOSS.runfc)}</p><p class="small">This copy shows the saved forecast. On the hosted site you can choose models and run them on the server's CSV price files.</p></div>`;
-  const sel = lfcModels(), busy = !!LIVE.busy[key], fc = LIVE.fc[t];
-  const chips = LIVE.models.forecast.map(m => `<button type="button" class="pillbtn mdl" data-act="lfc-m" data-v="${esc(m.key)}" aria-pressed="${sel.has(m.key)}"><i style="${sel.has(m.key) ? "background:var(--accent)" : ""}"></i>${esc(m.label)}</button>`).join("");
-  const now = fc ? `Showing the run of ${esc(fc.date === LIVE.health.date ? "today" : dShort(fc.date))} at ${esc(fc.at.slice(11, 16))} (${fc.models.length} models).` : `Showing the saved export of ${dLong(ASOF)}.`;
-  return `<div class="sect"><p class="l">Run the forecast ${hint(GLOSS.runfc)}</p>
-    <div class="field"><span class="lbl">Models <button type="button" class="link" data-act="lfc-best">best 6</button><button type="button" class="link" data-act="lfc-all">all 14</button></span><div class="pills">${chips}</div></div>
-    <div class="checks" style="margin-top:12px"><label><input type="checkbox" id="lfc-force" data-bind="lfc-force" ${X.lfc.force ? "checked" : ""}> Run again even if the same models ran today</label></div>${tokenRow()}
-    <div class="runbar"><button type="button" class="btn primary" data-act="lfc-run" ${busy || !sel.size ? "disabled" : ""}>${busy ? "Running…" : `Run ${esc(t)} with ${sel.size} model${sel.size === 1 ? "" : "s"}`}</button><p class="note">${now} Uses the server's CSV price files. About 1 to 3 minutes; TFT and LSTM add time.</p></div>
-    ${LIVE.err[key] ? `<p class="err" role="alert">${esc(LIVE.err[key])}</p>` : ""}
-    <div id="live-${liveId(key)}">${liveStatus(key)}</div></div>`;
-}
-
 /* AI analysis runs */
 async function liveAnalysis(t) {
   const key = "ai:" + t;
@@ -1944,7 +1742,6 @@ document.addEventListener("click", e => {
   else if (a === "ai-hold") { liveHold(X.ai.t); return; }
   else if (a === "ai-resume") { X.ai.model = selFromKey(v); liveAnalysis(X.ai.t); return; }
   else if (a === "ai-load") { loadAiRun(v); return; }
-  else if (a === "lfc-run") { liveForecast(X.ptForm.t); return; }
   else if (a === "lfc-m") { const m = lfcModels(); m.has(v) ? m.delete(v) : m.add(v); }
   else if (a === "lfc-best") { X.lfc.models = new Set(LIVE.models.forecast.filter(x => x.default).map(x => x.key)); }
   else if (a === "lfc-all") { X.lfc.models = new Set(LIVE.models.forecast.map(x => x.key)); }
@@ -1963,10 +1760,6 @@ document.addEventListener("click", e => {
   else if (a === "wl-del") { X.wl = X.wl.filter(t => t !== v); lsSet("raem:wl", X.wl); X.wlMsg = ""; }
   else if (a === "wl-add") { if (!X.wl.includes(v)) X.wl.push(v); lsSet("raem:wl", X.wl); X.wlMsg = ""; }
   else if (a === "wl-reset") { X.wl = ORDER.slice(); lsDel("raem:wl"); X.wlMsg = ""; }
-  else if (a === "pt-side") { X.ptForm.side = v; X.ptForm.msg = ""; }
-  else if (a === "pt-go") placeOrder();
-  else if (a === "pt-view") X.ptView = v;
-  else if (a === "pt-reset") { X.pt = { cash: 100000, pos: {}, orders: [], realized: 0 }; lsDel("raem:pt"); X.ptForm.msg = "Account reset."; X.ptForm.ok = true; }
   else if (a === "bt-m") { X.bt.sel.has(v) ? X.bt.sel.delete(v) : X.bt.sel.add(v); }
   else if (a === "bt-t") { X.bt.t = v; X.bt.sel = new Set(["Ensemble"]); }
   else if (a === "fund-t") X.fund.t = v;
@@ -1982,8 +1775,7 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => {
   const b = e.target.dataset.bind; if (!b) return;
   const v = e.target.value;
-  if (b === "pt-t") { X.ptForm.t = v; X.ptForm.date = ""; X.ptForm.msg = ""; } else if (b === "pt-d") { X.ptForm.date = v; X.ptForm.msg = ""; } else if (b === "pt-q") { X.ptForm.qty = v; X.ptForm.msg = ""; }
-  else if (b === "ds-from") { X.ds.from = v; X.ds.page = 0; } else if (b === "ds-to") { X.ds.to = v; X.ds.page = 0; }
+  if (b === "ds-from") { X.ds.from = v; X.ds.page = 0; } else if (b === "ds-to") { X.ds.to = v; X.ds.page = 0; }
   else if (b === "mem-t") X.mem.t = v;
   else if (b === "lfc-force") X.lfc.force = e.target.checked;
   else if (b === "ai-model") X.ai.model = v;
@@ -1998,8 +1790,7 @@ document.addEventListener("change", e => {
 });
 document.addEventListener("input", e => {
   const b = e.target.dataset.bind;
-  if (b === "pt-q") X.ptForm.qty = e.target.value;
-  else if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
+  if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
   else if (b === "inv-amt") { X.inv.amt = e.target.value; render(); const i = $("#inv-a"); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (err) { /* number inputs have no caret */ } } }
   else if (b === "mem-q") { X.mem.q = e.target.value; render(); const i = $("#mem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 });
@@ -2030,7 +1821,7 @@ document.addEventListener("keydown", e => {
 $("#skip").addEventListener("click", e => { e.preventDefault(); $("#main").focus(); });
 function markRows() { document.querySelectorAll("tr.click").forEach(r => { r.tabIndex = 0; }); }
 document.addEventListener("click", e => { if (S.more && !e.target.closest(".morewrap")) { S.more = false; renderNav(); } });
-let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { const c = $("#chart"); if (c && S.page === "tk") drawChart(c); if (S.page === "bt") drawBT(); if (S.page === "paper") drawPT(); if (S.page === "inv") drawInv(); if (S.page === "dash") drawHome(); }, 120); });
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { const c = $("#chart"); if (c && S.page === "tk") drawChart(c); if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); if (S.page === "dash") drawHome(); }, 120); });
 
 $("#menu").innerHTML = ic("menu");
 applySettings(true);
