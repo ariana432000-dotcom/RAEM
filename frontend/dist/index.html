@@ -1483,7 +1483,9 @@ async function pollRun(id, key, onDone) {
     }
     if (r.status === "failed" || r.status === "held") {
       delete LIVE.busy[key];
-      if (r.status === "failed") LIVE.err[key] = (r.error || "The run failed.") + " " + ((r.log || []).filter(l => l.startsWith("!!") && !/^!! (Executed copy saved|exited with code|RuntimeError)/.test(l) && !l.includes("Cause:")).slice(-2).join(" "));
+      if (r.status === "failed") { const base = r.error || "The run failed.";  // the error already holds the cause and its hint; add only log lines it lacks
+        const more = (r.log || []).filter(l => l.startsWith("!!") && !/^!! (Executed copy saved|exited with code|RuntimeError|The analysis failed)/.test(l) && !l.includes("Cause:") && !base.includes(l.replace(/^!!\s*/, "").trim())).slice(-2).map(l => l.replace(/^!!\s*/, "")).join(" ");
+        LIVE.err[key] = (base + " " + more).trim(); }
       LIVE.hist[r.ticker] = undefined;  // the stored-runs table shows the held or failed run
       render();
       return;
