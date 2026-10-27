@@ -1,7 +1,7 @@
 """Free persistent storage for a Hugging Face Space: the app's changing data lives in a private Hugging Face dataset.
 
 The Space's own disk starts over on every restart. With these two settings in the Space
-    RAEM_HF_DATASET=<hf-username>/ream-data      (variable; deploy_hf.py sets it)
+    RAEM_HF_DATASET=<hf-username>/raem-data      (variable; deploy_hf.py sets it)
     HF_TOKEN=hf_...                              (secret: a token with write access)
 the container restores the last saved state when it starts (`python backend/tools/hf_sync.py restore`), and the server
 saves it after every finished run (`save()`): ChromaDB memory, the run database, held runs, prices, trading logs and
