@@ -10,7 +10,6 @@ This folder is self-contained: put it on GitHub, clone it anywhere and run it. I
 |---|---|---|
 | Home | featured chart, a card per stock, how it works | saved results |
 | Forecast | 7-day path, daily BUY/HOLD/SELL, plain-language summary, every model's prediction, reviewer, track record; **Run** runs all 14 models (or the best 6) on the server, and the Ensemble averages the best two, as in the forecast notebook | `forecast_lib` + `predictor_lib` |
-| **Portfolio** | virtual orders on any past date, P&L and projected curves, and **Run the forecast**: pick the models (6 best or all 14) and run them now on the CSV price files | live run on the server |
 | **AI Analysis** | **pick a company and an LLM (Ollama, OpenAI, Claude, Gemini or Groq) and run that company's notebook** (Run All) on the server; open earlier stored runs | the per-company notebooks |
 | Return Calculator | what any amount could be worth in 7 days, per company | forecasts, notebook record, backtest |
 | Backtest, Dataset, News, Fundamentals, Memory, Papers | evidence and data behind the forecasts | engine data and notebook logs |
@@ -20,7 +19,7 @@ This folder is self-contained: put it on GitHub, clone it anywhere and run it. I
 
 **Every notebook session is kept.** The notebooks keep only the last 10 days in their trading logs and drop older sessions on each run. The server copies every session into the database first (table `sessions`) and keeps a compressed copy in `backend/data/session_archive.json.gz`, which is in git, so history survives new runs, restarts and fresh clones.
 
-**Page links.** Every page has its own link, e.g. `/#paper`, `/#ai`, `/#tk-AAPL`.
+**Page links.** Every page has its own link, e.g. `/#ai`, `/#tk-AAPL`.
 
 ## Folder layout
 
@@ -30,14 +29,18 @@ web/
 ├── Dockerfile, docker-compose.yml, railway.json, vercel.json, DEPLOY.md, .dockerignore, .env.example, .gitignore
 ├── .github/workflows/tests.yml   runs the API tests and a page build on every push
 ├── backend/
-│   ├── app/                      FastAPI: main.py (routes), jobs.py (run queue), db.py (SQLite), config.py
-│   ├── exporter/
-│   │   ├── export_ticker.py      forecast one company with chosen models -> JSON
-│   │   ├── run_notebook.py       run a company notebook headlessly with a chosen LLM (Ollama or cloud)
-│   │   ├── sessions.py           notebook trading logs -> AI-analysis JSON (all logged steps)
-│   │   ├── export_extra.py       data for the extra pages
-│   │   └── patch_daily.py        refresh only the daily-signal block (optional)
+│   ├── app/                      FastAPI, laid out like the DSE app (backend/app/)
+│   │   ├── main.py               creates the app and includes the routers
+│   │   ├── core/config.py        settings from the environment, model lists, paths
+│   │   ├── db/runs.py            SQLite run store
+│   │   ├── models/schemas.py     request bodies
+│   │   ├── api/                  deps.py (tokens, known tickers, queueing) and routes/: health, stocks, forecast, analysis, refresh, runs
+│   │   ├── services/             tickers.py (saved company data), live.py (progress of a running analysis)
+│   │   ├── workers/jobs.py       the run queue and its runners (forecast, analysis, refresh)
+│   │   ├── pipeline/             export_ticker.py (forecast one company -> JSON), add_company.py (any ticker: prices, notebook, forecast, page data), export_extra.py, patch_daily.py, sessions.py (trading logs -> JSON)
+│   │   └── ai_engine/            run_notebook.py (run a company notebook headlessly with a chosen LLM, Ollama or cloud)
 │   ├── engine/                   forecasting code, notebooks, TradingAgents package and their data (CSV prices, logs, memory)
+│   │   └── notebooks/            one thin notebook per company + raem_analysts/ (the analyst code they all share)
 │   ├── data/                     saved results the page is built from (tickers/*.json, extra.json, session_archive.json.gz)
 │   ├── storage/                  run database and executed notebook copies (created at runtime, not in git)
 │   ├── tests/                    API tests (fake runners, no models needed)
@@ -79,7 +82,7 @@ A host without Ollama can still run AI analysis with a cloud model. Put a key in
 | Anthropic Claude | `ANTHROPIC_API_KEY` | claude-haiku-5-5, claude-sonnet-5-5 |
 | Google Gemini | `GOOGLE_API_KEY` | gemini-2.5-flash, gemini-2.5-flash-lite |
 | Groq (free tier) | `GROQ_API_KEY` | llama-3.3-70b-versatile, llama-3.1-8b-instant |
-| Kimi (Moonshot AI) | `MOONSHOT_API_KEY` (or `KIMI_API_KEY`) | kimi-k2-turbo-preview, kimi-k2-0905-preview, moonshot-v1-32k; `RAEM_KIMI_BASE_URL` is `https://api.moonshot.ai/v1` by default, `https://api.moonshot.cn/v1` for a China account |
+| Kimi (Moonshot AI) | `MOONSHOT_API_KEY` (or `KIMI_API_KEY`) | kimi-k3.1-pro, kimi-k3, kimi-k2.6 (the older kimi-k2-*-preview models are retired); `RAEM_KIMI_BASE_URL` is `https://api.moonshot.ai/v1` by default, `https://api.moonshot.cn/v1` for a China account |
 
 `RAEM_OPENAI_BASE_URL` points the OpenAI entry at any OpenAI-compatible server (OpenRouter, DeepSeek, LM Studio). Keys stay on the server and are never sent to the page. A cloud run takes minutes instead of hours, and the provider bills each run (about 40 LLM calls), so set `RAEM_RUN_TOKEN` on a public site.
 
@@ -89,13 +92,13 @@ Memory: the notebooks' episodic memory and news search use Ollama's `nomic-embed
 
 ## Running models from the page
 
-- **Portfolio → Run the forecast.** Choose models, press Run. The server runs `export_ticker.py` on its CSV price files, the chart and tables switch to the new run, and the run is stored. A run with the six default models also updates the saved page.
+- **Search any company.** Type a ticker or name in the box at the top. A company already on the site opens; for any other the box lists matches from Yahoo Finance and an "Add" button (or "Add <text>" with a market choice: Yahoo Finance, Dhaka Stock Exchange, or automatic). The server then downloads two years of prices, registers the company (`backend/data/companies.json`), builds its notebook from the shared analyst files, runs the 7-day forecast and the page data, and opens the company when done (several minutes; the progress card bottom right stays while you browse). It then works like the first eight: Forecast, Calculator, Backtest, Dataset, Memory and **AI Analysis** (run the notebook with the LLM you choose). A refresh keeps its prices current too. Needs internet for Yahoo Finance or dsebd.org; it does nothing on a static copy of the page.
+- **Analyse any company.** The AI Analysis page has an "Analyse any company" box: type any ticker. A company on the site runs its analysis at once; any other is added first (as above), then analysed with the model you chose. No company depends on a notebook file name: if a company has no notebook, the analysis runner makes it from the shared analyst files (prices, registration, notebook: `add_company.py --prepare`) before running it, so `POST /api/analysis` also takes any valid ticker. When a run fails, the log ends with `!! Cause: <the error>  (in step: <name>)`, and a refused model name or API key gets a plain hint (for example a retired Kimi model still listed in `RAEM_KIMI_MODELS`).
+- **Forecast → Run.** On the hosted site, choose models under Forecast options and press Run. The server runs `export_ticker.py` on its CSV price files, the chart and tables switch to the new run, and the run is stored. A run with the six default models also updates the saved page.
 - **Forecast → Run.** On the hosted site Run fits the models now (all 14 by default, as in the forecast notebook, or the best 6), shows the progress, then the All models tab: every model's day-1 and day-7 prediction, its error vs "no change", and ★ on the two models the Ensemble averages.
 - **AI Analysis.** Choose a company and an LLM (an Ollama model or a cloud model), press **Run AI analysis for <today>**: the notebook runs for today's date (its `TRADE_DATE`, in the server's time zone, `TZ=Asia/Dhaka` by default in Docker). The server runs that company's notebook top to bottom with the model you chose, shows each cell as it runs, shows each agent as it finishes (the notebook saves its log after every agent, and the page reads it while the run goes), then the **Decision**: BUY, HOLD or SELL in large type with the portfolio manager's rating, the verifier, the entry price, the 7-day outlook and why; then the **AI debate** (bull vs bear, round by round, with the facilitator's verdict) and the **trader and risk debate**, and every analyst, Graph Analyst, Forecasting Agent, Prediction Engine, Verifier, Position Sizing and the 10-day scenario. The model list shows only what the server has connected: the Ollama models it can reach and the cloud providers whose key is in `.env`. Runs go one company at a time.
 - **Hold.** While an AI analysis runs, **Hold** stops it and keeps what it has done: every LLM answer is saved the moment it arrives (`backend/storage/llm_cache/`). **Resume** (or Run again later the same day, same company and model) runs the notebook again from the top, but every LLM call with exactly the same prompt as before (same prices, news and earlier answers) gets the saved answer at once, so it continues where it stopped; a step whose market data changed asks the model again. If the server restarts during a run, that run is held too, and a run that stopped with an error offers **Continue** with its saved answers. When a run finishes its saved answers are deleted, so "Run again" then gives a fresh analysis.
-- **The AI analysis moves the prediction a little.** The latest AI rating (Buy +1, Overweight +½, Hold 0, Underweight −½, Sell −1) times the stock's typical 7-day move is the AI view; the AI-adjusted forecast is 80% the models' Ensemble and 20% that view (10–35% once the AI has five graded calls, by how often it was right). A session more than 10 days older than the prices does not count. It shows on Home (each card and the "With AI" column), the Forecast summary, Portfolio (chart line, P&L and the model table), the Return Calculator ("AI-adjusted") and the AI Analysis page.
-- **Portfolio** (was Paper Trading): virtual orders with equity, total P&L (realized and open), projected day 7, cash, return, max drawdown, win rate and exposure, an **Indicators** card for the selected stock (RSI, MACD, 20/50-day averages, Bollinger %B, volatility, 52-week range, the daily signal, the Ensemble and the AI decision), the portfolio curve and the model outputs.
-- **Portfolio keeps its run.** The model table under the chart lists every model of the forecast shown, and the newest run of each company stays on the page after a reload or on another day, until newer prices or a newer run replace it.
+- **The AI analysis moves the prediction a little.** The latest AI rating (Buy +1, Overweight +½, Hold 0, Underweight −½, Sell −1) times the stock's typical 7-day move is the AI view; the AI-adjusted forecast is 80% the models' Ensemble and 20% that view (10–35% once the AI has five graded calls, by how often it was right). A session more than 10 days older than the prices does not count. It shows on Home (each card and the "With AI" column), the Forecast summary, the Return Calculator ("AI-adjusted") and the AI Analysis page.
 - Runs wait in one queue, so a second request waits for the first. An identical request joins the run already going.
 - Closing or reloading the page does not stop a run. Open the page again and it shows the progress of runs still going, then their results.
 
@@ -125,6 +128,9 @@ python backend/refresh.py
 | `GET /api/models` | forecast models (and the default six), LLMs per provider (`llm_providers`), companies with a notebook |
 | `GET /api/tickers`, `GET /api/tickers/{t}` | saved results per company |
 | `GET /api/extra` | data for the extra pages |
+| `GET /api/search?q=` | matches for a ticker or name: companies on the site, then Yahoo Finance suggestions |
+| `GET /api/companies`, `GET /api/companies/{t}` | companies added from the search box; one company's saved forecast with its price table, backtest and FX rate |
+| `POST /api/companies` `{"ticker", "market": "auto\|international\|dse", "name", "sector"}` | adds a company (queued run of kind `company`): prices, notebook, forecast, page data; `reused: "exists"` when it is already there |
 | `POST /api/forecast` `{"ticker", "models": [...], "force"}` | stored run, or a new queued run |
 | `POST /api/analysis` `{"ticker", "llm_provider", "llm_model", "force"}` | stored run, a resumed held run, or a new queued notebook run (`llm_provider`: ollama, anthropic, kimi, openai, google, groq) |
 | `POST /api/runs/{id}/hold` | hold a queued or running AI analysis; the next request for it resumes it |
@@ -148,7 +154,7 @@ POST responses look like `{"run": {...}, "reused": "stored" | "active" | "resume
 | `RAEM_CORS_ORIGINS` | other sites allowed to call the API from a browser, e.g. the GitHub Pages copy of the page (comma-separated) |
 | `PORT` | port to listen on |
 | `TZ` | time zone that decides "today" for runs and the notebooks' `TRADE_DATE` (default `Asia/Dhaka` in Docker; hosts usually run on UTC, a day behind Bangladesh after 18:00 UTC) |
-| `RAEM_DB`, `RAEM_NOTEBOOK_TIMEOUT`, `RAEM_FORECAST_TIMEOUT`, `RAEM_CELL_TIMEOUT` | optional: database file and time limits |
+| `RAEM_DB`, `RAEM_NOTEBOOK_TIMEOUT`, `RAEM_FORECAST_TIMEOUT`, `RAEM_COMPANY_TIMEOUT`, `RAEM_CELL_TIMEOUT` | optional: database file and time limits |
 
 ## Put it on GitHub and host it
 
@@ -175,6 +181,24 @@ Know before you host:
 - The image includes PyTorch (CPU) and is a few GB; give the server at least 2 GB of RAM for forecasts alone.
 - Serve over HTTPS (most hosts do it for you).
 
+## Notebooks and the shared analyst code
+
+Each company notebook used to hold its own full copy of the pipeline. The code now lives once, in `backend/engine/notebooks/raem_analysts/`, one file per analyst (`fundamentals_analyst.py`, `market_analyst.py`, `news_analyst.py`, `graph_analyst.py`, `trader.py`, `portfolio_manager.py`, `decision_verifier.py` ...), in two groups: `international/` (yfinance companies: AAPL, IBM, 0300.HK, 2222.SR) and `dse/` (Dhaka Stock Exchange: ABBANK, BATBC, BPML, WALTONHIL). A notebook keeps only:
+
+- a **COMPANY PROFILE** cell (`COMPANY`, `RAEM_PROFILE`: ticker, trading-log name and the few lines specific to that company, such as the peer list or the sector text), and
+- one `use_shared("<analyst>")` cell per analyst, in the order the pipeline runs them.
+
+`use_shared` runs the shared file in the notebook's own namespace, so a cell behaves as it did when the code was inline. The web runner puts the full code back into each cell before it adapts the notebook, so the cloud-LLM and memory-store changes still apply. A fix in a shared file reaches every company of the group. In the shared files, `@@TICKER@@`, `@@FILE@@` (ticker as used in file names) and `@@LOG@@` are filled from the profile, and `@@SLOT:key@@` stands for lines the profile supplies. 2222.SR keeps its own versions of the 7-day forecast graph and hit-rate cells (`*_2222_sr.py`).
+
+**Add a company** (any ticker, either group), from `backend/engine/notebooks/`:
+
+```
+python -m raem_analysts.new_company --ticker TSLA --group international
+python -m raem_analysts.new_company --ticker SQURPHARMA --group dse --name "Square Pharmaceuticals Limited" --sector "Health Care (Pharmaceuticals)"
+```
+
+It copies a template notebook of the group (`--like` picks which), writes the new profile and clears the old outputs. Then add the ticker to `TICKERS` in `backend/engine/predictor_lib.py` (a Dhaka stock also needs its price CSV in `backend/engine/data/`), check the profile cell, and run the notebook or `python backend/refresh.py <ticker>`. The runner finds the notebook by its `COMPANY` line, so the AI Analysis page picks the new company up with no other change. `backend/tools/sync_engine.py` copies `raem_analysts/` along with the notebooks.
+
 ## Notebook features on the site
 
 | Notebook part | On the site |
@@ -182,7 +206,7 @@ Know before you host:
 | Fundamentals, Market, Macro regime, News (with RAG), Sentiment analysts | AI Analysis pipeline tabs, News and Fundamentals pages |
 | Graph Analyst, Forecasting Agent (10-day) | AI Analysis pipeline tabs (sessions from the current notebooks) |
 | Bull vs bear debate and facilitator, Post-mortem, Trader, Risk debate and facilitator, Portfolio manager | AI Analysis pipeline tabs and final decision |
-| Prediction Engine (5 models), 7-day forecast graph (14 models) | Forecast page, Portfolio run, AI Analysis tabs |
+| Prediction Engine (5 models), 7-day forecast graph (14 models) | Forecast page, AI Analysis tabs |
 | Decision Verifier, Position Sizing (rule + RL overlay), 10-day scenario | AI Analysis pipeline tabs |
 | Episodic memory, regime reflection, outcome backfill | Memory page; used inside each notebook run |
 | Trading log, 7-day hit rate, forecast agent and reviewer | Track record, Reviewer tab, Backtest, Return Calculator |

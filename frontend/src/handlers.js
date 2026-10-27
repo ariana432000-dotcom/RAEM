@@ -5,6 +5,7 @@ document.addEventListener("click", e => {
   if (d.ai) { if (X.ai.running) return; X.ai.t = d.ai; }
   else if (a === "ai-run") { aiRun([X.ai.t]); return; }
   else if (a === "ai-live") { liveAnalysis(X.ai.t); return; }
+  else if (a === "ai-any") { aiAny(); return; }
   else if (a === "ai-hold") { liveHold(X.ai.t); return; }
   else if (a === "ai-resume") { X.ai.model = selFromKey(v); liveAnalysis(X.ai.t); return; }
   else if (a === "ai-load") { loadAiRun(v); return; }

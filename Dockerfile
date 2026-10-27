@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
 RUN python -c "from chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2 import ONNXMiniLM_L6_V2 as M; M()._download_model_if_not_exists()" \
     || echo "chromadb embedding model not downloaded; a run fetches it on first use"
 
-# backend/ (API, engine, exporter, data) and frontend/ (page sources and built page)
+# backend/ (API, engine, pipeline, data) and frontend/ (page sources and built page)
 COPY . .
 RUN python backend/refresh.py --build-only \
     && chmod -R a+rwX /app /home/user

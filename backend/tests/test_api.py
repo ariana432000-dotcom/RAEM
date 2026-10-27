@@ -32,11 +32,12 @@ def test_models_list_matches_exporter(client):
     keys = [x["key"] for x in m["forecast"]]
     defaults = [x["key"] for x in m["forecast"] if x["default"]]
     assert len(keys) == 14 and len(defaults) == 6
-    src = (BACKEND / "exporter" / "export_ticker.py").read_text(encoding="utf-8")
+    src = (BACKEND / "app" / "pipeline" / "export_ticker.py").read_text(encoding="utf-8")
     keep = re.search(r"KEEP_MODELS = \[(.*?)\]", src).group(1)
     assert sorted(re.findall(r'"(\w+)"', keep)) == sorted(defaults)
     assert m["llm"]["models"] == ["qwen2.5:7b", "llama3.2:3b"]
-    assert m["analysis_tickers"] == ["AAPL", "IBM"]
+    from app.core import config
+    assert m["analysis_tickers"] == config.tickers() and m["notebooks"] == {"AAPL": "AAPL.ipynb", "IBM": "IBM.ipynb"}
 
 
 def test_forecast_run_then_same_date_reuse(client):
@@ -75,7 +76,7 @@ def test_forecast_validation(client):
 
 
 def test_analysis_run_reuse_and_ollama_checks(client, monkeypatch):
-    from app import config
+    from app.core import config
     r = client.post("/api/analysis", json={"ticker": "AAPL", "llm_model": "qwen2.5:7b"}).json()
     done = wait_done(client, r["run"]["id"])
     assert done["status"] == "done" and done["summary"]["rating"] == "Hold"
@@ -95,11 +96,12 @@ def test_analysis_run_reuse_and_ollama_checks(client, monkeypatch):
 
 def test_analysis_validation(client):
     assert client.post("/api/analysis", json={"ticker": "AAPL", "llm_model": "gpt-9"}).status_code == 400
-    assert client.post("/api/analysis", json={"ticker": "BATBC"}).status_code == 404
+    assert client.post("/api/analysis", json={"ticker": "a b"}).status_code == 400            # not a ticker
+    assert client.post("/api/analysis", json={"ticker": "TSLA", "market": "mars"}).status_code == 400
 
 
 def test_run_token(client, monkeypatch):
-    from app import config
+    from app.core import config
     monkeypatch.setattr(config, "RUN_TOKEN", "s3cret")
     assert client.post("/api/forecast", json={"ticker": "AAPL", "models": ["arima"]}).status_code == 401
     ok = client.post("/api/forecast", json={"ticker": "AAPL", "models": ["arima"]}, headers={"Authorization": "Bearer s3cret"})
@@ -109,7 +111,7 @@ def test_run_token(client, monkeypatch):
 
 
 def test_refresh_needs_token(client, monkeypatch):
-    from app import config
+    from app.core import config
     assert client.post("/api/refresh").status_code == 403
     monkeypatch.setattr(config, "REFRESH_TOKEN", "r")
     assert client.post("/api/refresh").status_code == 401
@@ -129,7 +131,7 @@ def test_history_and_latest(client):
 
 
 def test_failed_run_is_recorded(client, monkeypatch):
-    from app import jobs
+    from app.workers import jobs
 
     def boom(run):
         raise RuntimeError("model crashed")
@@ -145,7 +147,7 @@ def test_failed_run_is_recorded(client, monkeypatch):
 
 def test_session_reader_keeps_new_steps_and_drops_nan(tmp_path, monkeypatch):
     monkeypatch.setenv("RAEM_DB", str(tmp_path / "archive.db"))
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from sessions import ai_entry
     log = [{"company": "AAPL", "trade_date": "2026-10-22", "session_start": "2026-10-22 10:00:00", "session_end": "x",
             "final_decision": "**Rating**: Buy", "summary_table": {"market_indicators": {"rsi": float("nan")}},
@@ -159,7 +161,7 @@ def test_session_reader_keeps_new_steps_and_drops_nan(tmp_path, monkeypatch):
 
 
 def test_notebook_rewrite():
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from run_notebook import rewrite
     src = '%pip install x -q\nif ok:\n    %pip install -r r.txt\nllm = ChatOllama(model="qwen2.5:7b", base_url="http://localhost:11434", repeat_penalty=1.15)\nu = "http://localhost:11434/api/embeddings"'
     out, n = rewrite(src)
@@ -173,7 +175,7 @@ def test_notebook_rewrite():
 def test_archive_keeps_sessions_the_notebook_pruned(tmp_path, monkeypatch):
     """The notebooks keep only 10 days in their log; the archive keeps everything."""
     monkeypatch.setenv("RAEM_DB", str(tmp_path / "archive.db"))
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from sessions import ai_entry, archive_logs
     log = tmp_path / "trading_log_IBM.json"
     old = {"company": "IBM", "trade_date": "2026-09-01", "session_start": "2026-09-01 10:00:00", "final_decision": "**Rating**: Hold", "steps": []}
@@ -186,7 +188,8 @@ def test_archive_keeps_sessions_the_notebook_pruned(tmp_path, monkeypatch):
 
 
 def test_queue_limit(client, monkeypatch):
-    from app import config, jobs
+    from app.core import config
+    from app.workers import jobs
     monkeypatch.setattr(config, "MAX_QUEUE", 1)
 
     def slow(run):
@@ -217,7 +220,7 @@ def test_cloud_providers_listed(client, monkeypatch):
 
 
 def test_cloud_analysis_run(client, monkeypatch):
-    from app import config
+    from app.core import config
     for k in CLOUD_KEYS:
         monkeypatch.delenv(k, raising=False)
     no_key = client.post("/api/analysis", json={"ticker": "AAPL", "llm_provider": "openai"})
@@ -237,7 +240,7 @@ def test_cloud_analysis_run(client, monkeypatch):
 
 
 def test_notebook_rewrite_for_cloud_and_memory():
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from run_notebook import rewrite
     src = ('from langchain_ollama import ChatOllama\nllm = ChatOllama(model="qwen2.5:7b", num_predict=2048)\n'
            '_prev = ChatOllama.invoke\nChatOllama.invoke = _guard\n'
@@ -256,7 +259,7 @@ def test_cloud_adapter_keeps_the_fact_guard():
     pytest.importorskip("langchain_ollama")
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
     from langchain_core.messages import HumanMessage
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from run_notebook import CONFIG_CELL
     from langchain_ollama import ChatOllama
     ns = {}
@@ -292,7 +295,7 @@ def test_memory_falls_back_to_hashing_when_no_model(monkeypatch):
     """No Ollama nomic-embed-text and no downloadable chromadb model: the run still gets a working memory store."""
     pytest.importorskip("chromadb")
     pytest.importorskip("langchain_ollama")
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     import run_notebook as rn
     monkeypatch.setattr(rn, "local_model_ready", lambda *a, **k: False)
     monkeypatch.setenv("RAEM_EMBED", "local")
@@ -311,7 +314,7 @@ def test_memory_falls_back_to_hashing_when_no_model(monkeypatch):
 
 def test_hold_and_resume(client, monkeypatch):
     """Hold stops a running analysis and keeps it; asking again resumes the same run."""
-    from app import jobs
+    from app.workers import jobs
     attempts = []
 
     def slow_analysis(run):
@@ -344,7 +347,7 @@ def test_hold_and_resume(client, monkeypatch):
 
 
 def test_hold_rules(client, monkeypatch):
-    from app import jobs
+    from app.workers import jobs
     f = client.post("/api/forecast", json={"ticker": "AAPL", "models": ["ridge"]}).json()["run"]
     assert client.post(f"/api/runs/{f['id']}/hold").status_code == 400  # forecasts are short
     wait_done(client, f["id"])
@@ -363,7 +366,7 @@ def test_hold_rules(client, monkeypatch):
 
 
 def test_restart_puts_running_runs_on_hold(tmp_path):
-    from app import db
+    from app.db import runs as db
     db.set_path(tmp_path / "restart.db")
     db.init()
     r = db.create("analysis", "AAPL", "2026-10-22", "qwen2.5:7b", {})
@@ -374,7 +377,7 @@ def test_restart_puts_running_runs_on_hold(tmp_path):
 
 
 def test_latest_runs_any_date(client):
-    from app import db
+    from app.db import runs as db
     old = db.create("forecast", "IBM", "2026-10-01", "ridge", {"models": ["ridge"]})
     db.update(old["id"], status="done", finished_at="2026-10-01 10:00:00", result={"ticker": "IBM"})
     assert "IBM" not in client.get("/api/runs/latest").json()["forecast"]  # today only by default
@@ -398,7 +401,7 @@ def test_saved_answers_survive_a_new_kernel(tmp_path, monkeypatch):
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
     from langchain_core.messages import HumanMessage
     from langchain_ollama import ChatOllama
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from run_notebook import CONFIG_CELL, saved_counts
     cache = tmp_path / "AAPL__openai_x.json"
     monkeypatch.setenv("RAEM_LLM_PROVIDER", "openai")
@@ -431,7 +434,7 @@ def test_saved_answers_survive_a_new_kernel(tmp_path, monkeypatch):
 
 
 def test_rating_formats():
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from sessions import rating
     assert rating("**Rating**: Hold\n\n**Executive Summary**: ...") == "Hold"
     assert rating("BUY") == "Buy" and rating("**SELL**") == "Sell"
@@ -442,7 +445,8 @@ def test_rating_formats():
 
 def test_unfinished_runs_report_saved_answers(client, monkeypatch, tmp_path):
     """A held or failed analysis says how many saved LLM answers the next run of it will reuse."""
-    from app import config, db
+    from app.core import config
+    from app.db import runs as db
     monkeypatch.setattr(config, "STORAGE", tmp_path)
     r = db.create("analysis", "AAPL", config.today(), "qwen2.5:7b", {"provider": "ollama", "llm_model": "qwen2.5:7b"})
     db.update(r["id"], status="failed", step="[37/46] Prediction Engine", error="CellTimeoutError")
@@ -455,7 +459,7 @@ def test_unfinished_runs_report_saved_answers(client, monkeypatch, tmp_path):
 
 
 def test_debate_turns_and_final_signal():
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from sessions import debate_turns, entry_from_session
     turns = debate_turns("\nBull Analyst: up\nBear Analyst: down\nBull Analyst: more up\nBear Analyst: more down")
     assert [(t["side"], t["round"]) for t in turns] == [("bull", 1), ("bear", 1), ("bull", 2), ("bear", 2)]
@@ -472,7 +476,7 @@ def test_debate_turns_and_final_signal():
 
 
 def test_live_session_endpoint(client):
-    from app import db
+    from app.db import runs as db
     r = db.create("analysis", "AAPL", "2026-10-23", "qwen2.5:7b", {})
     assert client.get(f"/api/runs/{r['id']}/live").json() == {"status": "queued", "entry": None}
     db.update(r["id"], status="done", result={"entry": {"latest": {"rating": "Buy"}}})
@@ -526,7 +530,7 @@ def test_past_memory_is_copied_when_ollama_is_missing(tmp_path, monkeypatch):
     chromadb = pytest.importorskip("chromadb")
     pytest.importorskip("langchain_ollama")
     from chromadb.api.types import Documents, EmbeddingFunction
-    sys.path.insert(0, str(BACKEND / "exporter"))
+    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from run_notebook import CONFIG_CELL
 
     class Tiny(EmbeddingFunction[Documents]):  # stands in for nomic: other vectors, other size

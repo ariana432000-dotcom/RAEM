@@ -1,3 +1,4 @@
+
 /* ----- live backend: used only when this page is served by the FastAPI app (web/backend) ----- */
 const LIVE = { ok: false, health: null, models: null, token: lsGet("raem:token", ""), fc: {}, ai: {}, busy: {}, err: {}, hist: {} };
 X.lfc = { models: null, force: false };
@@ -36,6 +37,10 @@ async function liveInit() {
     LIVE.health = h;
     LIVE.models = await api("models");
     LIVE.ok = true;
+    try {  // companies added from the search box earlier: bring their saved forecast into the page (the page file may predate them)
+      const cos = await api("companies");
+      await Promise.all(cos.filter(c => c.ready && !DATA[c.ticker]).map(c => loadCompany(c.ticker).catch(() => null)));
+    } catch (e) { /* an older server without the company routes */ }
     // the newest finished run of every company, on any date: a run's results stay on the page until a newer one
     const lt = await api("runs/latest?date=all");
     Object.entries(lt.forecast || {}).forEach(([t, run]) => applyForecastRun(t, run, true));
@@ -45,7 +50,7 @@ async function liveInit() {
     render();
     // runs already queued or going (started before a reload, or from another browser): show their progress too
     const active = await api("runs?status=queued,running&limit=100");
-    active.reverse().forEach(r => r.kind === "forecast" ? watchForecast(r.ticker, r.id) : r.kind === "analysis" ? watchAnalysis(r.ticker, r.id) : null);
+    active.reverse().forEach(r => r.kind === "forecast" ? watchForecast(r.ticker, r.id) : r.kind === "analysis" ? watchAnalysis(r.ticker, r.id) : r.kind === "company" ? watchCompany(r.ticker, r.id) : null);
     if (active.length) render();
   } catch (e) {
     LIVE.ok = false;  // static copy (artifact, static host): saved results only
@@ -242,11 +247,42 @@ function unfinishedRunFor(t, key) {  // today's held run, or today's newest run 
   const rows = (LIVE.hist[t] || []).filter(r => r.run_date === LIVE.health.date && r.model_key === key);
   return rows.find(r => r.status === "held") || (rows[0] && rows[0].status === "failed" && rows[0].saved_answers ? rows[0] : null);
 }
+function nbLabel(t) {
+  const n = (LIVE.models.notebooks || {})[t];
+  return n ? `notebook ${esc(n)}` : "notebook made automatically on the first run";
+}
+/* analyse any company: one on the site runs at once; any other is added first (prices, notebook, forecast), then analysed */
+X.after = {};
+function aiAnyCard() {
+  const a = X.ai, adding = Object.keys(LIVE.busy).filter(k => k.startsWith("co:") && X.after[k.slice(3)]).map(k => k.slice(3));
+  return `<div class="field" style="margin-top:16px"><label for="ai-any">Analyse any company</label>
+    <div class="toolbar"><input class="inp grow" id="ai-any" placeholder="Any ticker: TSLA, 7203.T, 0700.HK, SQURPHARMA" value="${esc(a.any || "")}" aria-label="Ticker" autocomplete="off" ${adding.length ? "disabled" : ""}>
+      <select id="ai-any-market" aria-label="Market">${ADD_MARKETS.map(([v, l]) => `<option value="${v}"${(a.anyMarket || "auto") === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+      <button type="button" class="btn primary" data-act="ai-any" ${adding.length ? "disabled" : ""}>${adding.length ? "Adding " + esc(adding[0]) + "…" : "Analyse"}</button></div>
+    <p class="sub">A company that is not on this site is added first (prices, notebook and 7-day forecast, several minutes), then the AI analysis starts with the model chosen below.</p>
+    ${a.anyMsg ? `<p class="err" role="alert">${esc(a.anyMsg)}</p>` : ""}</div>`;
+}
+async function aiAny() {
+  const el = $("#ai-any"), raw = ((el && el.value) || X.ai.any || "").trim().toUpperCase();
+  X.ai.any = raw; X.ai.anyMsg = "";
+  if (!raw) { X.ai.anyMsg = "Type a ticker first."; render(); return; }
+  if (!/^[A-Z0-9.\-]{1,20}$/.test(raw)) { X.ai.anyMsg = "A ticker has letters, digits, dots and dashes only."; render(); return; }
+  if (DATA[raw]) { X.ai.t = raw; X.ai.any = ""; render(); liveAnalysis(raw); return; }
+  X.after[raw] = true;
+  await addCompany(raw, X.ai.anyMarket || "auto", "");
+  render();
+}
+async function afterAdded(t) {  // a company added from the AI Analysis page: go on to its analysis
+  delete X.after[t];
+  X.ai.t = t; X.ai.any = "";
+  goPage("ai");
+  liveAnalysis(t);
+}
 function aiLiveCard(t, a) {
   const key = "ai:" + t, li = LIVE.ai[t], j = LIVE.busy[key], sel = llmSel();
   const badge = li ? `<span class="badge buy">${esc(li.model)} · ${esc(li.date)}</span>` : `<span class="badge">${a ? "saved session" : "no session yet"}</span>`;
   if (!sel) {
-    return card(`Run AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · notebook ${esc((LIVE.models.notebooks || {})[t] || "")}`, badge,
+    return card(`Run AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · ${nbLabel(t)}`, badge,
       `<p class="err" role="alert">No LLM is connected on this server. Start Ollama with a model pulled, or add an API key (ANTHROPIC_API_KEY for Claude, MOONSHOT_API_KEY for Kimi) to the server's .env and restart it.</p><p class="note" style="margin-top:8px">Stored runs below still open.</p>`);
   }
   const groups = llmProviders().map(p => `<optgroup label="${esc(p.label)}">${p.models.map(m => `<option value="${esc(p.key + "|" + m)}" ${p.key + "|" + m === X.ai.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</optgroup>`).join("");
@@ -261,7 +297,7 @@ function aiLiveCard(t, a) {
   const holdNote = held ? ` The last run ${held.status === "failed" ? "stopped with an error" : "was held"} at ${esc(held.step || "an early step")}. Running it again reuses every saved answer whose inputs (prices, news, earlier answers) are unchanged, so it continues where it stopped; steps whose inputs changed run again.`
     : " Hold stops a run and keeps what it has done; running it again later continues from there while the market data is unchanged.";
   const mem = LIVE.models.embeddings_ok === false ? " Memory: Ollama's nomic-embed-text is not reachable, so the notebook's memory uses a separate local store." : "";
-  return card(`Today's AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · notebook ${esc((LIVE.models.notebooks || {})[t] || "")} · runs for ${dLong(LIVE.health.date)}`, badge, `
+  return card(`Today's AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · ${nbLabel(t)} · runs for ${dLong(LIVE.health.date)}`, badge, `
     <div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
       <div class="field"><label for="ai-model">LLM model (connected on this server)</label><select id="ai-model" data-bind="ai-model" ${j ? "disabled" : ""}>${groups}</select></div>
       <div class="field"><span class="lbl">Options</span><div class="checks"><label><input type="checkbox" id="ai-force" data-bind="ai-force" ${X.ai.force ? "checked" : ""}> Run again even if stored today</label></div></div>
@@ -286,3 +322,101 @@ function aiHistoryCard(t) {
     `<div class="scroll"><table><thead><tr><th>Date</th><th>Model</th><th>Status</th><th>Rating</th><th>Took</th><th></th></tr></thead><tbody>${rows.map(r => `<tr><td class="t">${esc(r.run_date)}</td><td class="t">${esc(r.model_key)}</td><td><span class="badge ${r.status === "done" ? "buy" : r.status === "failed" ? "sell" : "hold"}" title="${esc(r.status === "held" ? r.step || "" : "")}">${esc(r.status)}</span></td><td>${r.summary && r.summary.rating ? ratingBadge(r.summary.rating) : "–"}</td><td>${r.summary && r.summary.seconds ? Math.max(1, Math.round(r.summary.seconds / 60)) + " min" : "–"}</td><td>${cell(r)}</td></tr>`).join("")}</tbody></table></div>`;
   return card("Stored runs on this server", "Every AI analysis run for this company, newest first. A held run resumes where it stopped.", "", body);
 }
+
+/* ----- add any company: the search box finds it, the server downloads its prices, builds its notebook and forecasts it ----- */
+X.add = { q: "", results: null, market: "auto", msg: "" };
+const ADD_MARKETS = [["auto", "Find it automatically"], ["international", "Yahoo Finance (US, Hong Kong, Saudi, ...)"], ["dse", "Dhaka Stock Exchange"]];
+function hideAddBox() { const b = $("#addbox"); if (b) b.hidden = true; }
+async function addPrompt(q) {
+  X.add.q = q; X.add.results = null; X.add.msg = "";
+  renderAddBox();
+  try { X.add.results = await api("search?q=" + encodeURIComponent(q)); } catch (e) { X.add.results = []; }
+  if (X.add.q === q) renderAddBox();
+}
+function renderAddBox() {
+  const b = $("#addbox"); if (!b) return;
+  const a = X.add, q = a.q;
+  const local = ORDER.filter(t => t.startsWith(q) || DATA[t].meta.name.toUpperCase().includes(q));
+  const web = (a.results || []).filter(r => !r.on_site && !DATA[r.symbol]);
+  const li = (sym, name, btn) => `<li><div><b class="mono">${esc(sym)}</b><span>${esc(name)}</span></div>${btn}</li>`;
+  const open = local.map(t => li(t, DATA[t].meta.name, `<button type="button" class="btn secondary sm" data-open="${esc(t)}">Open</button>`)).join("");
+  const add = web.map(r => li(r.symbol, r.name + (r.exchange ? " · " + r.exchange : ""), `<button type="button" class="btn sm" data-add="${esc(r.symbol)}" data-market="international" data-name="${esc(r.name)}">Add</button>`)).join("");
+  b.innerHTML = `<p class="addh">${local.length ? "On this site" : `No <b>${esc(q)}</b> on this site yet`}</p>
+    ${open ? `<ul class="addlist">${open}</ul>` : ""}
+    <p class="addh">Add a company from the web</p>
+    ${a.results === null ? `<p class="sub">Searching…</p>` : add ? `<ul class="addlist">${add}</ul>` : `<p class="sub">No web suggestions. You can still add the text as a ticker below.</p>`}
+    <div class="addrow"><select id="add-market" aria-label="Market">${ADD_MARKETS.map(([v, l]) => `<option value="${v}"${a.market === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
+      <button type="button" class="btn sm" data-add="${esc(q)}" data-name="">Add ${esc(q)}</button></div>
+    ${a.msg ? `<p class="sub" style="color:var(--sell)" role="alert">${esc(a.msg)}</p>` : ""}
+    <p class="sub">A new company takes several minutes: its prices, notebook and 7-day forecast are made on the server.</p>`;
+  b.hidden = false;
+}
+async function loadCompany(t) {  // the saved forecast and extra data of a company, into the page
+  const b = await api("companies/" + encodeURIComponent(t));
+  DATA[t] = b.data;
+  EXTRA.dataset[t] = b.dataset || [];
+  EXTRA.backtest[t] = b.backtest || {};
+  if (b.ai) { EXTRA.ai[t] = b.ai; if (!AI_T.includes(t)) AI_T.push(t); }
+  Object.entries(b.fx || {}).forEach(([c, v]) => { if (v) EXTRA.fx[c] = v; });
+  if (!ORDER.includes(t)) ORDER.push(t);
+  if (!X.wl.includes(t)) { X.wl.push(t); if (lsGet("raem:wl", null)) lsSet("raem:wl", X.wl); }
+  try { if (LIVE.ok) LIVE.models = await api("models"); } catch (e) { /* the AI Analysis page then lists the new notebook after a reload */ }
+  render();
+}
+async function addCompany(t, market, name) {
+  const key = "co:" + t;
+  if (LIVE.busy[key]) return;
+  LIVE.err[key] = "";
+  try {
+    const res = await api("companies", { method: "POST", body: JSON.stringify({ ticker: t, market: market || "auto", name: name || null }) });
+    if (res.reused === "exists") {
+      await loadCompany(res.ticker || t); hideAddBox(); $("#q").value = "";
+      if (X.after[t]) afterAdded(res.ticker || t); else openTicker(res.ticker || t);
+      return;
+    }
+    hideAddBox();
+    $("#q").value = "";
+    watchCompany(t, res.run.id);
+  } catch (e) {
+    if (X.after[t]) { delete X.after[t]; X.ai.anyMsg = e.message; render(); return; }
+    X.add.msg = e.message;
+    renderAddBox();
+  }
+}
+function watchCompany(t, id) {
+  const key = "co:" + t;
+  LIVE.err[key] = "";
+  const p = pollRun(id, key, async () => {
+    try { await loadCompany(t); if (X.after[t]) afterAdded(t); else openTicker(t); } catch (e) { LIVE.err[key] = "It was added, but the page could not load it: " + e.message; }
+  });
+  renderAddProg();
+  p.then(renderAddProg);
+}
+function renderAddProg() {  // progress of companies being added, bottom right, so it stays while you browse
+  let p = $("#addprog");
+  const busy = Object.keys(LIVE.busy).filter(k => k.startsWith("co:")), errs = Object.keys(LIVE.err).filter(k => k.startsWith("co:") && LIVE.err[k]);
+  if (!busy.length && !errs.length) { if (p) p.remove(); return; }
+  if (!p) { p = document.createElement("div"); p.id = "addprog"; document.body.appendChild(p); }
+  p.innerHTML = busy.map(k => `<div class="addprog-i"><p class="addprog-t">Adding <b class="mono">${esc(k.slice(3))}</b></p><div id="live-${liveId(k)}">${liveStatus(k)}</div></div>`).join("")
+    + errs.map(k => `<div class="addprog-i"><p class="addprog-t"><b class="mono">${esc(k.slice(3))}</b> could not be added</p><p class="sub">${esc(LIVE.err[k])}</p>
+      <button type="button" class="btn sm" data-add="${esc(k.slice(3))}" data-market="auto" data-name="">Try again</button> <button type="button" class="btn secondary sm" data-add-dismiss="${esc(k)}">Dismiss</button></div>`).join("");
+}
+document.addEventListener("click", e => {
+  const add = e.target.closest("[data-add]"), open = e.target.closest("[data-open]"), dis = e.target.closest("[data-add-dismiss]");
+  if (add) {
+    const sel = $("#add-market");
+    addCompany(add.dataset.add, add.dataset.market || (sel ? sel.value : "auto"), add.dataset.name || "");
+    delete LIVE.err["co:" + add.dataset.add];
+    return;
+  }
+  if (open) { hideAddBox(); $("#q").value = ""; openTicker(open.dataset.open); return; }
+  if (dis) { delete LIVE.err[dis.dataset.addDismiss]; renderAddProg(); return; }
+  if (!e.target.closest("#search")) hideAddBox();
+});
+document.addEventListener("change", e => {
+  if (e.target.id === "add-market") X.add.market = e.target.value;
+  if (e.target.id === "ai-any-market") X.ai.anyMarket = e.target.value;
+});
+document.addEventListener("input", e => { if (e.target.id === "ai-any") X.ai.any = e.target.value; });
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "ai-any") { e.preventDefault(); aiAny(); } });
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideAddBox(); });

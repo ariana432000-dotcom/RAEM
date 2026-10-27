@@ -120,3 +120,19 @@
 .agents li.now { color: var(--text); font-weight: 600; }
 .agents li.now .dot { border-color: var(--hold); background: var(--hold-soft); animation: pulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .agents li.now .dot { animation: none; } }
+
+/* search box: add any company */
+.addbox { position: absolute; top: 44px; right: 0; width: min(380px, calc(100vw - 32px)); background: var(--solid); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; box-shadow: 0 12px 32px rgba(0,0,0,.28); z-index: 40; text-align: left; max-height: 70vh; overflow: auto; }
+.addbox .addh { font-size: 12px; font-weight: 600; margin: 4px 0 6px; color: var(--muted); }
+.addbox .addlist { list-style: none; margin: 0 0 8px; padding: 0; }
+.addbox .addlist li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
+.addbox .addlist li div { display: flex; flex-direction: column; min-width: 0; }
+.addbox .addlist li span { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addbox .addrow { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+.addbox .addrow select { flex: 1 1 140px; min-width: 0; }
+.addbox .sub { font-size: 12px; margin: 6px 0 0; }
+#addprog { position: fixed; right: 16px; bottom: 16px; width: min(360px, calc(100vw - 32px)); max-height: 60vh; overflow: auto; background: var(--solid); border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px; box-shadow: 0 12px 32px rgba(0,0,0,.28); z-index: 50; }
+#addprog .addprog-t { margin: 4px 0; font-size: 13px; }
+#addprog .addprog-i + .addprog-i { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 6px; }
+#addprog .card.progress { padding: 10px 12px; }
+@media (max-width: 860px) { .addbox { position: fixed; left: 16px; right: 16px; top: 72px; width: auto; } }
