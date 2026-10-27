@@ -90,13 +90,15 @@ def main() -> int:
     ap.add_argument("--model", default=os.environ.get("RAEM_LLM_DEFAULT", "qwen2.5:7b"))
     ap.add_argument("--out", required=True)
     ap.add_argument("--market", default="auto", help="accepted for compatibility: the pipeline recognises Dhaka Stock Exchange codes itself")
-    ap.add_argument("--name", help="accepted for compatibility")
+    ap.add_argument("--name", help="the company's name, used to find press coverage (default: the saved or research name, else the ticker)")
     a = ap.parse_args()
     ticker = a.ticker.strip().upper()
 
     os.environ["RAEM_LLM_PROVIDER"] = a.provider
     os.environ["RAEM_LLM_MODEL"] = a.model
     os.environ["PYTHONIOENCODING"] = "utf-8"
+    if a.name:
+        os.environ["RAEM_COMPANY_NAME"] = a.name       # the name the press searches and the news filter use
     os.environ.setdefault("OLLAMA_BASE_URL", "http://localhost:11434")
 
     from app.ai_pipeline import config, embeddings, llm as llm_mod

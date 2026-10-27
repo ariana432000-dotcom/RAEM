@@ -36,3 +36,4 @@ pdfplumber>=0.11        # DSE annual/quarterly report extraction (tradingagents/
 markdown>=3.6          # agent reports to HTML
 anthropic>=0.34        # raw SDK call of the DSE statement extractor (langchain-anthropic brings it too)
 huggingface_hub>=0.30          # free storage on a Hugging Face Space (backend/tools/hf_sync.py)
+ddgs>=9.0

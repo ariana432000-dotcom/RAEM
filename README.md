@@ -187,6 +187,8 @@ Know before you host:
 
 The AI analysis is the pipeline of the any_with_dse app, ported without changes to its agents: `backend/app/ai_pipeline/runner.py` runs 16 steps in order: outcome backfill, fundamentals, market, news (with RAG), sentiment, macro regime, bull vs bear debate, facilitator, memory (regime reflection and retrieval of similar past episodes), post-mortem, trader, risk debate, risk facilitator, portfolio manager, decision verifier, save episode. One code path serves every ticker, international or Dhaka Stock Exchange (`backend/tradingagents/dataflows/dse_*.py`). There are no per-company notebooks. A fix in `agents.py` reaches every company.
 
+The four analysts (fundamentals, market, news, sentiment) work as in the research notebooks: Fundamentals passes only code-extracted numbers to the other agents (its own verdict stays in the log), Market avoids bull/bear wording, News adds dated press coverage and stores every item once by type (company, web, sector, exchange-wide) without ever using news from after the trade date, and Sentiment is a score computed in code from the stored news with a keyword list, which the LLM only explains (`RAEM_RULE_SENTIMENT=0` turns that off). Dhaka companies read the notebook's DSE data layer (`backend/app/ai_pipeline/dse_layer.py`).
+
 | Pipeline part | On the site |
 |---|---|
 | Fundamentals, Market, Macro regime, News (with RAG), Sentiment analysts | AI Analysis pipeline tabs, News and Fundamentals pages |

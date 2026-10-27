@@ -104,6 +104,12 @@ def env(tmp_path, monkeypatch, server):
     from app.ai_pipeline import agents, memory
     monkeypatch.setattr(agents, "fetch_macro_snapshot", lambda *a, **k: {"vix": {"latest": 18.0, "avg": 17.5}, "tnx": {"latest": 4.2, "avg": 4.1}, "dxy": {"latest": 104.0, "avg": 103.5}})
     monkeypatch.setattr(memory, "_fetch_latest_close", lambda *a, **k: 105.0)
+    # no web search in tests: one dated press item that names the company
+    from app.ai_pipeline import news_rag
+    from datetime import datetime
+    day = datetime.now().strftime("%Y-%m-%d")
+    monkeypatch.setattr(news_rag, "fetch_web_news", lambda *a, **k: f"- [{day}] AAA profit rose 12% and the board announced a cash dividend: results beat the forecast. (example.com)")
+    monkeypatch.setattr(news_rag, "fetch_sector_news", lambda *a, **k: "")
     return tmp_path
 
 
@@ -135,6 +141,22 @@ def test_full_run_writes_a_session_the_website_can_read(env, capsys):
     assert latest["debate"]["complete"] is True and latest["llm_provider"] == "openai" and res["new_llm_calls"] > 5
     # the trading log is where sessions.py reads it
     assert (env / "logs" / "trading_log_AAA.json").exists()
+
+
+def test_analysts_follow_the_research_notebooks(env, capsys):
+    """Sentiment is scored in code from the stored news; Fundamentals hands the others numbers only; Market avoids bull/bear."""
+    code, out = run_cli(env)
+    assert code == 0, capsys.readouterr().out
+    log = json.load(open(env / "logs" / "trading_log_AAA.json", encoding="utf-8"))
+    steps = {s["step"]: s["output"] for s in log[-1]["steps"]} if isinstance(log, list) else {s["step"]: s["output"] for s in log["steps"]}
+    sm = steps["Sentiment Analyst"]["sentiment_metrics"]
+    assert sm["source"] == "RULE_BASED" and sm["positive_count"] >= 1 and sm["n_items"] >= 1
+    assert float(sm["score"]) > 5.5 and sm["overall"] in ("BULLISH", "NEUTRAL") and "llm_score" in sm
+    fund = steps["Fundamentals Analyst"]
+    assert fund["facts_sent_to_other_agents"].startswith("FUNDAMENTALS - NUMBERS ONLY")
+    assert fund["report"] and not fund["report"].startswith("FUNDAMENTALS - NUMBERS ONLY")
+    assert "bullish" not in steps["Market Analyst"]["report"].lower() and "bearish" not in steps["Market Analyst"]["report"].lower()
+    assert "news_table_md" in steps["News Analyst"]
 
 
 def test_billing_error_is_reported_at_once_and_continue_reuses_the_saved_answers(env, server, capsys):

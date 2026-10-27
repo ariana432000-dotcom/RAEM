@@ -1058,7 +1058,7 @@ function renderNews() {
       ${statCard("Overall sentiment", esc(na.overall_sentiment || "–"), "news analyst", na.overall_sentiment === "POSITIVE" ? "buy" : na.overall_sentiment === "NEGATIVE" ? "sell" : "hold", "news")}
       ${statCard("Positive", esc(na.positive_count ?? "–"), "as counted by the analyst", "buy", "line")}
       ${statCard("Negative", esc(na.negative_count ?? "–"), "as counted by the analyst", "sell", "line")}
-      ${statCard("Social sentiment", esc(se.overall || "–"), `score ${esc(se.score ?? "N/A")}`, "", "brain")}
+      ${statCard("News-flow sentiment", esc(se.overall || "–"), `score ${esc(se.score ?? "N/A")}/10 · ${se.source === "RULE_BASED" ? `scored in code from ${esc(se.n_items ?? "–")} stored news items` : "read by the LLM"}`, "", "brain")}
     </div>
     ${card("News analyst report", `${esc(t)} · session of ${dLong(L.date)}`, "", `<div class="scrollbox"><div class="pre">${md((L.steps.News || {}).text || "No news report.")}</div></div><p class="src">Source: notebooks/trading_log_*.json, News Analyst step (shortened).</p>`)}
     ${card("Stored news text", `${chunks.length} chunks for ${esc(t)} in the retrieval store.`, "", dates.length ? dates.slice(0, 4).map(d => `<div class="memcard" style="margin-bottom:10px"><div class="hd"><span class="badge accent">${esc(d)}</span><span class="sub">${byDate[d].length} chunks</span></div><p>${esc(byDate[d][0].doc)}</p></div>`).join("") : emptyState("inbox", "No stored news", "Nothing for this ticker in raem_news_corpus."))}`;

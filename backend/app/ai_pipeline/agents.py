@@ -88,6 +88,46 @@ def extract_final_proposal(report_text: str) -> str:
     return f"FINAL TRANSACTION PROPOSAL: {m.group(1).upper()}"
 
 
+# ==========================================================================
+# Settings and helpers of the research notebooks (token savers and numbers-only hand-off)
+# ==========================================================================
+# Reports of the four analysts are kept short: the debaters read only the first part of each.
+ANALYST_LEN_RULES = {
+    "market": ("LENGTH: start with one line 'KEY POINTS:' (at most 350 characters) giving RSI, MACD, the price vs the 50-day SMA and the "
+               "Bollinger position, each with its number. After it write at most 120 words of explanation, then the table. "
+               "Later agents read only the first 500 characters of this report."),
+    "news": "LENGTH: at most 1-2 sentences per section and about 180 words in total before the table.",
+    "sentiment": "LENGTH: about 150 words in total before the table.",
+    "fundamentals": "LENGTH: at most about 250 words before the table.",
+}
+
+
+def _len_rule(name: str) -> str:
+    return ("\n" + ANALYST_LEN_RULES[name] + "\n") if name in ANALYST_LEN_RULES else ""
+
+
+# The Fundamentals analyst's BUY/HOLD/SELL call is not passed to the other agents: they get only the numbers the code
+# extracted (no narrative, no verdict).  The analyst's own report and verdict are still saved in the session log.
+FUND_NUMBERS_ONLY = os.environ.get("RAEM_FUND_NUMBERS_ONLY", "1") != "0"
+FUND_LLM_REPORT = os.environ.get("RAEM_FUND_LLM_REPORT", "1") != "0"   # 0 = skip the analyst's own LLM call (nothing downstream reads it)
+FUND_FACTS_MARK = "FUNDAMENTALS - NUMBERS ONLY"
+
+# The Market analyst describes the stock's OWN price and indicators, so it must not say "bullish" / "bearish".  The
+# prompt asks for neutral wording and the code enforces it, because a small model does not always obey.
+NEUTRAL_WORDING = True
+_BB_MAP = [
+    (re.compile(r"\bbull(?:ish)?\s+market\b", re.I), "uptrend"), (re.compile(r"\bbear(?:ish)?\s+market\b", re.I), "downtrend"),
+    (re.compile(r"\bbullish\b", re.I), "upward-leaning"), (re.compile(r"\bbearish\b", re.I), "downward-leaning"),
+    (re.compile(r"\bbulls\b", re.I), "buyers"), (re.compile(r"\bbears\b", re.I), "sellers"),
+]
+
+
+def _neutralise_bull_bear(text: str) -> str:
+    for rx, rep in _BB_MAP:
+        text = rx.sub(rep, text)
+    return text
+
+
 def _ta_utils(ticker: str = ""):
     """Grab the data-fetching + instrument-context helpers the agents need
     (lazy import).
@@ -119,7 +159,14 @@ def _ta_utils(ticker: str = ""):
 
     # FMP + Finnhub only when both keys are set; otherwise (and for every DSE code) the keyless tradingagents data tools
     # (Yahoo Finance, bdshare/dsebd.org) are used, so a company can be analysed with no data-provider account.
-    if (ticker and is_dse_ticker(ticker)) or not (os.environ.get("FMP_API_KEY") and os.environ.get("FINNHUB_API_KEY")):
+    if ticker and is_dse_ticker(ticker):
+        # Dhaka Stock Exchange: the research notebooks' data layer (prices, indicators, company page, disclosures, news)
+        from . import dse_layer as _d
+        get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement = (
+            _d.get_fundamentals, _d.get_balance_sheet, _d.get_cashflow, _d.get_income_statement)
+        get_stock_data, get_indicators, get_news, get_global_news = (
+            _d.get_stock_data, _d.get_indicators, _d.get_news, _d.get_global_news)
+    elif not (os.environ.get("FMP_API_KEY") and os.environ.get("FINNHUB_API_KEY")):
         from tradingagents.agents.utils.agent_utils import (
             get_fundamentals, get_balance_sheet, get_cashflow, get_income_statement,
             get_stock_data, get_indicators,
@@ -149,7 +196,10 @@ def _ta_utils(ticker: str = ""):
 # Analyst team
 # ==========================================================================
 def create_fundamentals_analyst(llm, log=print):
-    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+    """Fundamentals analyst.  Dhaka Stock Exchange companies follow the research notebook (the DSE data layer in
+    dse_layer.py: company page, disclosed EPS, corporate actions, capital structure, all in taka); any other company reads
+    the Yahoo Finance / provider tools.  Either way the other agents receive the numbers-only block, not the narrative."""
+    from langchain_core.messages import HumanMessage, SystemMessage
 
     def node(state):
         current_date = state["trade_date"]
@@ -160,39 +210,26 @@ def create_fundamentals_analyst(llm, log=print):
 
         from tradingagents.dataflows.symbol_utils import is_dse_ticker
         _is_dse = is_dse_ticker(company)
-        # 🔴 FIXED (reverted): a previous version of this set freq="annual"
-        # for DSE tickers, reasoning that dse_statement_extractor.py was
-        # built around annual-report PDFs. But this report's own field
-        # names (net_income_q, gross_profit_q, ...) and section label
-        # ("MOST RECENT QUARTER") were designed for QUARTERLY data --
-        # confirmed as the right call now that a real quarterly (Q1 2026
-        # un-audited) PDF is actually in use for this ticker. freq only
-        # controls which dict key the extracted data is wrapped under
-        # ("quarterlyReports" vs "annualReports") -- it doesn't change
-        # what get extracted -- so this now correctly matches what's
-        # really in the PDF instead of mislabeling quarterly figures as
-        # annual. Whichever type of PDF you actually place on disk for a
-        # ticker, request the freq that matches it.
-        _stmt_freq = "quarterly"
 
+        # ── Step 1: call every tool directly (no LLM involvement) ──
         tool_results = {}
-        for tool_name, tool_fn, args in [
-            ("get_fundamentals", U["get_fundamentals"], {"ticker": company, "curr_date": current_date}),
-            ("get_balance_sheet", U["get_balance_sheet"],
-             {"ticker": company, "freq": _stmt_freq, "curr_date": current_date}),
-            ("get_cashflow", U["get_cashflow"],
-             {"ticker": company, "freq": _stmt_freq, "curr_date": current_date}),
-            ("get_income_statement", U["get_income_statement"],
-             {"ticker": company, "freq": _stmt_freq, "curr_date": current_date}),
-        ]:
+        for tool_name in ("get_fundamentals", "get_balance_sheet", "get_cashflow", "get_income_statement"):
+            args = {"ticker": company, "curr_date": current_date}
+            if not _is_dse and tool_name != "get_fundamentals":
+                args["freq"] = "quarterly"
             log(f"calling {tool_name}")
             try:
-                tool_results[tool_name] = str(tool_fn.invoke(args))[:3000]
+                tool_results[tool_name] = str(U[tool_name].invoke(args))[:3000]
             except Exception as e:  # noqa: BLE001
                 tool_results[tool_name] = f"Error fetching {tool_name}: {e}"
                 log(f"  error {tool_name}: {e}")
+        fund = tool_results["get_fundamentals"]
+        bs = tool_results["get_balance_sheet"]
+        cf = tool_results["get_cashflow"]
+        inc = tool_results["get_income_statement"]
 
         def extract_numbers(raw, keys):
+            """Specific rows from CSV-like data."""
             results = {}
             for key in keys:
                 for line in raw.split("\n"):
@@ -204,169 +241,147 @@ def create_fundamentals_analyst(llm, log=print):
                             break
             return results
 
-        def extract_dict_numbers(raw, keys):
-            """dse_statement_extractor.get_statement() returns a Python dict,
-            which `str(tool_fn.invoke(args))` turns into a *single-line* repr
-            (no newlines) -- unlike yfinance's DataFrame str() output, which
-            is naturally one row per line. extract_numbers() above scans
-            "per line" and grabs whichever large number appears first on that
-            line; on a single-line dict repr that means every key would
-            silently resolve to the SAME number instead of honestly showing
-            N/A. Anchor directly on `'key': value` so each key only ever
-            matches its own value."""
-            results = {}
-            for key in keys:
-                m = re.search(rf"['\"]{re.escape(key)}['\"]\s*:\s*(-?[\d.]+)", raw)
-                if m:
-                    try:
-                        results[key] = float(m.group(1))
-                    except ValueError:
-                        continue
-            return results
+        cur = "৳" if _is_dse else "$"
 
         def fmt(n):
+            """Large number to a readable string (taka for a DSE company, dollars otherwise)."""
             try:
                 n = float(n)
                 if abs(n) >= 1e9:
-                    return f"${n / 1e9:.2f}B"
+                    return f"{cur}{n / 1e9:.2f}B"
                 if abs(n) >= 1e6:
-                    return f"${n / 1e6:.1f}M"
-                return f"${n:,.0f}"
+                    return f"{cur}{n / 1e6:.1f}M"
+                return f"{cur}{n:,.0f}"
             except Exception:  # noqa: BLE001
                 return str(n)
-
-        fund = tool_results["get_fundamentals"]
-        inc = tool_results["get_income_statement"]
-        cf = tool_results["get_cashflow"]
-        bs = tool_results["get_balance_sheet"]
 
         def g(pattern, raw):
             m = re.search(pattern, raw)
             return m.group(1) if m else "N/A"
 
         if _is_dse:
-            # ✅ FIXED: dsebd.org's snapshot (dse_fundamentals.py) and the
-            # PDF-extracted statements (dse_statement_extractor.py) use their
-            # own label/key conventions, not yfinance/Alpha Vantage's. The
-            # fixed regex patterns in the `else` branch below (e.g. "PE Ratio",
-            # "Market Cap", "Total Revenue") never matched DSE output, so
-            # every field silently fell back to "N/A" for BD tickers. This
-            # branch parses the actual DSE formats instead of assuming a
-            # US-vendor shape.
+            # ── DSE (research notebook): DSE's company page never prints PE / EPS / revenue / beta / yield in structured
+            #    form, so EPS and a rough P/E come from the disclosure feed (get_income_statement); dividends and issues
+            #    come from get_cashflow's corporate-action history; capital structure from get_balance_sheet. ──
+            pe = re.search(r"PE Ratio.*?:\s*([\d.]+)", fund)
+            eps = re.search(r"EPS \(TTM\).*?:\s*([\d.]+)", fund)
+            pe_from_inc = re.search(r"P/E Ratio(?:\s*\([^)]*\))?:\s*(-?[\d.]+)", inc)
+            eps_from_inc = re.search(r"Most Recent Disclosed EPS: Tk\.\s*(-?[\d.]+)", inc)
+            eps_period_m = re.search(r"Most Recent Disclosed EPS: Tk\.\s*-?[\d.]+\s*for\s*([^\n]+)", inc)
+            pe_basis_m = re.search(r"P/E Ratio\s*\(rough,\s*([^)]*)\)", inc)
+            mcap = re.search(r"Market Cap.*?:\s*([\d.]+)", fund)
+            rev_ttm = re.search(r"Revenue \(TTM\).*?:\s*([\d.]+)", fund)
+            beta = re.search(r"Beta.*?:\s*([\d.]+)", fund)
+            div = re.search(r"Dividend Yield.*?:\s*([\d.]+)", fund)
+            hi52 = re.search(r"52 Week High.*?:\s*([\d.]+)", fund)
+            lo52 = re.search(r"52 Week Low.*?:\s*([\d.]+)", fund)
+            sector = re.search(r"Sector:\s*(.+)", fund)
+            last_px = re.search(r"Last Trading Price.*?:\s*([\d.]+)", fund)
 
-            def g_dse(keywords, raw, exclude=()):
-                """Scan the DSE snapshot's `Label: Value` lines for a keyword
-                substring (mirrors the same keyword-matching dse_fundamentals.py
-                itself uses to pick fields off dsebd.org, since dsebd.org's
-                exact label wording isn't guaranteed / can drift) and pull the
-                first number out of that line."""
-                for line in raw.split("\n"):
-                    low = line.lower()
-                    if any(k in low for k in keywords) and not any(e in low for e in exclude):
-                        m = re.search(r"(-?[\d,]+\.?\d*)", line.split(":", 1)[-1])
-                        if m:
-                            return m.group(1).replace(",", "")
-                return "N/A"
+            pe_val = pe.group(1) if pe else (pe_from_inc.group(1) if pe_from_inc else "N/A")
+            eps_val = eps.group(1) if eps else (eps_from_inc.group(1) if eps_from_inc else "N/A")
+            mcap_val = fmt(mcap.group(1)) if mcap else "N/A"
+            rev_val = fmt(rev_ttm.group(1)) if rev_ttm else "N/A"
+            beta_val = beta.group(1) if beta else "N/A"
+            div_val = div.group(1) if div else "N/A"
+            hi52_val = hi52.group(1) if hi52 else "N/A"
+            lo52_val = lo52.group(1) if lo52 else "N/A"
+            sector_val = sector.group(1).strip() if sector else "N/A"
+            last_px_val = last_px.group(1) if last_px else "N/A"
+            eps_period_txt = eps_period_m.group(1).strip()[:60] if eps_period_m else "period not stated"
+            pe_basis_txt = ("rough: " + pe_basis_m.group(1).strip()) if pe_basis_m else "basis not stated"
+            # N/A must never reach the LLM as "N/A%" (a small model turns it into "0%" and every later agent copies it)
+            div_line = f"{div_val}%" if div else "data not available (DSE publishes no yield -- do NOT write 0%; use the Cash Dividend history below)"
 
-            pe_val = g_dse(["pe(x)", "p/e"], fund)
-            eps_val = g_dse(["eps"], fund, exclude=("change", "p/e", "ratio"))
-            mcap_val = g_dse(["market capitalization", "market cap"], fund)
-            div_val = g_dse(["dividend"], fund)
-            # ✅ CHANGED: dsebd.org's page doesn't publish a computed
-            # dividend *yield* (dividend / current price) -- the "dividend"
-            # line this matches is the last-declared cash dividend
-            # percentage of FACE VALUE (e.g. "10%" on a 10-taka face value
-            # share), a fundamentally different, usually much larger number
-            # than a true yield. Labeling it "Dividend Yield" in the report
-            # asserts a calculation that was never actually done.
-            div_label = "Last Declared Dividend (% of face value, not a computed yield)"
-            # 🔴 FIXED: rev_val used to stay hardcoded "N/A" for DSE tickers
-            # unconditionally -- true for the dsebd.org snapshot page (which
-            # really doesn't publish it), but WRONG once a statement PDF is
-            # on disk: totalRevenue is a real field in the DSE extractor's
-            # income-statement schema (confirmed against a real quarterly
-            # filing, BATBC Q1 2026 -- "Net revenue from contracts with
-            # customers"). Placeholder here; overwritten below once
-            # inc_rows is available, same pattern as net_income_val etc.
-            rev_val = "N/A"
-            beta_val = "N/A"
-            hi52_val = "N/A"
-            lo52_val = "N/A"
-            # ✅ CHANGED: 50-Day SMA WAS being hardcoded N/A here even though
-            # it's not actually a dsebd.org-snapshot-only field -- it's a
-            # price-derived technical indicator, and get_indicators (the
-            # same tool the Market Analyst already calls, computed from
-            # bdshare OHLCV history) can provide it directly rather than
-            # requiring dsebd.org to publish it.
-            try:
-                sma_raw = str(U["get_indicators"].invoke({
-                    "symbol": company, "indicator": "close_50_sma", "curr_date": current_date,
-                }))
-                # 🔴 FIXED: the old `re.search(r"(-?[\d,]+\.?\d*)", sma_raw)`
-                # matched the FIRST number anywhere in the raw string --
-                # which is the "50" embedded in the tool's own header line
-                # ("## close_50_sma values from..."), not any real price.
-                # That header always comes before the actual per-date value
-                # lines, so this silently returned the literal digits from
-                # the indicator's *name* every single time, regardless of
-                # the stock's actual SMA (confirmed live: a report showing
-                # "50-Day SMA: 50" for a stock trading near ৳240-250 --
-                # off by roughly the entire price of the stock). Anchoring
-                # on the "YYYY-MM-DD: value" line format (same pattern the
-                # Market Analyst's own indicator parsing already uses
-                # below) skips the header/trailing note entirely and reads
-                # the real value from the most recent dated line.
-                sma50_val = "N/A"
-                for line in sma_raw.split("\n"):
-                    line = line.strip()
-                    if re.match(r"\d{4}-\d{2}-\d{2}:", line) and "N/A" not in line:
-                        m_sma = re.search(r":\s*(-?[\d,]+\.?\d*)", line)
-                        if m_sma:
-                            sma50_val = m_sma.group(1).replace(",", "")
-                        break
-            except Exception:  # noqa: BLE001
-                sma50_val = "N/A"
+            inc_rows = extract_numbers(inc, ["Total Revenue", "Gross Profit", "Operating Income",
+                                             "Net Income From Continuing", "Normalized EBITDA"])
+            cash_div_m = re.search(r"Cash Dividend:\s*(.+)", cf)
+            bonus_issue_m = re.search(r"Bonus Issue.*?:\s*(.+)", cf)
+            right_issue_m = re.search(r"Right Issue:\s*(.+)", cf)
+            cash_div_val = cash_div_m.group(1).strip() if cash_div_m else "N/A"
+            bonus_issue_val = bonus_issue_m.group(1).strip() if bonus_issue_m else "N/A"
+            right_issue_val = right_issue_m.group(1).strip() if right_issue_m else "N/A"
+            bs_rows = extract_numbers(bs, ["Authorized Capital", "Paid-up Capital", "Reserve & Surplus", "Other Comprehensive Income"])
 
-            # dse_statement_extractor.py returns an Alpha-Vantage-*shaped*
-            # dict but with its own camelCase keys (see STATEMENT_SCHEMAS) --
-            # "Total Revenue" etc. never existed in that JSON, so
-            # extract_numbers was searching for the wrong keys entirely.
-            # Net Debt / Free Cash Flow aren't literal fields in the DSE
-            # schema at all, so derive them from the fields that are
-            # (long+short term debt; operating cash flow minus capex).
-            inc_rows = extract_dict_numbers(inc, ["totalRevenue", "grossProfit", "operatingIncome",
-                                                  "netIncome", "ebitda"])
-            cf_rows = extract_dict_numbers(cf, ["operatingCashflow", "capitalExpenditures"])
-            bs_rows = extract_dict_numbers(bs, ["longTermDebt", "shortTermDebt", "cashAndCashEquivalents"])
+            net_income_val = fmt(inc_rows.get("Net Income From Continuing", "N/A"))
+            gross_profit_val = fmt(inc_rows.get("Gross Profit", "N/A"))
+            operating_income_val = fmt(inc_rows.get("Operating Income", "N/A"))
+            ebitda_val = fmt(inc_rows.get("Normalized EBITDA", "N/A"))
 
-            # Now that inc_rows exists, use it for revenue if the statement
-            # PDF actually had a figure -- otherwise rev_val stays "N/A"
-            # (still true when there's no PDF on disk at all).
-            if "totalRevenue" in inc_rows:
-                rev_val = fmt(inc_rows["totalRevenue"])
+            data_summary = f"""
+COMPANY: {company} | DATE: {current_date}
+{instrument_context}
 
-            net_income_val = fmt(inc_rows.get("netIncome", "N/A"))
-            gross_profit_val = fmt(inc_rows.get("grossProfit", "N/A"))
-            operating_income_val = fmt(inc_rows.get("operatingIncome", "N/A"))
-            ebitda_val = fmt(inc_rows.get("ebitda", "N/A"))
+COMPANY SNAPSHOT:
+- Sector: {sector_val}
+- Last Trading Price: {last_px_val}
 
-            total_debt_num = None
-            if "longTermDebt" in bs_rows or "shortTermDebt" in bs_rows:
-                total_debt_num = bs_rows.get("longTermDebt", 0.0) + bs_rows.get("shortTermDebt", 0.0)
-            net_debt_num = (
-                total_debt_num - bs_rows["cashAndCashEquivalents"]
-                if total_debt_num is not None and "cashAndCashEquivalents" in bs_rows
-                else None
-            )
-            fcf_num = (
-                cf_rows["operatingCashflow"] - cf_rows["capitalExpenditures"]
-                if "operatingCashflow" in cf_rows and "capitalExpenditures" in cf_rows
-                else None
-            )
-            free_cash_flow_val = fmt(fcf_num) if fcf_num is not None else "N/A"
-            buybacks_val = "N/A"  # not a field the DSE schema exposes
-            net_debt_val = fmt(net_debt_num) if net_debt_num is not None else "N/A"
-            total_debt_val = fmt(total_debt_num) if total_debt_num is not None else "N/A"
+MARKET DATA:
+- Market Cap: {mcap_val}
+- P/E Ratio: {pe_val}  [{pe_basis_txt}]
+- EPS (most recent disclosed period = {eps_period_txt}; NOT trailing-12-month): ৳{eps_val}
+- Revenue (TTM): {rev_val}
+- Beta: {beta_val}
+- Dividend Yield: {div_line}
+- 52-Week Range: ৳{lo52_val} - ৳{hi52_val}
+
+MOST RECENT QUARTER (Net Income is an ESTIMATE from the company's own disclosed
+EPS x outstanding shares -- DSE has no audited income statement; Gross Profit/
+Operating Income/EBITDA are genuinely unavailable from any DSE source):
+- Net Income (estimated): {net_income_val}
+- Gross Profit: {gross_profit_val}
+- Operating Income: {operating_income_val}
+- EBITDA: {ebitda_val}
+
+CORPORATE ACTIONS / DIVIDEND HISTORY (DSE publishes no cash flow statement -- this is the closest public proxy):
+- Cash Dividend: {cash_div_val}
+- Bonus Issue: {bonus_issue_val}
+- Right Issue: {right_issue_val}
+- Free Cash Flow: data not available (DSE publishes no cash flow statement)
+- Stock Buybacks: data not available (DSE publishes no cash flow statement)
+
+BALANCE SHEET / CAPITAL STRUCTURE (DSE publishes no total assets/liabilities/net debt -- this is what's public):
+- Authorized Capital: {fmt(bs_rows.get("Authorized Capital", "N/A"))}
+- Paid-up Capital: {fmt(bs_rows.get("Paid-up Capital", "N/A"))}
+- Reserve & Surplus (excl. OCI): {fmt(bs_rows.get("Reserve & Surplus", "N/A"))}
+- Other Comprehensive Income (OCI): {fmt(bs_rows.get("Other Comprehensive Income", "N/A"))}
+- Net Debt: data not available (DSE publishes no full balance sheet)
+- Total Debt: data not available (DSE publishes no full balance sheet)
+"""
+
+            def _short(x, n=350):
+                x = str(x)
+                return x if len(x) <= n else x[:n].rstrip() + " ..."
+            _unavail = [lbl for lbl, k in (("gross profit", "Gross Profit"), ("operating income", "Operating Income"),
+                                           ("EBITDA", "Normalized EBITDA")) if k not in inc_rows]
+            facts_lines = [
+                f"{FUND_FACTS_MARK} (extracted by code from DSE pages; no analyst opinion) -- {company}, {current_date}",
+                f"Sector: {sector_val} | Last trading price: {last_px_val} | Market cap: {mcap_val}",
+                f"P/E: {pe_val} [{pe_basis_txt}] | EPS: ৳{eps_val} ({eps_period_txt}; NOT trailing-12-month) | Dividend yield: "
+                + (f"{div_val}%" if div else "not published by DSE (do NOT write 0%)"),
+                f"52-week range: ৳{lo52_val} - ৳{hi52_val} | Beta: {beta_val} | Revenue (TTM): {rev_val}",
+                f"Net income, latest period (ESTIMATE from disclosed EPS x shares): {net_income_val}",
+                f"Cash dividend history: {_short(cash_div_val)} | Bonus issue: {_short(bonus_issue_val, 120)} | Right issue: {_short(right_issue_val, 120)}",
+                f"Paid-up capital: {fmt(bs_rows.get('Paid-up Capital', 'N/A'))} | Reserve & surplus (excl. OCI): "
+                f"{fmt(bs_rows.get('Reserve & Surplus', 'N/A'))} | OCI: {fmt(bs_rows.get('Other Comprehensive Income', 'N/A'))}",
+                "Not published by DSE: free cash flow, net debt, total debt" + (", " + ", ".join(_unavail) if _unavail else "") + ".",
+            ]
+            fund_metrics = {
+                "market_cap": mcap_val, "pe_ratio": pe_val, "eps_ttm": eps_val, "eps_period": eps_period_txt,
+                "pe_basis": pe_basis_txt, "revenue_ttm": rev_val, "beta": beta_val, "dividend_yield": div_val,
+                "52w_high": hi52_val, "52w_low": lo52_val, "sector": sector_val, "last_trading_price": last_px_val,
+                "net_income_q": net_income_val, "gross_profit_q": gross_profit_val,
+                "operating_income_q": operating_income_val, "ebitda_q": ebitda_val,
+                "cash_dividend": cash_div_val, "bonus_issue": bonus_issue_val, "right_issue": right_issue_val,
+                "authorized_capital": fmt(bs_rows.get("Authorized Capital", "N/A")),
+                "paidup_capital_bs": fmt(bs_rows.get("Paid-up Capital", "N/A")),
+                "reserve_surplus": fmt(bs_rows.get("Reserve & Surplus", "N/A")),
+                "oci": fmt(bs_rows.get("Other Comprehensive Income", "N/A")),
+            }
+            extra_rules = """- Never call EPS or Net Income "TTM" or "trailing twelve months": they cover only the most recent disclosed period named above (usually ONE quarter).
+- Never write 0% (or any number) for a field that says data not available.
+- When describing dividends, quote the actual per-year figures from the Cash Dividend history; say "rising" or "falling" only if those figures show it.
+"""
         else:
             pe_val = g(r"PE Ratio.*?:\s*([\d.]+)", fund)
             eps_val = g(r"EPS \(TTM\).*?:\s*([\d.]+)", fund)
@@ -376,16 +391,13 @@ def create_fundamentals_analyst(llm, log=print):
             rev_val = fmt(rev_ttm.group(1)) if rev_ttm else "N/A"
             beta_val = g(r"Beta.*?:\s*([\d.]+)", fund)
             div_val = g(r"Dividend Yield.*?:\s*([\d.]+)", fund)
-            div_label = "Dividend Yield"
             hi52_val = g(r"52 Week High.*?:\s*([\d.]+)", fund)
             lo52_val = g(r"52 Week Low.*?:\s*([\d.]+)", fund)
             sma50_val = g(r"50 Day Average.*?:\s*([\d.]+)", fund)
-
             inc_rows = extract_numbers(inc, ["Total Revenue", "Gross Profit", "Operating Income",
                                              "Net Income From Continuing", "Normalized EBITDA"])
             cf_rows = extract_numbers(cf, ["Free Cash Flow", "Repurchase Of Capital Stock"])
             bs_rows = extract_numbers(bs, ["Net Debt", "Total Debt", "Cash And Cash Equivalents"])
-
             net_income_val = fmt(inc_rows.get("Net Income From Continuing", "N/A"))
             gross_profit_val = fmt(inc_rows.get("Gross Profit", "N/A"))
             operating_income_val = fmt(inc_rows.get("Operating Income", "N/A"))
@@ -394,45 +406,8 @@ def create_fundamentals_analyst(llm, log=print):
             buybacks_val = fmt(cf_rows.get("Repurchase Of Capital Stock", "N/A"))
             net_debt_val = fmt(bs_rows.get("Net Debt", "N/A"))
             total_debt_val = fmt(bs_rows.get("Total Debt", "N/A"))
+            div_line = f"{div_val}%" if div_val != "N/A" else "data not available (do NOT write 0%)"
 
-        # ✅ CHANGED (per explicit request): for DSE tickers, Beta and Stock
-        # Buybacks aren't just "not fetched yet" -- they're concepts DSE-
-        # listed companies' disclosures don't report at all (no beta
-        # calculation is published anywhere on dsebd.org, and share
-        # buybacks aren't standard practice/reporting line item for
-        # Bangladeshi listed companies the way US 10-Q "Repurchase Of
-        # Capital Stock" is). Showing them as permanent "N/A" rows made
-        # the report look more incomplete than it really is and risked
-        # nudging the LLM toward extra caution over fields that were never
-        # going to have data. Omitted entirely for DSE tickers rather than
-        # displayed empty; kept for the non-DSE (yfinance/FMP) path where
-        # they're genuine, normally-populated fields.
-        if _is_dse:
-            data_summary = f"""
-COMPANY: {company} | DATE: {current_date}
-
-MARKET DATA:
-- Market Cap: {mcap_val}
-- P/E Ratio: {pe_val}
-- EPS: {eps_val}
-- Revenue: {rev_val}
-- {div_label}: {div_val}%
-- 50-Day SMA: {sma50_val}
-
-MOST RECENT QUARTER (income statement):
-- Net Income: {net_income_val}
-- Gross Profit: {gross_profit_val}
-- Operating Income: {operating_income_val}
-- EBITDA: {ebitda_val}
-
-CASH FLOW (most recent quarter):
-- Free Cash Flow: {free_cash_flow_val}
-
-BALANCE SHEET (most recent quarter):
-- Net Debt: {net_debt_val}
-- Total Debt: {total_debt_val}
-"""
-        else:
             data_summary = f"""
 COMPANY: {company} | DATE: {current_date}
 
@@ -442,7 +417,7 @@ MARKET DATA (TTM):
 - EPS (TTM): {eps_val}
 - Revenue (TTM): {rev_val}
 - Beta: {beta_val}
-- {div_label}: {div_val}%
+- Dividend Yield: {div_line}
 - 52-Week Range: {lo52_val} - {hi52_val}
 - 50-Day SMA: {sma50_val}
 
@@ -460,83 +435,67 @@ BALANCE SHEET (most recent quarter):
 - Net Debt: {net_debt_val}
 - Total Debt: {total_debt_val}
 """
+            facts_lines = [
+                f"{FUND_FACTS_MARK} (extracted by code from the data provider; no analyst opinion) -- {company}, {current_date}",
+                f"Market cap: {mcap_val} | P/E: {pe_val} | EPS (TTM): {eps_val} | Revenue (TTM): {rev_val}",
+                f"Beta: {beta_val} | Dividend yield: " + (f"{div_val}%" if div_val != "N/A" else "not available (do NOT write 0%)")
+                + f" | 52-week range: {lo52_val} - {hi52_val} | 50-day SMA: {sma50_val}",
+                f"Latest quarter: net income {net_income_val} | gross profit {gross_profit_val} | operating income {operating_income_val} | EBITDA {ebitda_val}",
+                f"Free cash flow: {free_cash_flow_val} | Stock buybacks: {buybacks_val} | Net debt: {net_debt_val} | Total debt: {total_debt_val}",
+            ]
+            fund_metrics = {
+                "market_cap": mcap_val, "pe_ratio": pe_val, "eps_ttm": eps_val, "revenue_ttm": rev_val,
+                "dividend_yield": div_val, "50d_sma": sma50_val, "net_income_q": net_income_val,
+                "gross_profit_q": gross_profit_val, "operating_income_q": operating_income_val,
+                "free_cash_flow_q": free_cash_flow_val, "net_debt": net_debt_val, "total_debt": total_debt_val,
+                "beta": beta_val, "52w_high": hi52_val, "52w_low": lo52_val, "ebitda_q": ebitda_val,
+            }
+            extra_rules = """- Missing/N/A fields are a normal limitation -- by themselves they are NOT a reason to default to HOLD. Base your verdict on what the
+  available numbers show; reserve HOLD for data that is itself mixed or conflicting, not merely incomplete.
+- Never write 0% (or any number) for a field that says data not available.
+"""
+        facts_block = "\n".join(facts_lines)
 
+        # ── Step 2: the analyst's own report, written from the condensed summary ──
         prompt = f"""You are a senior financial analyst. Today is {current_date}.
 
 Write a professional fundamental analysis report for {company} using ONLY the data below.
 Structure: Company Overview -> Profitability -> Balance Sheet -> Cash Flow -> Risks -> Outlook
+{_len_rule('fundamentals')}
 End with a Markdown table and: FINAL TRANSACTION PROPOSAL: **BUY** / **HOLD** / **SELL**
 
 RULES:
 - Use ONLY the numbers below. Do NOT invent any figures.
+- Do NOT say "Q2 2023". The data is from {current_date}.
 - If a metric shows N/A, say "data not available".
-- Missing/N/A fields are a normal, common limitation -- by themselves they
-  are NOT a reason to default to HOLD. Base your verdict on what the
-  available numbers actually show. If the core figures you DO have (P/E,
-  EPS, revenue, profitability, debt levels) clearly point one direction,
-  give a decisive BUY or SELL and say plainly which data points you
-  couldn't factor in and why that doesn't change the call.
-- Reserve HOLD for when the available data is itself genuinely mixed or
-  conflicting (e.g. strong profitability but rising debt, or a cheap P/E
-  alongside deteriorating cash flow) -- not merely incomplete. "I don't
-  have every field" is not a basis for HOLD on its own.
-
+{extra_rules}
 {data_summary}
 """ + U["get_language_instruction"]()
-
         messages = [
             SystemMessage(content="You are a financial analyst. Use ONLY the provided numbers. Never invent data."),
             HumanMessage(content=prompt),
         ]
-        report = invoke_llm_with_retry(llm, messages).content
-        log("fundamentals report ready")
+        if FUND_LLM_REPORT:
+            report = invoke_llm_with_retry(llm, messages).content
+            log("fundamentals report ready")
+        else:
+            report = facts_block + "\n\n(LLM narrative skipped: RAEM_FUND_LLM_REPORT=0)"
+            log("fundamentals LLM report skipped -- numbers block only")
 
-        fund_metrics = {
-            "market_cap": mcap_val, "pe_ratio": pe_val, "eps_ttm": eps_val,
-            "revenue_ttm": rev_val, "dividend_yield": div_val,
-            "50d_sma": sma50_val,
-            "net_income_q": net_income_val,
-            "gross_profit_q": gross_profit_val,
-            "operating_income_q": operating_income_val,
-            "free_cash_flow_q": free_cash_flow_val,
-            "net_debt": net_debt_val,
-            "total_debt": total_debt_val,
-        }
-        # ✅ CHANGED (per explicit request): beta / 52-week high-low / EBITDA
-        # dropped for DSE tickers only -- beta and 52-week range are never
-        # populated at all for DSE (not published on the dsebd.org snapshot
-        # page, set to "N/A" unconditionally in the DSE branch above), and
-        # ebitda_q depends on an LLM-inferred figure from the statement PDF
-        # that isn't reliable enough to show as a headline metric. Non-DSE
-        # (yfinance-backed) tickers keep all four -- those come from real
-        # market data and are worth showing.
-        if not _is_dse:
-            fund_metrics["beta"] = beta_val
-            fund_metrics["52w_high"] = hi52_val
-            fund_metrics["52w_low"] = lo52_val
-            fund_metrics["ebitda_q"] = ebitda_val
-        # 🔧 TEMP DEBUG: surfaces what get_fundamentals actually returned,
-        # right in the same "metrics" panel you already screenshot -- no
-        # need to dig through Railway logs. If everything above is N/A,
-        # this field tells us why in one look:
-        #   - starts with "DSE fundamentals unavailable for..." -> the
-        #     dsebd.org request itself failed (network/cert/blocked)
-        #   - starts with "No fundamentals table found for..." -> the page
-        #     loaded but didn't parse into label:value rows (structure
-        #     changed, or dsebd.org served something other than the real
-        #     company page, e.g. a block/interstitial page)
-        #   - starts with "Error fetching get_fundamentals:" -> the tool
-        #     call itself raised an exception
-        #   - starts with "DSE fundamentals snapshot --" and has PE(x)/EPS/
-        #     Market Capitalization lines -> the fetch worked fine and the
-        #     issue is elsewhere (label wording g_dse doesn't recognize)
-        # Remove this key once the real cause is confirmed and fixed.
         fund_confidence = _field_completeness_confidence(fund_metrics)
+        # Surfaces what the data source returned, to diagnose an all-N/A run from the saved session
         fund_metrics["_debug_raw_fundamentals"] = str(fund)[:250]
         if _is_dse:
             fund_metrics["_debug_raw_balance_sheet"] = str(bs)[:250]
-        return {"fundamentals_report": report, "fund_metrics": fund_metrics,
-                "fundamentals_confidence": fund_confidence}
+        return {
+            # the other agents get only the numbers; the narrative and its verdict stay available here and in the log
+            "fundamentals_report": facts_block if FUND_NUMBERS_ONLY else report,
+            "fundamentals_report_llm": report,
+            "fundamentals_facts": facts_block,
+            "fund_verdict": extract_final_proposal(report),
+            "fund_metrics": fund_metrics,
+            "fundamentals_confidence": fund_confidence,
+        }
 
     return node
 
@@ -597,9 +556,16 @@ def create_market_analyst(llm, indicators_list, log=print):
 
 Using the REAL data below, write a brief technical analysis report for {company}.
 Include RSI, MACD, Bollinger Bands, SMA analysis.
+{_len_rule('market')}
+
+WORDING RULES: This is an analysis of {company}'s OWN price and indicators, not of the market. Never use the words
+"bullish", "bearish", "bull" or "bear". Describe the condition with neutral terms such as "upward momentum",
+"downward momentum", "price above/below the 50-day SMA", "RSI in the overbought / oversold / neutral zone",
+"price near the upper/lower Bollinger band". Do not predict the market direction.
 
 At the very end, output a Markdown table with EXACTLY these columns:
 | Indicator | Value | Signal | Interpretation |
+In the Signal column use only: UPWARD, DOWNWARD, NEUTRAL, OVERBOUGHT, OVERSOLD.
 
 === STOCK PRICE DATA ===
 {stock_data}
@@ -613,6 +579,8 @@ At the very end, output a Markdown table with EXACTLY these columns:
             HumanMessage(content=prompt),
         ]
         report = invoke_llm_with_retry(llm, messages).content
+        if NEUTRAL_WORDING:
+            report = _neutralise_bull_bear(report)
         log("market report ready")
 
         return {
@@ -626,8 +594,12 @@ At the very end, output a Markdown table with EXACTLY these columns:
 
 
 def create_news_analyst(llm, log=print):
-    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+    """News analyst.  Besides the exchange / provider feed it reads dated press coverage found by web search (directory
+    and price pages dropped).  The full, untruncated texts are returned in `news_raw_full` (and sector news in
+    `sector_news_full`) for the news corpus; the prompt copies stay capped."""
+    from langchain_core.messages import HumanMessage, SystemMessage
     from datetime import datetime, timedelta
+    from . import news_rag
 
     def node(state):
         current_date = state["trade_date"]
@@ -635,39 +607,101 @@ def create_news_analyst(llm, log=print):
         U = _ta_utils(company)
         asset_type = state.get("asset_type", "stock")
         instrument_context = U["build_instrument_context"](company, asset_type)
+        from tradingagents.dataflows.symbol_utils import is_dse_ticker
+        _is_dse = is_dse_ticker(company)
         log(f"Fetching news for {company} on {current_date}")
 
+        company_news_full = global_news_full = web_news_full = ""
         log("calling get_news")
         try:
             end_dt = datetime.strptime(current_date, "%Y-%m-%d")
             start_dt = end_dt - timedelta(days=7)
-            company_news = str(U["get_news"].invoke({
-                "ticker": company, "start_date": start_dt.strftime("%Y-%m-%d"),
-                "end_date": current_date,
-            }))[:3000]
+            company_news_full = str(U["get_news"].invoke({
+                "ticker": company, "start_date": start_dt.strftime("%Y-%m-%d"), "end_date": current_date,
+            }))
+            company_news = company_news_full[:3000]
         except Exception as e:  # noqa: BLE001
             company_news = f"Error: {e}"
 
         log("calling get_global_news")
         try:
-            global_news = str(U["get_global_news"].invoke({"curr_date": current_date}))[:2000]
+            global_news_full = str(U["get_global_news"].invoke({"curr_date": current_date}))
+            global_news = global_news_full[:2000]
         except Exception as e:  # noqa: BLE001
             global_news = f"Error: {e}"
+
+        log("calling web search (press coverage)")
+        sector_news_full = ""
+        try:
+            web_news_full = news_rag.fetch_web_news(company, log=log)
+            web_news = web_news_full[:2500]
+            sector_news_full = news_rag.fetch_sector_news(company, log=log)
+        except Exception as e:  # noqa: BLE001
+            web_news = f"Error: {e}"
+
+        if _is_dse:
+            global_title = "DSE MARKET-WIDE NOTICES (NOT global macro news -- see rule above)"
+            sections = "Company News Summary -> Web-Sourced Company Coverage -> DSE Market-Wide Notices -> Sentiment Assessment -> Key Risks"
+            global_rule = f"""RULE: The second section is DSE's own exchange-wide notices, NOT international/global
+macro news -- DSE has no general financial news feed, so do not present this as if it
+covers global markets, the Fed, or other countries. If it's thin, say so plainly.
+"""
+            table_rule = f"""RULE (table rows): A DSE Market-Wide Notice about a DIFFERENT specific company or fund
+(a director's share transaction, another company's NAV, another company's dividend, etc.)
+is NOT news about {company} and must NOT appear in the final table, even labeled NEUTRAL --
+including it implies relevance it doesn't have. Only include a market-wide item in the
+table if it is genuinely exchange-wide (overall market turnover, a circuit-breaker or
+trading-halt policy change, a market-wide holiday) rather than about one specific other
+company. Do NOT pad the table to reach 4-6 rows: if fewer than 4 rows are genuinely
+relevant to {company}, output only those rows, and if none are relevant, output a table
+with a single row stating "No company-specific or market-wide news relevant to {company}"
+in the Headline column and NEUTRAL elsewhere -- never substitute other companies' notices
+as filler."""
+        else:
+            global_title = "GLOBAL MARKET NEWS (background only -- not news about the company)"
+            sections = "Company News Summary -> Web-Sourced Company Coverage -> Global Market Context -> Sentiment Assessment -> Key Risks"
+            global_rule = f"""RULE: The global market news is background context, not news about {company}; never attribute it to {company}.
+"""
+            table_rule = f"""RULE (table rows): Only items genuinely about {company} (or clearly market-wide) belong in the table. Do NOT pad it to
+reach 4-6 rows: if fewer rows are relevant, output only those, and if none are, output a single row stating "No company-specific
+or market-wide news relevant to {company}" in the Headline column and NEUTRAL elsewhere."""
 
         prompt = f"""You are a news analyst. Today is {current_date}.
 {instrument_context}
 
 Using the REAL news data below, write a brief news analysis report for {company}.
-Sections: Company News Summary -> Global Macro Trends -> Sentiment Assessment -> Key Risks
+Sections: {sections}
+{_len_rule('news')}
+
+RULE: Each web item starts with the date written in its snippet, e.g. [2 days ago] or [no date]. Use that date; call a
+[no date] item "undated" and never "recent". Copy numbers EXACTLY as written in the snippet; add no detail the snippet does not contain.
+
+RULE: "Web-Sourced Company Coverage" comes from general web search (financial press
+articles), separate from the exchange's own feed -- treat it as a supplement,
+not a replacement, and if it says no results were found, say so plainly rather than
+inventing coverage.
+
+{global_rule}
+RULE: If any section below starts with "Error", that data source was UNAVAILABLE (a failed request) -- say "data unavailable" for it; do NOT treat it as "no news" and do NOT infer a neutral or positive sentiment from it.
+
+RULE: If COMPANY NEWS above says no news/disclosures were found for {company}, say that
+plainly in the Company News Summary -- do not invent items or reframe unrelated items as
+if they were about {company}.
+
+{table_rule}
 
 At the very end, output a Markdown table with EXACTLY these 5 columns:
 | Category | Headline | Sentiment | Impact | Source |
-(Fill 4-6 rows. Sentiment must be POSITIVE / NEGATIVE / NEUTRAL.)
+(Sentiment must be POSITIVE / NEGATIVE / NEUTRAL. Row count depends on actual relevance --
+see rule above, not a fixed target.)
 
 === COMPANY NEWS ({company}) ===
 {company_news}
 
-=== GLOBAL MARKET NEWS ===
+=== WEB-SOURCED COMPANY COVERAGE (general web search, see rule above) ===
+{web_news}
+
+=== {global_title} ===
 {global_news}
 """ + U["get_language_instruction"]()
 
@@ -682,22 +716,8 @@ At the very end, output a Markdown table with EXACTLY these 5 columns:
         pos = sum(1 for s in sentiments if "POSITIVE" in s.upper())
         neg = sum(1 for s in sentiments if "NEGATIVE" in s.upper())
         neu = sum(1 for s in sentiments if "NEUTRAL" in s.upper())
-        # 🔴 FIXED: `overall` used to come from
-        # re.search(r"(POSITIVE|NEGATIVE|NEUTRAL|BULLISH|BEARISH)", report)
-        # -- a first-match-anywhere scan of the ENTIRE free-form report
-        # (Company News Summary / Global Macro Trends / Sentiment
-        # Assessment / Key Risks, not just the table), completely
-        # disconnected from the pos/neg/neu counts computed right above
-        # it. A genuinely tied 2/2/2 headline split could -- and did --
-        # come out "NEGATIVE" just because that word happened to appear
-        # earliest in the prose, with zero relationship to the actual
-        # tally. Worse, the Sentiment Analyst downstream (which receives
-        # this value as "the News Analyst's overall read") would then
-        # construct a plausible-sounding post-hoc justification for why a
-        # balanced split "actually" leans negative -- confabulating a
-        # rationale for what was really just an extraction artifact. Now
-        # derived directly from the counts: strict majority wins, any tie
-        # (including 2/2/2) or neutral-dominant resolves to NEUTRAL.
+        # `overall` comes from the table counts (strict majority wins, any tie resolves to NEUTRAL), so it can never
+        # disagree with the counts it summarises.
         if pos > neg and pos > neu:
             overall = "POSITIVE"
         elif neg > pos and neg > neu:
@@ -709,90 +729,79 @@ At the very end, output a Markdown table with EXACTLY these 5 columns:
         news_metrics = {
             "positive_count": pos, "negative_count": neg, "neutral_count": neu,
             "overall_sentiment": overall,
-            "company_news_chars": len(company_news), "global_news_chars": len(global_news),
+            "company_news_chars": len(company_news), "web_news_chars": len(web_news), "global_news_chars": len(global_news),
         }
-        # Company news carries most of the weight -- it's what the report is
-        # actually about; global news is background context.
+        # Company news carries most of the weight; web coverage and global news are supplements.
         news_confidence = round(min(0.95,
-            _text_confidence(company_news, target_chars=1200, weight=0.75)
-            + _text_confidence(global_news, target_chars=800, weight=0.25)), 2)
+            _text_confidence(company_news, target_chars=1200, weight=0.6)
+            + _text_confidence(web_news, target_chars=800, weight=0.2)
+            + _text_confidence(global_news, target_chars=800, weight=0.2)), 2)
         return {
             "news_report": report, "news_metrics": news_metrics,
             "news_table_md": tbl_m.group(1) if tbl_m else "",
-            "news_raw": {"company_news": company_news, "global_news": global_news},
+            "news_raw": {"company_news": company_news, "web_news": web_news, "global_news": global_news},
+            "news_raw_full": {"company_news": company_news_full, "web_news": web_news_full, "global_news": global_news_full},
+            "sector_news_full": sector_news_full,
             "news_confidence": news_confidence,
         }
 
     return node
 
 
-def create_sentiment_analyst(llm, log=print):
-    """Runs right after the News Analyst in the pipeline (see runner.py), so
-    state["news_metrics"] / state["news_table_md"] are already populated
-    with real, per-headline POSITIVE/NEGATIVE/NEUTRAL tags -- for DSE
-    tickers, sourced from dsebd.org corporate disclosures + sharenews24.com
-    market news (see dse_news.py); for everything else, Yahoo Finance.
-
-    This is now the primary sentiment signal. StockTwits/Reddit have zero
-    DSE coverage, and Finnhub's /news-sentiment endpoint needs a paid plan
-    and doesn't cover DSE names either way -- so rather than call dead/
-    always-empty tools and fall back to "no data", this reuses the News
-    Analyst's own structured breakdown directly. It's honestly framed as
-    news-flow sentiment (what's being reported), not measured market
-    sentiment (price/volume-derived crowd positioning) -- the Data Source
-    Review section below says so explicitly."""
+def create_sentiment_analyst(llm, news_collection=None, log=print):
+    """Sentiment analyst.  The score is computed IN CODE from the stored company news (a keyword lexicon, recency weighted;
+    see news_rag.rule_based_news_sentiment) and the LLM only explains it.  The code-computed score / overall / confidence
+    are what the debate, the Trader and the episode memory receive; the LLM's own table score is kept as `llm_score`.
+    With no stored company news to score (or RAEM_RULE_SENTIMENT=0) it falls back to the LLM reading the News Analyst's
+    per-headline table, and the result says so (`source`: LLM_ONLY)."""
     from langchain_core.messages import HumanMessage, SystemMessage
-    U = _ta_utils()
+    from . import news_rag
 
     def node(state):
         current_date = state["trade_date"]
         company = state["company_of_interest"]
-        log(f"Fetching sentiment for {company} on {current_date}")
+        U = _ta_utils(company)
+        log(f"Scoring sentiment for {company} on {current_date}")
 
         news_metrics = state.get("news_metrics", {}) or {}
         news_table = str(state.get("news_table_md", "") or "").strip()
-        news_report = str(state.get("news_report", ""))[:1500]
+        news_context = str(state.get("news_report", ""))[:1000]
 
-        if news_table:
-            log(f"using News Analyst's headline table: "
-                f"{news_metrics.get('positive_count', 0)} positive / "
-                f"{news_metrics.get('negative_count', 0)} negative / "
-                f"{news_metrics.get('neutral_count', 0)} neutral")
-            data_sections = f"""Positive headlines: {news_metrics.get("positive_count", 0)}
-Negative headlines: {news_metrics.get("negative_count", 0)}
-Neutral headlines:  {news_metrics.get("neutral_count", 0)}
-News Analyst's overall read: {news_metrics.get("overall_sentiment", "N/A")}
-
-Per-headline breakdown (tagged moments ago by the News Analyst from real scraped articles):
-{news_table}"""
+        rs = {"n": 0}
+        if news_rag.USE_RULE_SENTIMENT and news_collection is not None:
+            try:
+                rs = news_rag.rule_based_news_sentiment(news_collection, company, current_date)
+            except Exception as e:  # noqa: BLE001
+                log(f"rule-based sentiment skipped: {str(e)[:100]}")
+        if rs.get("n", 0) > 0:
+            data_sections = rs["text"]
+            log(f"rule-based sentiment: {rs['n']} items | +{rs['pos']} / -{rs['neg']} / ={rs['neu']} -> {rs['score']}/10 ({rs['overall']})")
         else:
-            log("no news headline table available -- falling back to narrative inference")
-            data_sections = "No structured news-sentiment breakdown available. Infer from the news report narrative below."
+            log("no company news to score in code -- sentiment stays LLM-inferred (source=LLM_ONLY)")
+            if news_table:
+                data_sections = (f"No stored company news to score in code. The News Analyst tagged the headlines it read: "
+                                 f"{news_metrics.get('positive_count', 0)} positive / {news_metrics.get('negative_count', 0)} negative / "
+                                 f"{news_metrics.get('neutral_count', 0)} neutral.\n{news_table}")
+            else:
+                data_sections = "No structured sentiment data available. Use the news report for inference."
 
         prompt = f"""You are a sentiment analyst. Today is {current_date}.
 IMPORTANT: Base your analysis ONLY on the data below. Do NOT invent scores.
 
-No social-sentiment API (StockTwits, Reddit, Finnhub) has usable coverage for {company} --
-StockTwits/Reddit carry essentially no DSE-listed discussion, and Finnhub's sentiment
-endpoint requires a paid plan and doesn't cover DSE names anyway. Your sole grounded input
-is therefore the News Analyst's per-headline sentiment breakdown below. This reflects
-news-flow sentiment (what's being reported about the company), not measured market
-sentiment (price/volume-derived crowd positioning) -- state this distinction explicitly
-in your Data Source Review.
-
-Analyze market sentiment for {company}.
+Analyze market sentiment for {company}. This is news-flow sentiment (what is being reported), not measured
+market sentiment from price and volume -- state that in the Data Source Review.
 Sections: Data Source Review -> Score Breakdown -> Key Signals -> Confidence Assessment
+{_len_rule('sentiment')}
 
 At the very end, output a Markdown table with EXACTLY these columns:
 | Source | Sentiment | Score (1-10) | Confidence | Key Signal |
 
-=== NEWS-FLOW SENTIMENT (from News Analyst) ===
+=== SENTIMENT DATA ===
 {data_sections}
 
-=== NEWS REPORT NARRATIVE ===
-{news_report}
+=== NEWS CONTEXT ===
+{news_context}
 """ + U["get_language_instruction"]()
-
         messages = [
             SystemMessage(content="You are a senior sentiment analyst. Be specific about data sources. Always end with the required Markdown table."),
             HumanMessage(content=prompt),
@@ -800,41 +809,52 @@ At the very end, output a Markdown table with EXACTLY these columns:
         report = invoke_llm_with_retry(llm, messages).content
         log("sentiment report ready")
 
-        score_m = re.search(r"(\d+(?:\.\d+)?)\s*/\s*10", report)
-        conf_m = re.search(r"(High|Medium|Low)\s*[Cc]onfidence", report)
-        # 🔴 FIXED: same disconnected-first-match issue as News Analyst's
-        # overall_sentiment (see that fix's comment) -- this used to be
-        # re.search(r"(BULLISH|BEARISH|NEUTRAL|POSITIVE|NEGATIVE)", report),
-        # unrelated to the score this analyst itself computed on a 1-10
-        # scale (5=neutral, per this prompt's own "Score Breakdown"
-        # instruction). Now derived from that score directly -- the two
-        # can no longer disagree with each other.
-        score_val = float(score_m.group(1)) if score_m else None
-        if score_val is None:
-            overall = "NEUTRAL"
-        elif score_val >= 6:
-            overall = "POSITIVE"
-        elif score_val <= 4:
-            overall = "NEGATIVE"
+        # The LLM's own score: the table first (| Source | Sentiment | Score (1-10) | Confidence | Key Signal |), then "x/10"
+        scores, confs = [], []
+        for row in report.splitlines():
+            cells = [c.strip() for c in row.strip().strip("|").split("|")]
+            if len(cells) >= 4 and row.strip().startswith("|"):
+                m = re.fullmatch(r"(\d+(?:\.\d+)?)(?:\s*/\s*10)?", cells[2])
+                if m and 0 <= float(m.group(1)) <= 10:
+                    scores.append(float(m.group(1)))
+                cm = re.fullmatch(r"(High|Medium|Low)", cells[3], re.I)
+                if cm:
+                    confs.append(cm.group(1).capitalize())
+        if scores:
+            score = f"{sum(scores) / len(scores):.1f}"
         else:
+            score_m = re.search(r"(\d+(?:\.\d+)?)\s*/\s*10", report)
+            score = score_m.group(1) if score_m else "N/A"
+        if confs:
+            confidence = max(set(confs), key=confs.count)
+        else:
+            conf_m = re.search(r"(High|Medium|Low)\s*[Cc]onfidence", report)
+            confidence = conf_m.group(1) if conf_m else "N/A"
+        # overall from the score itself (5 = neutral), so the two can never disagree
+        try:
+            sv = float(score)
+            overall = "POSITIVE" if sv >= 6 else ("NEGATIVE" if sv <= 4 else "NEUTRAL")
+        except ValueError:
             overall = "NEUTRAL"
-        sentiment_metrics = {
-            "score": score_m.group(1) if score_m else "N/A",
-            "confidence": conf_m.group(1) if conf_m else "N/A",
-            "overall": overall,
-        }
-        # Numeric confidence (used by the agent-card UI, separate from the
-        # High/Medium/Low label above): starts from whether a real
-        # structured headline breakdown was available at all, then nudged
-        # by the LLM's own stated confidence label if it gave one.
-        n_tagged = (news_metrics.get("positive_count", 0) + news_metrics.get("negative_count", 0)
-                    + news_metrics.get("neutral_count", 0))
-        base = 0.65 if news_table else 0.2
-        if news_table:
-            base = min(0.9, base + 0.03 * min(n_tagged, 8))
-        label = (conf_m.group(1).lower() if conf_m else "")
-        nudge = {"high": 0.15, "medium": 0.0, "low": -0.2}.get(label, 0.0)
-        sentiment_confidence = round(min(max(base + nudge, 0.05), 0.95), 2)
+
+        sentiment_metrics = {"score": score, "confidence": confidence, "overall": overall, "source": "LLM_ONLY"}
+        if rs.get("n", 0) > 0:
+            sentiment_metrics.update({
+                "llm_score": score, "llm_overall": overall,                      # what the LLM said, kept for the ablation
+                "score": f"{rs['score']:.1f}", "overall": rs["overall"], "confidence": rs["confidence"],
+                "source": "RULE_BASED", "n_items": rs["n"],
+                "positive_count": rs["pos"], "negative_count": rs["neg"], "neutral_count": rs["neu"],
+            })
+            base = {"High": 0.85, "Medium": 0.65, "Low": 0.4}.get(rs["confidence"], 0.4)
+            sentiment_confidence = round(min(max(base, 0.05), 0.95), 2)
+        else:
+            n_tagged = (news_metrics.get("positive_count", 0) + news_metrics.get("negative_count", 0)
+                        + news_metrics.get("neutral_count", 0))
+            base = 0.65 if news_table else 0.2
+            if news_table:
+                base = min(0.9, base + 0.03 * min(n_tagged, 8))
+            nudge = {"high": 0.15, "medium": 0.0, "low": -0.2}.get(confidence.lower(), 0.0)
+            sentiment_confidence = round(min(max(base + nudge, 0.05), 0.95), 2)
         return {"sentiment_report": report, "sentiment_metrics": sentiment_metrics,
                 "sentiment_confidence": sentiment_confidence}
 
@@ -844,6 +864,12 @@ At the very end, output a Markdown table with EXACTLY these columns:
 # ==========================================================================
 # Investment debate (bull / bear / facilitator)
 # ==========================================================================
+def _rag_tail(state) -> str:
+    """The news retrieved from the corpus (company items first, exchange-wide notices labelled), appended to the news evidence."""
+    rag = str(state.get("news_rag_context") or "").strip()
+    return ("\n\nNEWS RAG:\n" + rag[:1600]) if rag else ""
+
+
 def _reports(state):
     # 🔴 FIXED: 500 chars was cutting every report off mid-sentence (often
     # before the market analyst's own required indicator table even
@@ -859,7 +885,7 @@ def _reports(state):
     # small for Sonnet/Kimi's context windows).
     return (
         str(state["market_report"])[:1800], str(state["sentiment_report"])[:1800],
-        str(state["news_report"])[:1800], str(state["fundamentals_report"])[:1800],
+        str(state["news_report"])[:1800] + _rag_tail(state), str(state["fundamentals_report"])[:1800],
     )
 
 
@@ -1029,7 +1055,7 @@ def _risk_reports(state):
     # needing the same expansion.
     return (
         str(state["market_report"])[:1800], str(state["sentiment_report"])[:1800],
-        str(state["news_report"])[:1800], str(state["fundamentals_report"])[:1800],
+        str(state["news_report"])[:1800] + _rag_tail(state), str(state["fundamentals_report"])[:1800],
         str(state["trader_investment_plan"])[:800],
     )
 
