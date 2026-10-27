@@ -119,13 +119,13 @@ def ac(tmp_path, monkeypatch):
 
 
 def _yf_frame(n=300):
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
     idx = pd.date_range("2025-01-01", periods=n, freq="B", tz="America/New_York", name="Date")
     return pd.DataFrame({"Open": 10.0, "High": 11.0, "Low": 9.0, "Close": 10.5, "Volume": 1000, "Dividends": 0.0, "Stock Splits": 0.0}, index=idx)
 
 
 def _dse_frame(n=300):
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
     return pd.DataFrame({"date": pd.date_range("2025-01-01", periods=n, freq="B").strftime("%Y-%m-%d"), "symbol": "SQURPHARMA", "ltp": 5.0,
                          "high": 5.2, "low": 4.8, "open": 5.0, "close": 5.1, "ycp": 5.0, "trade": 10, "value": 1.0, "volume": 5000})
 
@@ -144,7 +144,7 @@ def test_prices_saved_in_the_yfinance_layout(ac, monkeypatch):
 
 
 def test_auto_market_falls_back_to_dse(ac, monkeypatch):
-    import pandas as pd
+    pd = pytest.importorskip("pandas")
     monkeypatch.setattr(ac, "fetch_international", lambda t: (pd.DataFrame(), {}))
     monkeypatch.setattr(ac, "fetch_dse", lambda t: _dse_frame())
     market, _ = ac.save_prices("SQURPHARMA", "auto", "Square Pharmaceuticals")
@@ -199,6 +199,8 @@ def test_notebook_command_picks_the_regional_template(ac, monkeypatch):
 # ---------------------------------------------------------------- export_extra.py --only (stub engine, no models needed)
 
 def test_export_extra_only_updates_one_company(tmp_path):
+    pytest.importorskip("pandas")
+    pytest.importorskip("chromadb")        # export_extra.py imports it; the CI image only has the API packages
     root = tmp_path / "backend"
     (root / "app").mkdir(parents=True)
     for d in ("pipeline",):
