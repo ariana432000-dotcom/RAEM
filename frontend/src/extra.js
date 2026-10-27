@@ -68,11 +68,11 @@ async function aiRun(list) {
 function renderAI() {
   X.ai.ran = X.ai.ran || {};
   const live = LIVE.ok && LIVE.models;
-  const choices = live ? LIVE.models.analysis_tickers : AI_T;
+  const choices = live ? [...new Set([...LIVE.models.analysis_tickers, ...AI_T, ...(X.ai.extra || [])])] : AI_T;
   if (choices.length && !choices.includes(X.ai.t)) X.ai.t = choices[0];
   const t = X.ai.t, a = EXTRA.ai[t];
-  const head = `<div class="page-h"><h1>AI Analysis</h1><p>The company notebooks' LLM analyst panel (TradingAgents with the LLM you choose: a local Ollama model or a cloud model): analysts, Graph Analyst, Forecasting Agent, debate, trader, risk, portfolio manager and verifier. Research output, not advice.</p></div>
-    ${card("", "", "", `<div class="field"><span class="lbl">Company</span>${tkrPills(t, "data-ai", choices)}</div>${!live && !ORDER.every(x => AI_T.includes(x)) ? `<p class="sub" style="margin-top:10px">No saved session for ${ORDER.filter(x => !AI_T.includes(x)).join(", ")} yet. Run it on the hosted site.</p>` : ""}`)}${live ? aiAnyCard() : ""}`;
+  const head = `<div class="page-h"><h1>AI Analysis</h1><p>TradingAgents with RAEM's episodic memory, run with the LLM you choose (a local Ollama model or a cloud model) for any company: analysts, bull vs bear debate, trader, risk debate, portfolio manager and verifier. Research output, not advice.</p></div>
+    ${card("", "", "", `<div class="field"><span class="lbl">Company</span>${pillTabs(ORDER.concat(choices.filter(x => !ORDER.includes(x))).map(x => [x, x, !choices.includes(x)]), t, "data-ai")}</div>${!live && !ORDER.every(x => AI_T.includes(x)) ? `<p class="sub" style="margin-top:10px">No saved session for ${ORDER.filter(x => !AI_T.includes(x)).join(", ")} yet. Run it on the hosted site.</p>` : ""}`)}${live ? aiAnyCard() : ""}`;
   if (live) {
     if (!a) return head + aiLiveCard(t, a) + aiHistoryCard(t) + (LIVE.busy["ai:" + t] ? "" : nonEmpty("brain", "No session for this company yet", "Choose a model and run the analysis above to create the first one."));
     return aiResults(t, a, head + aiLiveCard(t, a), aiHistoryCard(t));
@@ -80,7 +80,7 @@ function renderAI() {
   if (!a) return head + nonEmpty("inbox", "No analyst session", "This ticker has no saved LLM session.");
   // Static copy (no server): show the latest saved analysis at once. Running today's analysis needs the hosted site.
   const infoCard = card(`AI analysis: ${esc(d0(t))}`, `Latest saved analysis: ${dLong(a.latest.date)}, ${Object.keys(a.latest.steps).length} stages${a.latest.llm_model ? ", " + esc(a.latest.llm_model) : ""}.`, ratingBadge(a.latest.rating),
-    `<p class="note">This copy has no server, so it cannot run the notebook and shows the latest saved analysis. On the hosted site this card runs ${esc(t)}'s whole notebook for today's date with the model you choose.</p>`);
+    `<p class="note">This copy has no server, so it cannot run the analysis and shows the latest saved one. On the hosted site this card runs ${esc(t)}'s analysis for today's date with the model you choose.</p>`);
   return aiResults(t, a, head + infoCard);
 }
 /* ----- AI analysis: decision and debates (laid out like the any_with_dse analysis page) ----- */
@@ -94,7 +94,9 @@ const aiSignal = L => L.signal || SIGNAL_OF[String(L.rating || "").toUpperCase()
 /* "If I buy now, what could the next 5 trading days bring?" on the Decision card. Uses the amount and currency set on the
    Return calculator page (default $100), the AI-adjusted path when the AI analysis is fresh, else the Ensemble. */
 function aiFiveDay(t) {
-  const d = DATA[t], f = d.forecast, last = f.last_price, cur = d.meta.currency, b = aiBlend(t), band = fcBand(t);
+  const d = DATA[t];
+  if (!d) return "";   // a company that is not on the site has no forecast yet
+  const f = d.forecast, last = f.last_price, cur = d.meta.currency, b = aiBlend(t), band = fcBand(t);
   const useAI = b && !b.stale && b.path, path = useAI ? b.path : fcPath(t);
   if (!path) return "";
   // Dhaka stocks are shown in taka on a 10,000 Tk stake; the others use the Return calculator's amount and currency
@@ -110,7 +112,7 @@ function aiFiveDay(t) {
     <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days before export, so the real start price may differ)` : ""}. The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. ${tk ? "" : "Change the amount on the Return calculator page. "}Not investment advice.</p></div>`;
 }
 function aiDecisionCard(t, L) {
-  const sig = aiSignal(L), d = DATA[t], cur = d.meta.currency, entry = d.forecast.last_price, seen = +(L.summary || {}).market_latest_close || null;
+  const sig = aiSignal(L), d = DATA[t], seen = +(L.summary || {}).market_latest_close || null, cur = d ? d.meta.currency : "", entry = d ? d.forecast.last_price : seen;
   const fd = L.final_decision || "", summ = mdField(fd, "Executive Summary"), why = mdField(fd, "Investment Thesis"), hor = mdField(fd, "Time Horizon");
   const v = L.verifier || {}, b = aiBlend(t), band = fcBand(t);
   return card(`Decision ${hint(GLOSS.aidec)}`, `${esc(d0(t))} · ${dLong(L.date)}${L.llm_model ? " · " + esc(L.llm_model) : ""}`, sig ? sigBadge(sig) : ratingBadge(L.rating), `
@@ -118,8 +120,9 @@ function aiDecisionCard(t, L) {
       <div class="sigtext"><p class="conf">portfolio manager rating ${esc(L.rating || "n/a")}${v.status ? ` · verifier ${esc(String(v.status).toLowerCase())}${v.auto_overridden ? ", signal overridden" : ""}` : ""}</p>
         <p class="sum">${esc(summ || (fd ? fd.replace(/\*\*/g, "").slice(0, 400) : "No summary in this session."))}</p>
         ${hor && !/not provided/i.test(hor) ? `<p style="margin-top:6px;font-size:12px;color:var(--faint)">Time horizon: ${esc(hor)}</p>` : ""}</div></div>
-    <div class="sect"><p class="l">Entry (close of ${dShort(d.forecast.last_date)})</p><p class="v">${fmtP(entry)} ${esc(cur)}</p>
-      ${seen && Math.abs(seen / entry - 1) > 0.01 ? `<p class="small">The notebook saw ${fmtP(seen)} ${esc(cur)} on ${dShort(L.date)}; the forecast uses closes to ${dShort(d.forecast.last_date)}. Run the forecast again for the newer prices.</p>` : ""}</div>
+    ${entry == null ? "" : d ? `<div class="sect"><p class="l">Entry (close of ${dShort(d.forecast.last_date)})</p><p class="v">${fmtP(entry)} ${esc(cur)}</p>
+      ${seen && Math.abs(seen / entry - 1) > 0.01 ? `<p class="small">The analysis saw ${fmtP(seen)} ${esc(cur)} on ${dShort(L.date)}; the forecast uses closes to ${dShort(d.forecast.last_date)}. Run the forecast again for the newer prices.</p>` : ""}</div>`
+      : `<div class="sect"><p class="l">Close seen by the analysis (${dShort(L.date)})</p><p class="v">${fmtP(entry)}</p><p class="small">${esc(t)} is not on the site yet, so it has no 7-day forecast. Add it from the search box to get one.</p></div>`}
     ${b && !b.stale ? `<div class="sect"><p class="l">7-day outlook with this decision</p><p class="v ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</p>${band ? `<p class="small">Range from past forecast errors: ${fmtP(band[6][0])} to ${fmtP(band[6][1])} ${esc(cur)}.</p>` : ""}</div>` : ""}
     ${aiFiveDay(t)}
     ${why ? `<div class="sect"><p class="l">Why ${esc(sig || L.rating || "")}</p><p class="why">${esc(why)}</p></div>` : ""}`);
@@ -128,7 +131,7 @@ const turnHtml = x => `<li class="turn ${SIDE_TONE[x.side] || "hold"}"><div clas
 function aiDebateCard(L) {
   const db = L.debate;
   if (!db || (!(db.turns || []).length && !db.facilitator)) return "";
-  return card(`AI debate ${hint(GLOSS.debate)}`, db.complete ? "Bull vs bear, round by round, then the facilitator's verdict." : "Excerpt the notebook logged; runs made on this site keep the whole debate.", "", `
+  return card(`AI debate ${hint(GLOSS.debate)}`, db.complete ? "Bull vs bear, round by round, then the facilitator's verdict." : "Excerpt the trading log kept; runs made on this site keep the whole debate.", "", `
     <ol class="debate">${(db.turns || []).map(turnHtml).join("")}</ol>
     ${db.facilitator ? `<div class="sect"><p class="l">Facilitator's verdict</p><div class="pre">${md(db.facilitator)}</div></div>` : ""}`);
 }
@@ -186,7 +189,9 @@ const fcPath = t => { const f = DATA[t].forecast; return f.paths.Ensemble || f.p
 function fcBand(t) {
   // band_ret holds the forecast-error quantiles around the forecast, so the price range is the reviewed path plus them
   // (as forecast_table() in forecast_agent.py does); without the path the range would sit around today's price instead
-  const d = DATA[t], last = d.forecast.last_price, pl = d.agent && d.agent.plan, p = pl && pl.band_ret, pr = pl && pl.path_ret;
+  const d = DATA[t];
+  if (!d) return null;
+  const last = d.forecast.last_price, pl = d.agent && d.agent.plan, p = pl && pl.band_ret, pr = pl && pl.path_ret;
   return p && pr ? p.map((b, i) => [last * (1 + pr[i] + b[0]), last * (1 + pr[i] + b[1])]) : null;
 }
 /* ----- generic line chart ----- */
@@ -258,7 +263,7 @@ function renderData() {
   rows.reverse();
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_N)); X.ds.page = Math.min(X.ds.page, pages - 1);
   const cl = rows.map(x => x.r[4]), vols = rows.map(x => x.r[5]).filter(v => v), view = rows.slice(X.ds.page * PAGE_N, X.ds.page * PAGE_N + PAGE_N);
-  return `<div class="page-h"><h1>Dataset Explorer</h1><p>The daily price table the models train on: the data snapshot plus closes logged by the notebooks.</p></div>
+  return `<div class="page-h"><h1>Dataset Explorer</h1><p>The daily price table the models train on: the data snapshot plus closes logged by the AI analysis.</p></div>
     ${card("", "", "", `<div class="field"><span class="lbl">Ticker</span>${tkrPills(t, "data-ds")}</div><div class="toolbar" style="margin-top:16px"><div class="field"><label for="ds-from">From</label><input class="inp" type="date" id="ds-from" data-bind="ds-from" value="${esc(X.ds.from)}"></div><div class="field"><label for="ds-to">To</label><input class="inp" type="date" id="ds-to" data-bind="ds-to" value="${esc(X.ds.to)}"></div><button type="button" class="btn secondary sm" data-act="ds-clear" style="align-self:flex-end">Clear dates</button></div>`)}
     <div class="stats">
       ${statCard("Rows", rows.length.toLocaleString(), `${all.length} in full file`, "", "db")}
@@ -334,7 +339,7 @@ function renderMem() {
 /* ----- settings ----- */
 function renderSet() {
   const row = (n, d, ctl) => `<div class="setrow"><div><p class="n">${n}</p><p class="d">${d}</p></div><div>${ctl}</div></div>`;
-  const folders = [["data/", "2-year price snapshots", "python daily.py (tops up yfinance tickers)"], ["daily_data/", "closes logged by the notebooks", "run a per-ticker notebook"], ["forecast_log/", "7-day forecasts and their grades", "forecast_lib.record_forecast() / grade_forecasts()"], ["cache/", "tuned hyperparameters and model results", "python daily.py --retune"], ["chroma_memory/", "graded prediction episodes", "written by python daily.py"], ["notebooks/trading_log_*", "LLM analyst sessions", "run a per-ticker notebook with Ollama"]];
+  const folders = [["data/", "2-year price snapshots", "python daily.py (tops up yfinance tickers)"], ["daily_data/", "closes logged by the AI analysis", "run an AI analysis"], ["forecast_log/", "7-day forecasts and their grades", "forecast_lib.record_forecast() / grade_forecasts()"], ["cache/", "tuned hyperparameters and model results", "python daily.py --retune"], ["chroma_memory/", "graded prediction episodes", "written by python daily.py"], ["notebooks/trading_log_*", "LLM analyst sessions", "run an AI analysis"]];
   return `<div class="page-h"><h1>Settings</h1><p>Preferences for this page, saved in this browser only.</p></div>
     ${card("Preferences", "", "", `
       ${row("Theme", "Follow your system, or force one.", pillTabs([["system", "System"], ["dark", "Dark"], ["light", "Light"]], settings.theme, "data-set-theme"))}
@@ -389,7 +394,7 @@ function invTrack(t) {
   return { list, done, trades, hits, avgFollow, holds, avgHold: holds.length ? holds.reduce((q, x) => q + x.o.r, 0) / holds.length : null };
 }
 
-/* ----- AI influence: the notebook's latest rating tilts the model forecast a little ----- */
+/* ----- AI influence: the latest AI rating tilts the model forecast a little ----- */
 // adjusted 7-day move = (1 - w) * model move + w * AI view, where the AI view is the rating (Buy +1 ... Sell -1) times the stock's
 // typical 7-day move. w is 20%, or 10-35% from the AI's own graded calls once it has 5; a session over 10 days older than
 // the prices has no weight.
@@ -416,8 +421,9 @@ function aiBlend(t) {
 }
 const aiWhy = b => `${Math.round(b.w * 100)}% weight${b.n >= 5 ? `, ${b.hits} of ${b.n} past AI calls right` : ""}`;
 function aiEffectCard(t) {
-  const b = aiBlend(t), cur = DATA[t].meta.currency;
+  const b = aiBlend(t);
   if (!b) return "";
+  const cur = DATA[t].meta.currency;
   return card(`Effect on the forecast ${hint(GLOSS.aiadj)}`, `The latest AI rating (${dLong(b.date)}${b.model ? ", " + esc(b.model) : ""}) next to the model forecast.`, ratingBadge(b.rating),
     b.stale ? `<p class="sub">This AI session is more than 10 days older than the prices (${dLong(DATA[t].forecast.last_date)}), so it does not change the forecast. Run the analysis again to bring it in.</p>`
       : `<div class="kvs" style="margin:0"><div class="kv"><p class="k">Models (Ensemble)</p><p class="v ${cls(b.base)}">${fmtPct(b.base * 100)}</p><p class="s">${fmtP(b.last * (1 + b.base))} ${esc(cur)}</p></div>
@@ -453,7 +459,7 @@ function renderInv() {
       <td>${o.pending ? "–" : invShow(tk, A * f)}</td><td>${o.pending ? "–" : invShow(tk, A * (1 + o.r))}</td><td><span class="badge ${tone}">${o.pending ? "pending" : o.rating === "HOLD" ? "no trade" : f > 1 ? "right" : "wrong"}</span></td></tr>`;
   }).join("") : "";
   const btRows = Object.entries(bt).map(([m, r]) => `<tr><td class="t">${esc(m)}</td><td>${r.n}</td><td>${invShow(tk, A * r.equity[r.equity.length - 1])}</td><td>${invShow(tk, A * r.buyhold_eq[r.buyhold_eq.length - 1])}</td><td class="${cls(r.strategy_pct)}">${fmtPct(r.strategy_pct, 1)}</td></tr>`).join("");
-  return `<div class="page-h"><h1>Return Calculator</h1><p>If you put in ${A} today, what each company's forecast, daily model, notebook LLM and past record say you would have in ${H} days.</p></div>
+  return `<div class="page-h"><h1>Return Calculator</h1><p>If you put in ${A} today, what each company's forecast, daily model, AI analysis and past record say you would have in ${H} days.</p></div>
     ${card("Your investment", "Change the amount, the money basis or the forecast used.", "", `<div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
       <div class="field"><label for="inv-a">Amount per company</label><input class="inp w-sm" id="inv-a" data-bind="inv-amt" type="number" min="1" step="any" value="${esc(x.amt)}"></div>
       <div class="field"><label for="inv-b">Amount is in</label><select id="inv-b" data-bind="inv-basis"><option value="usd" ${x.basis === "usd" ? "selected" : ""}>US dollars (converted to each currency)</option><option value="local" ${x.basis === "local" ? "selected" : ""}>Each company's own currency</option></select></div></div>
@@ -465,22 +471,22 @@ function renderInv() {
       ${statCard("All 8 together", invAmt() ? fmtPct(rows.reduce((q, r) => q + r.ret, 0) / rows.length * 100) : "–", `average ${H}-day return`, "accent", "wallet")}
       ${statCard("Amount in", x.basis === "usd" ? "$" + A : A + " each", x.basis === "usd" ? "converted at saved FX" : "own currency", "", "db")}
     </div>
-    ${card(`Company by company ${hint(GLOSS.votes)}${hint(GLOSS.past)}`, `Value of ${A} after ${H} days using ${esc(srcNote)}. Click a row to open that ticker.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Price as of</th><th>Value in ${H} days</th><th>Profit / loss</th><th>Return</th><th>10–90% range (profit / loss)</th><th>Daily model</th><th>Notebook LLM</th><th>Votes</th><th>Past record</th></tr></thead><tbody>${table}</tbody></table></div>
+    ${card(`Company by company ${hint(GLOSS.votes)}${hint(GLOSS.past)}`, `Value of ${A} after ${H} days using ${esc(srcNote)}. Click a row to open that ticker.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Price as of</th><th>Value in ${H} days</th><th>Profit / loss</th><th>Return</th><th>10–90% range (profit / loss)</th><th>Daily model</th><th>AI analysis</th><th>Votes</th><th>Past record</th></tr></thead><tbody>${table}</tbody></table></div>
       <p class="src">Votes show forecast, daily model and LLM rating in that order (↑ up, ↓ down, – flat or hold). "Past record" is what the amount would be if you had followed the Ensemble's saved day-7 calls since the log began, then (smaller) what buying and holding on the same dates would give. Forecasts start from each company's own last close, so DSE companies start from Oct 4. The range comes from the reviewer's past forecast errors on a small test set, so a result outside it is possible. Costs and tax are not included. Research output, not investment advice.</p>`)}
     <div class="two">
       ${card("Expected gain per company", `On ${A}. Bar = expected return, line = 10–90% range.`, "", `<div class="rows">${bars}</div>`)}
       ${card(`Growth of ${A} over 7 days`, "Each company's forecast path, day by day.", "", `<div class="chartbox" id="invgrow"></div><div class="legend" id="invgrow-l"></div>`)}
     </div>
-    ${card("Notebook record by company", "What the LLM analyst notebook said in past runs, and what 100 would have done if you followed it for 7 days.", "", `<div class="field"><span class="lbl">Company</span>${pillTabs(ORDER.map(t => [t, t, !EXTRA.ai[t]]), tk, "data-inv-t")}</div>
-      ${!trk ? `<p class="sub" style="margin-top:14px">No notebook session for ${esc(tk)}.</p>` : `
+    ${card("AI-analysis record by company", "What the AI analysis said in past runs, and what 100 would have done if you followed it for 7 days.", "", `<div class="field"><span class="lbl">Company</span>${pillTabs(ORDER.map(t => [t, t, !EXTRA.ai[t]]), tk, "data-inv-t")}</div>
+      ${!trk ? `<p class="sub" style="margin-top:14px">No AI session for ${esc(tk)}.</p>` : `
       <div class="stats" style="margin-top:16px">
-        ${statCard("Notebook runs", trk.list.length, `${trk.done.length} graded, ${trk.list.length - trk.done.length} pending`, "", "brain")}
+        ${statCard("AI runs", trk.list.length, `${trk.done.length} graded, ${trk.list.length - trk.done.length} pending`, "", "brain")}
         ${statCard("Direction right", trk.trades.length ? `${trk.hits}/${trk.trades.length}` : "–", trk.trades.length ? `${(trk.hits / trk.trades.length * 100).toFixed(0)}% of BUY/SELL calls` : "no BUY/SELL calls yet", trk.trades.length && trk.hits / trk.trades.length > 0.5 ? "buy" : "hold", "check")}
         ${statCard(`${A} following BUY/SELL`, trk.avgFollow == null ? "–" : invShow(tk, A * (1 + trk.avgFollow)), trk.avgFollow == null ? "no trades" : `${fmtPct(trk.avgFollow * 100)} average per call`, trk.avgFollow > 0 ? "buy" : trk.avgFollow < 0 ? "sell" : "", "wallet")}
         ${statCard(`${A} on HOLD days`, trk.avgHold == null ? "–" : invShow(tk, A * (1 + trk.avgHold)), trk.avgHold == null ? "" : `if you had held instead: ${fmtPct(trk.avgHold * 100)} average`, "", "clock")}
       </div>
       <div class="scroll"><table><thead><tr><th>Run date</th><th>Rating</th><th>Entry</th><th>Close +7d</th><th>Move</th><th>${A} following it</th><th>${A} if held</th><th>Result</th></tr></thead><tbody>${sessRows}</tbody></table></div>
-      <p class="src">Source: notebooks/trading_log_*.json (rating) with the saved closes. BUY goes long, SELL goes short, HOLD makes no trade. Calls are one run each and overlap in time, so the average per call is not a compounded return.</p>`}`)}
+      <p class="src">Source: trading_log_*.json (rating) with the saved closes. BUY goes long, SELL goes short, HOLD makes no trade. Calls are one run each and overlap in time, so the average per call is not a compounded return.</p>`}`)}
     ${Object.keys(bt).length ? card(`Forecast record for ${esc(tk)}`, `Value of ${A} if you followed each model's saved day-7 calls, from the first graded call to the last.`, "", `<div class="chartbox" id="invbt"></div><div class="legend" id="invbt-l"></div>
       <div class="scroll" style="margin-top:14px"><table><thead><tr><th>Model</th><th>Trades</th><th>${A} followed</th><th>${A} buy and hold</th><th>Strategy return</th></tr></thead><tbody>${btRows}</tbody></table></div><p class="src">Source: forecast_log graded rows. Same method as the Backtest page: long when the model predicted up, short when down, no costs.</p>`) : ""}`;
 }
@@ -511,12 +517,12 @@ const GLOSS = {
   past: ["Past record", "What your amount would be if you had followed the Ensemble's past 7-day calls (buy when it said up, sell short when it said down), next to simply buying and holding."],
   bt: ["Backtest terms", "Edge is the direction hit rate minus the 'always up' rate, in percentage points: positive means the model beat that simple guess. Max drawdown is the largest fall from a previous high."],
   dd: ["Drawdown", "How far your account was below its highest value so far."],
-  runfc: ["Run the forecast", "Fits the chosen forecast models on the server, on the same CSV price files the notebooks use, and draws the new 7-day path. Ensemble, Fusion and the reviewer range are rebuilt from the models you pick. Each run is stored; the same company, date and models give back the stored run."],
+  runfc: ["Run the forecast", "Fits the chosen forecast models on the server, on the same CSV price files the engine uses, and draws the new 7-day path. Ensemble, Fusion and the reviewer range are rebuilt from the models you pick. Each run is stored; the same company, date and models give back the stored run."],
   ind: ["Indicators", "RSI above 70 is often called overbought and below 30 oversold. MACD above its signal line means upward momentum. %B shows where the price sits in its Bollinger band (0 = lower band, 1 = upper band). Volatility is the typical daily move over 30 days. They describe the recent past and are not a forecast."],
-  aidec: ["Decision", "BUY, HOLD or SELL after the whole notebook has run: analysts, the bull vs bear debate, the trader, the risk debate and the portfolio manager. The decision verifier can override the signal when the text and the rating disagree. Overweight counts as BUY and Underweight as SELL."],
+  aidec: ["Decision", "BUY, HOLD or SELL after the whole analysis has run: analysts, the bull vs bear debate, the trader, the risk debate and the portfolio manager. The decision verifier can override the signal when the text and the rating disagree. Overweight counts as BUY and Underweight as SELL."],
   debate: ["AI debate", "Two LLM agents argue for (bull) and against (bear) the stock over several rounds using the analysts' reports; a facilitator weighs the evidence. A second debate between aggressive, conservative and neutral risk analysts tests the trader's plan."],
-  aiadj: ["AI-adjusted forecast", "The 7-day forecast after the latest AI analysis (the company notebook run with an LLM) has had its say. The AI rating (Buy +1, Overweight +½, Hold 0, Underweight −½, Sell −1) times the stock's typical 7-day move is its view; the adjusted move is 80% the models and 20% that view. Once the AI has five graded calls, its weight moves between 10% and 35% with how often it was right. A session more than 10 days older than the prices does not count."],
-  runai: ["Run AI analysis", "Runs the company notebook from top to bottom on the server (the same cells as Run All in Jupyter) with the LLM you choose, then shows the new session. Ollama models run on the server itself; OpenAI, Claude, Gemini and Groq models run with the server's API key, so no key is ever typed into this page. Each run is stored by company, date and model, and the notebook also caches its analysts for the same date."],
+  aiadj: ["AI-adjusted forecast", "The 7-day forecast after the latest AI analysis (the AI analysis run with an LLM) has had its say. The AI rating (Buy +1, Overweight +½, Hold 0, Underweight −½, Sell −1) times the stock's typical 7-day move is its view; the adjusted move is 80% the models and 20% that view. Once the AI has five graded calls, its weight moves between 10% and 35% with how often it was right. A session more than 10 days older than the prices does not count."],
+  runai: ["Run AI analysis", "Runs the whole AI analysis of the company on the server (analysts, debates, trader, risk, portfolio manager, verifier) with the LLM you choose, then shows the new session. Ollama models run on the server itself; OpenAI, Claude, Gemini and Groq models run with the server's API key, so no key is ever typed into this page. Each run is stored by company, date and model."],
 };
 let hintN = 0;
 const hint = g => `<span class="help" tabindex="0" role="note" aria-label="${esc(g[0])}: ${esc(g[1])}"><span aria-hidden="true">?</span><span class="tipbox" aria-hidden="true"><b>${esc(g[0])}</b>${esc(g[1])}</span></span>`;
@@ -578,7 +584,7 @@ function renderDash() {
       <div class="sub" style="${age > 5 ? "color:var(--hold)" : ""}">price as of ${dShort(f.last_date)}${age > 5 ? ` (${age} days old)` : ""}</div>
       ${(b => b ? `<div class="sub ailine">AI ${ratingBadge(b.rating)} ${b.stale ? "too old to count" : `→ <b class="${cls(b.adj)}">${fmtPct(b.adj * 100)}</b> with AI`}</div>` : "")(aiBlend(t))}</button>`;
   }).join("");
-  const feats = [["inv", "pulse", "Return Calculator", "Put in 100 and see what each company's forecast, model and notebook say you would have in a week."], ["bt", "chart", "Backtest", "How each model's past calls would have done against buy and hold."], ["ai", "line", "AI Analysis", "Read what the LLM analyst panel decided, stage by stage."], ["news", "news", "News and fundamentals", "News sentiment, P/E, EPS and 52-week ranges per company."], ["mem", "brain", "Memory", "Past predictions graded against what really happened."]];
+  const feats = [["inv", "pulse", "Return Calculator", "Put in 100 and see what each company's forecast, model and AI analysis say you would have in a week."], ["bt", "chart", "Backtest", "How each model's past calls would have done against buy and hold."], ["ai", "line", "AI Analysis", "Read what the LLM analyst panel decided, stage by stage."], ["news", "news", "News and fundamentals", "News sentiment, P/E, EPS and 52-week ranges per company."], ["mem", "brain", "Memory", "Past predictions graded against what really happened."]];
   const rows = ORDER.map(t => {
     const d = DATA[t], f = d.forecast, ran = S.ran[t], cl = d.history.slice(-30).map(h => h[1]);
     const ch = (cl[cl.length - 1] / cl[0] - 1) * 100, p = fcPath(t), ens = p ? (p[6] / f.last_price - 1) * 100 : null, age = daysBetween(f.last_date, ASOF);
@@ -605,7 +611,7 @@ function renderDash() {
   <section><div class="sec-h"><div><h2>All stocks at a glance</h2><p>Click a row to open it.</p></div></div>
     <div class="dashgrid">${card("Watchlist", "Last close, 30-day move and the Ensemble's call.", "", `<div class="scroll"><table><thead><tr><th>Stock</th><th>Last close</th><th>30 days</th><th>30d change</th><th>Price data to</th><th>Signal</th><th>Ensemble 7d</th><th>With AI ${hint(GLOSS.aiadj)}</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: data/ and daily_data/ price files; signals from predictor_lib; Ensemble from forecast_lib; With AI = the Ensemble tilted by the latest AI analysis.</p>`)}
     ${card("Session activity", "Every run in this browser session.", "", act)}</div></section>
-  ${dse.length ? `<section class="card warn"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><span class="badge hold">Data note</span><p style="font-size:13px;color:var(--muted);flex:1 1 300px">The daily BUY, HOLD or SELL for ${dse.map(esc).join(", ")} uses prices up to ${dLong(DATA[dse[0]].daily.data_end_date)}, because daily.py reads only the data snapshot. The 7-day forecasts also use the notebook logs, up to ${dLong(DATA[dse[0]].forecast.last_date)}.</p></div></section>` : ""}`;
+  ${dse.length ? `<section class="card warn"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><span class="badge hold">Data note</span><p style="font-size:13px;color:var(--muted);flex:1 1 300px">The daily BUY, HOLD or SELL for ${dse.map(esc).join(", ")} uses prices up to ${dLong(DATA[dse[0]].daily.data_end_date)}, because daily.py reads only the data snapshot. The 7-day forecasts also use the trading logs, up to ${dLong(DATA[dse[0]].forecast.last_date)}.</p></div></section>` : ""}`;
 }
 function drawHome() {
   const h = $("#homechart"); if (!h) return;

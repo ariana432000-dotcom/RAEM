@@ -16,13 +16,8 @@ chromadb>=1.5
 python-dateutil>=2.9
 arch>=8.0             # optional; advanced_forecast works without it
 
-# AI analysis: running the company notebooks headlessly (app/ai_engine/run_notebook.py)
-nbclient>=0.10
-nbformat>=5.10
-ipykernel>=6.29
-psutil>=5.9          # run_notebook/jobs kill the whole process tree on cancel
-networkx>=3.3          # Graph Analyst
-# packages the notebooks install with %pip (the runner skips %pip lines, so they must be here)
+# AI analysis: the TradingAgents + RAEM-memory pipeline (app/ai_pipeline/, run by app/ai_engine/run_pipeline.py)
+psutil>=5.9          # jobs kill the whole process tree on Hold
 langchain>=0.3
 langchain-core>=0.3.81
 langchain-ollama>=0.3
@@ -31,11 +26,13 @@ langchain-anthropic>=0.3.15
 beautifulsoup4>=4.12
 lxml>=5.0
 bdshare>=1.2           # Dhaka Stock Exchange data
-ddgs>=9.0              # web news search in the DSE notebooks
-# vendored TradingAgents (engine/TradingAgents-main/tradingagents)
+# vendored TradingAgents (backend/tradingagents)
 langgraph>=0.4.8
 langchain-google-genai>=2.0
 stockstats>=0.6.5
 python-dotenv>=1.0
 requests>=2.32
+pdfplumber>=0.11        # DSE annual/quarterly report extraction (tradingagents/dataflows/dse_statement_extractor.py)
+markdown>=3.6          # agent reports to HTML
+anthropic>=0.34        # raw SDK call of the DSE statement extractor (langchain-anthropic brings it too)
 huggingface_hub>=0.30          # free storage on a Hugging Face Space (backend/tools/hf_sync.py)

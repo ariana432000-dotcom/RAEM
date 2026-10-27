@@ -17,14 +17,14 @@ EXTRA = DATA / "extra.json"
 COMPANIES = DATA / "companies.json"   # companies added from the website (see engine/raem_companies.py)
 INDEX = WEB / "frontend" / "dist" / "index.html"
 PIPELINE = BACKEND / "app" / "pipeline"      # forecast export scripts + sessions.py (run as scripts, imported flat)
-AI_ENGINE = BACKEND / "app" / "ai_engine"    # the notebook runner (run_notebook.py)
+AI_ENGINE = BACKEND / "app" / "ai_engine"    # the AI-analysis runner (run_pipeline.py)
 
 try:  # a local run reads web/.env; Docker passes the same file with env_file. Variables already set win.
     from dotenv import load_dotenv
     load_dotenv(WEB / ".env", override=False)
 except ImportError:
     pass
-# TZ (e.g. Asia/Dhaka) decides "today" for runs and the notebooks' TRADE_DATE. Windows reads only POSIX-style TZ and would
+# TZ (e.g. Asia/Dhaka) decides "today" for runs and the pipeline's trade date. Windows reads only POSIX-style TZ and would
 # take "Asia/Dhaka" as UTC, so there the PC's own time zone is kept; elsewhere it applies now (children inherit it).
 if os.name == "nt" and "/" in os.environ.get("TZ", ""):
     os.environ.pop("TZ")
@@ -39,7 +39,7 @@ OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434").rstrip(
 DEFAULT_LLM = os.environ.get("RAEM_LLM_DEFAULT", "qwen2.5:7b")
 RUN_TOKEN = os.environ.get("RAEM_RUN_TOKEN", "")          # protects POST /api/forecast and /api/analysis when set
 REFRESH_TOKEN = os.environ.get("RAEM_REFRESH_TOKEN", "")  # turns POST /api/refresh on
-NOTEBOOK_TIMEOUT = int(os.environ.get("RAEM_NOTEBOOK_TIMEOUT", str(6 * 3600)))  # a full run takes hours without a GPU
+ANALYSIS_TIMEOUT = int(os.environ.get("RAEM_ANALYSIS_TIMEOUT") or os.environ.get("RAEM_NOTEBOOK_TIMEOUT") or 6 * 3600)  # a full run takes hours without a GPU
 FORECAST_TIMEOUT = int(os.environ.get("RAEM_FORECAST_TIMEOUT", "1800"))
 COMPANY_TIMEOUT = int(os.environ.get("RAEM_COMPANY_TIMEOUT", "3600"))  # adding a company: prices, notebook, forecast, page data
 MAX_QUEUE = int(os.environ.get("RAEM_MAX_QUEUE", "12"))  # queued + running runs allowed at once
@@ -57,7 +57,7 @@ DEFAULT_MODELS = ["nbeats", "lasso", "ridge", "random_forest", "theta", "arima"]
 
 # Cloud LLM providers for AI analysis: (key, label, API-key variable, default models). A provider shows as usable when its
 # API key is set; RAEM_<KEY>_MODELS (comma-separated) replaces the default model list. Use models that take a temperature
-# and a plain max_tokens (not reasoning models): the notebooks pass both.
+# (reasoning models such as gpt-5 and o-series are handled, but are slower and dearer).
 CLOUD_PROVIDERS = [
     ("openai", "OpenAI", "OPENAI_API_KEY", "gpt-4.1-mini,gpt-4o-mini,gpt-4.1"),
     ("anthropic", "Anthropic Claude", "ANTHROPIC_API_KEY", "claude-haiku-5-5,claude-sonnet-5-5"),
@@ -102,19 +102,12 @@ def llm_key(provider: str, model: str) -> str:
 
 
 def today() -> str:
-    """The run date used for same-date reuse: the server's local date, like the notebooks' TRADE_DATE."""
+    """The run date used for same-date reuse: the server's local date, like the pipeline's trade date."""
     return date.today().isoformat()
 
 
 def tickers() -> list[str]:
     return sorted(p.stem for p in TICKERS_DIR.glob("*.json"))
-
-
-def notebooks() -> dict[str, str]:
-    import sys
-    sys.path.insert(0, str(PIPELINE))
-    from sessions import notebook_map
-    return notebook_map(str(ENGINE / "notebooks"))
 
 
 _llm_cache: dict = {"t": 0.0, "v": None}

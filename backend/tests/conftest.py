@@ -1,6 +1,6 @@
 """Test setup: a throw-away database, fake runners instead of the real models, and a fake Ollama list.
 
-The real forecasting code and notebooks are never imported, so the suite runs in seconds with only
+The real forecasting code and the AI pipeline are never imported, so the suite runs in seconds with only
 fastapi, httpx and pytest installed (this is what the GitHub workflow does).
 """
 import sys
@@ -37,7 +37,6 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "REFRESH_TOKEN", "")
     monkeypatch.setattr(config, "llm_models", lambda *a, **k: {"ok": True, "url": "http://ollama.test", "models": ["qwen2.5:7b", "llama3.2:3b"],
                                                          "default": "qwen2.5:7b", "embeddings_ok": True})
-    monkeypatch.setattr(config, "notebooks", lambda: {"AAPL": "AAPL.ipynb", "IBM": "IBM.ipynb"})
 
     def fake_forecast(run):
         time.sleep(0.2)

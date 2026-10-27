@@ -2,9 +2,9 @@
 
 Kinds:
   forecast  - app/pipeline/export_ticker.py for one company with the chosen forecast models (reads the CSV price files)
-  analysis  - app/ai_engine/run_notebook.py: the company's notebook, Run All, with the chosen Ollama model
+  analysis  - app/ai_engine/run_pipeline.py: the TradingAgents + RAEM-memory pipeline for any ticker, with the chosen LLM
   refresh   - refresh.py steps (price top-up, re-export, rebuild)
-  company   - app/pipeline/add_company.py: prices, notebook, forecast and page data of a company added from the search box
+  company   - app/pipeline/add_company.py: prices, forecast and page data of a company added from the search box
 
 Same-date reuse: submit() returns the stored result of an earlier finished run with the same
 company, date and model unless force=True, and joins a run that is already queued or running.
@@ -28,7 +28,7 @@ import refresh  # noqa: E402
 
 PY = sys.executable
 PIPELINE = config.PIPELINE      # export_ticker.py
-AI_ENGINE = config.AI_ENGINE  # run_notebook.py
+AI_ENGINE = config.AI_ENGINE  # run_pipeline.py
 _live: dict[str, list[str]] = {}
 _procs: dict[str, subprocess.Popen] = {}  # the child process of each running run, so Hold can stop it
 _held: set[str] = set()                   # runs asked to hold: their stop counts as 'held', not 'failed'
@@ -123,7 +123,7 @@ def hold(rid: str) -> dict | None:
 
 
 def _kill_tree(p: subprocess.Popen) -> None:
-    """Stop a child and everything it started (the notebook kernel too, so its LLM request ends)."""
+    """Stop a child and everything it started (its LLM request ends)."""
     try:
         import psutil
         parent = psutil.Process(p.pid)
@@ -205,7 +205,7 @@ def _stream(rid: str, argv: list[str], timeout: int, env: dict | None = None) ->
 
 
 def _cause(rid: str) -> str:
-    """The reason a child process printed before it failed (run_notebook's `!! Cause:` line and its hint), for the run's error text."""
+    """The reason a child process printed before it failed (run_pipeline's `!! Cause:` line and its hint), for the run's error text."""
     lines = [l[3:].strip() for l in _live.get(rid, []) if l.startswith("!! Cause:") or l.startswith("!! The provider refused")]
     return " ".join(lines[-2:])
 
@@ -253,13 +253,11 @@ def _run_analysis(run: dict) -> tuple[dict, dict]:
     cache.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as d:
         out = os.path.join(d, "result.json")
-        argv = [PY, "-W", "ignore", str(AI_ENGINE / "run_notebook.py"), "--ticker", t, "--provider", provider,
+        argv = [PY, "-W", "ignore", str(AI_ENGINE / "run_pipeline.py"), "--ticker", t, "--provider", provider,
                 "--model", params.get("llm_model", model), "--out", out]
-        if not params.get("notebook"):  # a company with no notebook yet: the runner makes it first
-            argv += ["--market", params.get("market") or "auto"] + (["--name", params["name"]] if params.get("name") else [])
-        ok = _stream(run["id"], argv, config.NOTEBOOK_TIMEOUT, env={"OLLAMA_BASE_URL": config.OLLAMA_URL, "RAEM_LLM_CACHE": str(cache)})
+        ok = _stream(run["id"], argv, config.ANALYSIS_TIMEOUT, env={"OLLAMA_BASE_URL": config.OLLAMA_URL, "RAEM_LLM_CACHE": str(cache)})
         if not ok or not os.path.exists(out):
-            raise RuntimeError("The notebook run did not finish. " + (_cause(run["id"]) or "See the log for the failing cell."))
+            raise RuntimeError("The AI analysis did not finish. " + (_cause(run["id"]) or "See the log for the failing step."))
         result = json.load(open(out, encoding="utf-8"))
     try:  # finished: the next run of this company and model starts fresh
         cache.unlink(missing_ok=True)
@@ -267,7 +265,7 @@ def _run_analysis(run: dict) -> tuple[dict, dict]:
         pass
     latest = result["entry"]["latest"]
     summary = {"llm_model": model, "rating": latest.get("rating"), "trade_date": latest.get("date"),
-               "steps": len(latest.get("steps") or {}), "duration_s": result.get("duration_s"), "notebook": result.get("notebook"),
+               "steps": len(latest.get("steps") or {}), "duration_s": result.get("duration_s"), "pipeline": result.get("pipeline"),
                "reused_answers": result.get("reused_answers"), "new_llm_calls": result.get("new_llm_calls")}
     try:  # keep the saved page in step with the newest analysis
         extra = json.load(open(config.EXTRA, encoding="utf-8"))
@@ -289,7 +287,7 @@ def _run_refresh(run: dict) -> tuple[dict, dict]:
 
 
 def _run_company(run: dict) -> tuple[dict, dict]:
-    """Add a company from the search box: prices, registry, notebook, forecast, page data (pipeline/add_company.py)."""
+    """Add a company from the search box: prices, registry, forecast, page data (pipeline/add_company.py)."""
     t, p = run["ticker"], run.get("params") or {}
     argv = [PY, "-W", "ignore", str(PIPELINE / "add_company.py"), "--ticker", t, "--market", p.get("market") or "auto"]
     if p.get("name"):

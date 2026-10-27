@@ -4,11 +4,11 @@
 browser ──> Vercel  (frontend/dist/index.html)
               │  /api/*  is forwarded (vercel.json rewrite)
               ▼
-            Railway (Dockerfile: FastAPI + run queue + notebooks + models)
+            Railway (Dockerfile: FastAPI + run queue + AI pipeline + models)
               └─ Volume /data  (run database, prices, trading logs, memory, saved results)
 ```
 
-Railway runs everything: the API, forecasts, the notebooks with Claude or Kimi, and the database. Vercel serves the page and forwards `/api/...` to Railway, so for the browser it is one site: no CORS settings, no server address to type. You can also use the Railway domain alone; Vercel is optional.
+Railway runs everything: the API, forecasts, the AI analysis with Claude or Kimi, and the database. Vercel serves the page and forwards `/api/...` to Railway, so for the browser it is one site: no CORS settings, no server address to type. You can also use the Railway domain alone; Vercel is optional.
 
 ## Free option: Hugging Face Spaces
 
@@ -61,12 +61,12 @@ visit wakes them in a minute or two.
    On the AI Analysis page the model list shows only the providers whose key you set.
 
 Railway notes:
-- Give the service at least **4 GB of memory** (Settings → Resources): the forecast models and a notebook run use 2 to 3 GB.
+- Give the service at least **4 GB of memory** (Settings → Resources): the forecast models and an AI analysis run use 2 to 3 GB.
 - Keep **one replica** and leave **App Sleeping off**; a sleeping or second container would stop or split the run queue.
 - The volume keeps the run database, held runs, AI sessions, prices, trading logs and memory across redeploys
   (`backend/tools/persist.py`). A file you change in git and push replaces the volume copy on the next deploy.
-- No Ollama on Railway: the AI runs with Claude or Kimi. The notebooks' memory then uses chromadb's built-in embeddings
-  (downloaded into the image at build time) in its own store, and each run first copies the notebooks' past episodes and news
+- No Ollama on Railway: the AI runs with Claude or Kimi. The pipeline's memory then uses chromadb's built-in embeddings
+  (downloaded into the image at build time) in its own store, and each run first copies the past episodes and news
   from `raem_chroma_db` into it (embedded again), so past memory still counts. Both ChromaDB stores ship in the repository
   (`backend/engine/chroma_memory`, `backend/engine/notebooks/raem_chroma_db`) and live on the volume.
 

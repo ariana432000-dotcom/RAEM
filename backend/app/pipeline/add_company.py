@@ -1,19 +1,15 @@
-"""Add a company to the site: prices, notebook, forecast and page data, for any ticker.
+"""Add a company to the site: prices, forecast and page data, for any ticker.
 
     python app/pipeline/add_company.py --ticker TSLA
     python app/pipeline/add_company.py --ticker 7203.T --name "Toyota Motor"
-    python app/pipeline/add_company.py --ticker SQURPHARMA --market dse --name "Square Pharmaceuticals Limited" --sector "Health Care"
+    python app/pipeline/add_company.py --ticker SQURPHARMA --market dse --name "Square Pharmaceuticals Limited"
 
 Steps (each prints a "== " line the website shows as progress; every step can be repeated safely):
     1. Prices         2 years of daily prices into engine/data/<Name>_<TICKER>_2y.csv (yfinance, or the Dhaka Stock Exchange)
-    2. Register       backend/data/companies.json, so forecast_lib, the exporters and the notebooks know the company
-    3. Notebook       engine/notebooks/<TICKER>.ipynb from the shared analyst files (raem_analysts/new_company.py)
-    4. Forecast       app/pipeline/export_ticker.py  ->  data/tickers/<TICKER>.json
-    5. Page data      app/pipeline/export_extra.py --only <TICKER>  (price table, backtest, FX)
-The AI analysis (the notebook's agents) is run afterwards from the AI Analysis page, like for the other companies.
-
-    python app/pipeline/add_company.py --ticker TSLA --prepare      steps 1 to 3 only: what the AI analysis needs
-                                                                    (the analysis runner calls this when a company has no notebook yet)
+    2. Register       backend/data/companies.json, so forecast_lib and the exporters know the company
+    3. Forecast       app/pipeline/export_ticker.py  ->  data/tickers/<TICKER>.json
+    4. Page data      app/pipeline/export_extra.py --only <TICKER>  (price table, backtest, FX)
+The AI analysis (app/ai_engine/run_pipeline.py) needs none of this: it runs for any ticker, on the page's AI Analysis tab.
 """
 from __future__ import annotations
 
@@ -29,7 +25,6 @@ from datetime import date, timedelta
 HERE = os.path.dirname(os.path.abspath(__file__))
 BACKEND = os.path.dirname(os.path.dirname(HERE))
 ENGINE = os.environ.get("RAEM_ENGINE") or os.path.join(BACKEND, "engine")
-NOTEBOOKS = os.path.join(ENGINE, "notebooks")
 TICKERS_DIR = os.path.join(BACKEND, "data", "tickers")
 MIN_ROWS = 260          # about a year of trading days: the models need a training window and a holdout
 PY = sys.executable
@@ -37,8 +32,6 @@ PY = sys.executable
 sys.path.insert(0, ENGINE)
 import raem_companies as rc  # noqa: E402
 
-# the notebook to copy, by market: the peer list of the template should come from the same region
-TEMPLATE_BY_SUFFIX = {".HK": "0300.HK", ".SR": "2222.SR"}
 DSE_COLUMNS = ["date", "symbol", "ltp", "high", "low", "open", "close", "ycp", "trade", "value", "volume"]
 
 
@@ -173,41 +166,6 @@ def register(ticker: str, market: str, name: str | None, info: dict) -> dict:
     return meta
 
 
-def notebook_exists(ticker: str) -> bool:
-    sys.path.insert(0, NOTEBOOKS)
-    try:
-        from raem_analysts import profile_of
-    except ImportError:
-        return False
-    import json
-    for path in glob.glob(os.path.join(NOTEBOOKS, "*.ipynb")):
-        try:
-            nb = json.load(open(path, encoding="utf-8"))
-        except Exception:
-            continue
-        prof = profile_of(["".join(c["source"]) for c in nb["cells"] if c["cell_type"] == "code"])
-        if prof and prof["TICKER"] == ticker:
-            return True
-    return False
-
-
-def create_notebook(ticker: str, market: str, name: str, sector: str | None) -> None:
-    if notebook_exists(ticker):
-        print("   notebook already there", flush=True)
-        return
-    argv = [PY, "-m", "raem_analysts.new_company", "--ticker", ticker, "--group", market, "--name", name]
-    if market == "dse":
-        argv += ["--sector", sector or "Unclassified"]
-    else:
-        suffix = next((s for s in TEMPLATE_BY_SUFFIX if ticker.endswith(s)), None)
-        if suffix:
-            argv += ["--like", TEMPLATE_BY_SUFFIX[suffix]]
-    r = subprocess.run(argv, cwd=NOTEBOOKS, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    print(r.stdout.strip(), flush=True)
-    if r.returncode != 0:
-        fail(f"Could not create the notebook: {(r.stderr or r.stdout).strip()[-400:]}")
-
-
 def run_script(label: str, argv: list[str]) -> None:
     p = subprocess.Popen(argv, cwd=ENGINE, env=dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONDONTWRITEBYTECODE="1"),
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
@@ -222,14 +180,13 @@ def main(argv=None) -> int:
     ap.add_argument("--ticker", required=True)
     ap.add_argument("--market", default="auto", choices=["auto", "international", "dse"])
     ap.add_argument("--name")
-    ap.add_argument("--sector", help="dse only: sector text for the analysts, e.g. 'Health Care (Pharmaceuticals)'")
-    ap.add_argument("--prepare", action="store_true", help="prices, registry and notebook only (no forecast, no page data)")
+    ap.add_argument("--sector", help="accepted for compatibility (the AI analysis finds the sector itself)")
     a = ap.parse_args(argv)
     try:
         t = rc.normalize(a.ticker)
     except ValueError as e:
         fail(str(e))
-    if not a.prepare and os.path.exists(os.path.join(TICKERS_DIR, f"{t}.json")):
+    if os.path.exists(os.path.join(TICKERS_DIR, f"{t}.json")):
         step(f"{t} is already on the site")
         return 0
 
@@ -237,11 +194,6 @@ def main(argv=None) -> int:
     market, info = save_prices(t, a.market, a.name)
     step("Register the company")
     meta = register(t, market, a.name, info)
-    step("Create the notebook")
-    create_notebook(t, market, meta["name"], a.sector or info.get("sector"))
-    if a.prepare:
-        step(f"{t} is ready for the AI analysis")
-        return 0
     step(f"Forecast {t} (several minutes)")
     run_script("The forecast", [PY, "-W", "ignore", os.path.join(HERE, "export_ticker.py"), t])
     if not os.path.exists(os.path.join(TICKERS_DIR, f"{t}.json")):

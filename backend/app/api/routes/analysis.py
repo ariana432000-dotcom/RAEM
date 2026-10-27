@@ -13,22 +13,15 @@ router = APIRouter()
 
 @router.post("/api/analysis", status_code=202)
 def run_analysis(req: AnalysisRequest, authorization: str | None = Header(None)):
-    """Run the company's notebook (Run All) with an Ollama model or a cloud LLM. Hours with a 7B model on a CPU, minutes in the cloud."""
+    """Run the AI analysis (TradingAgents + RAEM memory) of any company with an Ollama model or a cloud LLM. Hours with a 7B model on a CPU, minutes in the cloud."""
     deps.check_token(config.RUN_TOKEN, authorization, "Running an AI analysis")
-    nbs = config.notebooks()
-    ticker = req.ticker.strip()
-    if ticker not in nbs:
-        # Any company can be analysed: one without a notebook gets it made first from the shared analyst files
-        # (prices, registration, notebook), so no company depends on a hand-made notebook file.
-        try:
-            ticker = company_data.normalize(ticker)
-        except ValueError as e:
-            raise HTTPException(400, str(e))
-        if req.market not in ("auto", "international", "dse"):
-            raise HTTPException(400, "market must be auto, international or dse.")
-        req = req.model_copy(update={"ticker": ticker})
-    else:
-        req = req.model_copy(update={"ticker": ticker})
+    try:
+        ticker = company_data.normalize(req.ticker)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if req.market not in ("auto", "international", "dse"):
+        raise HTTPException(400, "market must be auto, international or dse.")
+    req = req.model_copy(update={"ticker": ticker})
     provider = req.llm_provider
     if provider not in config.PROVIDER_KEYS:
         raise HTTPException(400, f"Unknown LLM provider {provider}. Choose one of: {', '.join(config.PROVIDER_KEYS)}")
@@ -52,7 +45,7 @@ def run_analysis(req: AnalysisRequest, authorization: str | None = Header(None))
         if model not in llm["models"]:
             raise HTTPException(400, f"Model {model} is not on the Ollama server. Available: {', '.join(llm['models']) or 'none'}")
     # Without Ollama's nomic-embed-text the run still works: the memory uses chromadb's built-in model (separate store).
-    run, reused = deps.submit("analysis", req.ticker, key, {"provider": provider, "llm_model": model, "notebook": nbs.get(req.ticker),
+    run, reused = deps.submit("analysis", req.ticker, key, {"provider": provider, "llm_model": model,
                                                    "market": req.market, "name": (req.name or "").strip() or None},
                               force=req.force)
     return deps.submitted(run, reused)
