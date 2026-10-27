@@ -356,13 +356,14 @@ class MultiStepLSTM(nn.Module):
 
 
 def _build_sequences(scaled: np.ndarray, targets: np.ndarray, seq_len: int, with_rows: bool = False):
-    """Windows of seq_len rows ending just before row i, labelled with row i's
-    targets. with_rows=True also returns each window's row i (its forecast origin)."""
+    """Windows of seq_len rows ending ON row i (row i's own features included), labelled with row i's
+    targets. with_rows=True also returns each window's row i (its forecast origin). The forecast path is
+    read off the last seq_len rows, which also end on the forecast origin, so training and prediction match."""
     X, y, rows = [], [], []
-    for i in range(seq_len, len(scaled)):
+    for i in range(seq_len - 1, len(scaled)):
         if np.isnan(targets[i]).any():
             continue
-        X.append(scaled[i - seq_len:i])
+        X.append(scaled[i - seq_len + 1:i + 1])
         y.append(targets[i])
         rows.append(i)
     X, y = np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
@@ -388,7 +389,8 @@ def _train_lstm(X_tr, y_tr, n_features, hidden, lr, epochs, seed=42):
 def run_lstm(feat: pd.DataFrame, epochs: int = 150) -> dict:
     """Multi-output LSTM over a SEQ_LEN-day window of features."""
     usable = feat.dropna(subset=FEATURES)
-    scaler = StandardScaler().fit(usable[FEATURES])
+    # the scaler used for the holdout score sees training rows only (minus the rows whose labels reach into the holdout)
+    scaler = StandardScaler().fit(usable[FEATURES].iloc[:int(len(usable) * SPLIT_RATIO) - FORECAST_DAYS])
     scaled = scaler.transform(usable[FEATURES])
     targets = usable[TARGETS].values
 
@@ -420,8 +422,11 @@ def run_lstm(feat: pd.DataFrame, epochs: int = 150) -> dict:
         holdout = scored(torch.tensor(X_te)).numpy()
 
     # refit on everything, then read the path off the most recent window
-    final = _train_lstm(X, y, len(FEATURES), best_params["hidden"], best_params["lr"], epochs)
-    last_window = scaled[-SEQ_LEN:][None, :, :].astype(np.float32)
+    scaler_all = StandardScaler().fit(usable[FEATURES])
+    scaled_all = scaler_all.transform(usable[FEATURES])
+    X_all, y_all = _build_sequences(scaled_all, targets, SEQ_LEN)
+    final = _train_lstm(X_all, y_all, len(FEATURES), best_params["hidden"], best_params["lr"], epochs)
+    last_window = scaled_all[-SEQ_LEN:][None, :, :].astype(np.float32)
     with torch.no_grad():
         path = final(torch.tensor(last_window)).numpy()[0]
 
@@ -992,6 +997,10 @@ def forecast_ticker(ticker: str, verbose: bool = True, models: list | None = Non
         raise ValueError(f"{ticker}: only {len(labeled)} labeled rows -- need at least 120")
 
     split = int(len(labeled) * SPLIT_RATIO)
+    # ARIMA, Kalman, Theta, ARIMAX and the regime model walk forward over the raw price series, so they need the first
+    # holdout origin's position in `close`. `labeled` starts ~49 rows into it (the 50-day average), so passing `split`
+    # itself started their holdout ~49 days earlier than everyone else's and scored them on different dates.
+    split_pos = int(raw.index.get_loc(labeled.index[split]))
     last_row = feat.dropna(subset=FEATURES).iloc[[-1]]
     last_price = float(raw["Close"].iloc[-1])
     n_daily = int((raw.get("source") == "daily_log").sum()) if "source" in raw else 0
@@ -1001,19 +1010,19 @@ def forecast_ticker(ticker: str, verbose: bool = True, models: list | None = Non
         "ridge": lambda: run_ridge(labeled, split, last_row),
         "xgboost": lambda: run_xgboost(labeled, split, last_row),
         "lstm": lambda: run_lstm(feat),
-        "arima": lambda: run_arima(close, split),
-        "kalman": lambda: run_kalman(close, split),
+        "arima": lambda: run_arima(close, split_pos),
+        "kalman": lambda: run_kalman(close, split_pos),
         "lasso": lambda: run_lasso(labeled, split, last_row),
         "random_forest": lambda: run_random_forest(labeled, split, last_row),
         "dnn": lambda: run_dnn(labeled, split, last_row),
         "wsae_lstm": lambda: run_wsae_lstm(feat),
         "tft": lambda: run_tft(feat),
-        "theta": lambda: run_theta(close, split),
+        "theta": lambda: run_theta(close, split_pos),
     }
     if _HAS_ADVANCED:
         runners["nbeats"] = lambda: af.run_nbeats(close, FORECAST_DAYS)
-        runners["regime"] = lambda: af.run_regime_switching(close, split, FORECAST_DAYS)
-        runners["arimax"] = lambda: af.run_arimax(close, split, FORECAST_DAYS)
+        runners["regime"] = lambda: af.run_regime_switching(close, split_pos - 1, FORECAST_DAYS)  # its returns series starts one row later
+        runners["arimax"] = lambda: af.run_arimax(close, split_pos, FORECAST_DAYS)
     if models is not None:
         runners = {k: v for k, v in runners.items() if k in models}
 
@@ -1033,6 +1042,21 @@ def forecast_ticker(ticker: str, verbose: bool = True, models: list | None = Non
             failed[key] = f"{type(e).__name__}: {e}"
             if verbose:
                 print(f"  {MODEL_LABELS[key]} skipped -- {failed[key][:120]}")
+
+    # Score every base model on the SAME holdout dates (those with predictions on >= FUSION_MIN_COVERAGE of them), so the
+    # scoreboard, the fallback Ensemble pick and "vs no change" compare like with like. Each model's own walk-forward
+    # or window score covered a slightly different set of origins.
+    naive_common, scored = None, set()
+    try:
+        frames, actual = _fusion_inputs(results, labeled, split)
+        if len(actual) >= 30:
+            for key, fr in frames.items():
+                results[key]["scores"] = _score_path(actual.values, fr.values)
+                results[key]["n_scored"] = len(actual)
+                scored.add(key)
+            naive_common = float(np.mean(np.abs(actual.values)))
+    except Exception as e:
+        failed["common_scoring"] = f"{type(e).__name__}: {e}"
 
     dates = future_trading_days(raw.index[-1], weekend=pl.weekend_days(ticker))
     paths = pd.DataFrame(index=pd.DatetimeIndex(dates, name="date"))
@@ -1068,8 +1092,8 @@ def forecast_ticker(ticker: str, verbose: bool = True, models: list | None = Non
             ref = fusion_report.loc["Naive (no change)", "mae"]
             n_scored = res["n_scored"]
         else:
-            ref = naive_mae
-            n_scored = len(res["holdout"]) if res.get("holdout") is not None else np.nan
+            ref = naive_common if (naive_common is not None and k in scored) else naive_mae
+            n_scored = res.get("n_scored") or (len(res["holdout"]) if res.get("holdout") is not None else np.nan)
         rows.append({"model": MODEL_LABELS[k], "mean_mae": res["scores"]["mae"],
                      "mae_vs_naive": res["scores"]["mae"] / ref,
                      "mean_direction_acc": res["scores"]["direction_acc"],
