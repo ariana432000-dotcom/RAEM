@@ -1,6 +1,6 @@
-"""Turn the notebooks' trading logs (notebooks/trading_log_*.json/.csv) into the website's AI-analysis format.
+"""Turn the trading logs (engine/notebooks/trading_log_*.json/.csv) into the website's AI-analysis format.
 
-Shared by export_extra.py (all companies) and run_notebook.py (one fresh run). Only needs the standard library
+Shared by export_extra.py (all companies) and run_pipeline.py (one fresh run). Only needs the standard library
 and pandas, so it can be imported without loading the forecasting models.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ import re
 import sqlite3
 import time
 
-# Friendly names for the steps the notebooks log with log_step(). Steps not listed keep their own name,
+# Friendly names for the steps the pipeline logs (older sessions from the notebooks also have Graph Analyst, Prediction Engine ...). Steps not listed keep their own name,
 # so a step added to the notebook later still reaches the website.
 STEP_LABELS = {
     "Fundamentals Analyst": "Fundamentals",
@@ -27,6 +27,7 @@ STEP_LABELS = {
     "Investment Debate (Bull vs Bear)": "Bull vs bear debate",
     "Investment Debate Facilitator": "Debate facilitator",
     "Post-Mortem Self-Critique": "Post-mortem",
+    "Post-Mortem Review": "Post-mortem",
     "Trader Decision": "Trader",
     "Risk Management Debate (3 Rounds)": "Risk debate",
     "Risk Facilitator Decision": "Risk facilitator",
@@ -302,24 +303,3 @@ def ai_entry(nb_dir: str, ticker: str, since: str | None = None) -> dict | None:
     if since and str(last.get("session_start", "")) < since:
         return None
     return entry_from_session(last, hist)
-
-
-def notebook_map(nb_dir: str) -> dict[str, str]:
-    """Ticker -> notebook file, read from each notebook's `COMPANY = "..."` line. Backup copies are ignored."""
-    out = {}
-    for p in sorted(glob.glob(os.path.join(nb_dir, "*.ipynb"))):
-        name = os.path.basename(p)
-        if ".bak" in name or name in ("Forecast.ipynb", "agent.ipynb"):
-            continue
-        try:
-            nb = json.load(open(p, encoding="utf-8"))
-        except Exception:
-            continue
-        for c in nb.get("cells", []):
-            if c.get("cell_type") != "code":
-                continue
-            m = re.search(r'^\s*COMPANY\s*=\s*["\']([^"\']+)["\']', "".join(c.get("source", [])), re.M)
-            if m:
-                out.setdefault(m.group(1), name)
-                break
-    return out

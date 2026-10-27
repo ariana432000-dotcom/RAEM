@@ -70,7 +70,7 @@ async function pollRun(id, key, onDone) {
     Object.assign(LIVE.busy[key], { status: r.status, step: r.step || "", log: r.log || [], ahead: r.ahead || 0 });
     if (r.elapsed != null) LIVE.busy[key].t0 = Date.now() - r.elapsed * 1000;  // the server's clock, right after a reload too
     if (key.startsWith("ai:") && r.status === "running" && (LIVE.busy[key].n = (LIVE.busy[key].n || 0) + 1) % 2 === 1) {
-      try {  // the agents' outputs so far: the notebook saves its log after every agent
+      try {  // the agents' outputs so far: the pipeline saves its log after every agent
         const lv = await api(`runs/${id}/live`);
         if (lv.entry && LIVE.busy[key]) LIVE.busy[key].entry = lv.entry;
       } catch (e) { /* asked again on the next poll */ }
@@ -105,10 +105,9 @@ function liveStatus(key) {
     <p class="msg" role="status"><b>${esc(m ? m[3] : (j.step || "Starting"))}</b>${m ? ` · step ${m[1]} of ${m[2]}` : ""}</p>
     ${key.startsWith("ai:") && j.status === "running" ? agentBoard(j) : `<ol class="events">${lines.map(l => `<li><span>${esc(l.replace(/^== /, ""))}</span></li>`).join("")}</ol>`}</section>`;
 }
-// The notebook's agents in run order (sessions.STEP_LABELS); a notebook's own extra steps are added where they appear
-const AGENT_STAGES = ["Fundamentals", "Market", "Macro regime", "News", "Sentiment", "Graph analyst", "Forecasting agent", "Bull vs bear debate",
-  "Debate facilitator", "Post-mortem", "Trader", "Risk debate", "Risk facilitator", "Portfolio manager", "Prediction engine", "7-day forecast",
-  "Verifier", "10-day scenario"];
+// The pipeline's agents in run order (sessions.STEP_LABELS); any other logged step is added where it appears
+const AGENT_STAGES = ["Fundamentals", "Market", "News", "Sentiment", "Macro regime", "Bull vs bear debate",
+  "Debate facilitator", "Post-mortem", "Trader", "Risk debate", "Risk facilitator", "Portfolio manager", "Verifier"];
 function agentBoard(j) {
   const L = j.entry && j.entry.latest, steps = (L && L.steps) || {}, done = Object.keys(steps);
   const all = AGENT_STAGES.concat(done.filter(s => !AGENT_STAGES.includes(s))), next = all.find(s => !done.includes(s)), last = done[done.length - 1];
@@ -247,19 +246,13 @@ function unfinishedRunFor(t, key) {  // today's held run, or today's newest run 
   const rows = (LIVE.hist[t] || []).filter(r => r.run_date === LIVE.health.date && r.model_key === key);
   return rows.find(r => r.status === "held") || (rows[0] && rows[0].status === "failed" && rows[0].saved_answers ? rows[0] : null);
 }
-function nbLabel(t) {
-  const n = (LIVE.models.notebooks || {})[t];
-  return n ? `notebook ${esc(n)}` : "notebook made automatically on the first run";
-}
-/* analyse any company: one on the site runs at once; any other is added first (prices, notebook, forecast), then analysed */
-X.after = {};
+/* analyse any company: the pipeline needs no preparation, so any ticker runs at once; it is also listed on the page */
 function aiAnyCard() {
-  const a = X.ai, adding = Object.keys(LIVE.busy).filter(k => k.startsWith("co:") && X.after[k.slice(3)]).map(k => k.slice(3));
+  const a = X.ai;
   return `<div class="field" style="margin-top:16px"><label for="ai-any">Analyse any company</label>
-    <div class="toolbar"><input class="inp grow" id="ai-any" placeholder="Any ticker: TSLA, 7203.T, 0700.HK, SQURPHARMA" value="${esc(a.any || "")}" aria-label="Ticker" autocomplete="off" ${adding.length ? "disabled" : ""}>
-      <select id="ai-any-market" aria-label="Market">${ADD_MARKETS.map(([v, l]) => `<option value="${v}"${(a.anyMarket || "auto") === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
-      <button type="button" class="btn primary" data-act="ai-any" ${adding.length ? "disabled" : ""}>${adding.length ? "Adding " + esc(adding[0]) + "…" : "Analyse"}</button></div>
-    <p class="sub">A company that is not on this site is added first (prices, notebook and 7-day forecast, several minutes), then the AI analysis starts with the model chosen below.</p>
+    <div class="toolbar"><input class="inp grow" id="ai-any" placeholder="Any ticker: TSLA, 7203.T, 0700.HK, SQURPHARMA" value="${esc(a.any || "")}" aria-label="Ticker" autocomplete="off">
+      <button type="button" class="btn primary" data-act="ai-any">Analyse</button></div>
+    <p class="sub">Any company works, on the site or not: the prices, fundamentals and news are fetched when the analysis runs, with the model chosen below. A 7-day forecast needs the company added from the search box.</p>
     ${a.anyMsg ? `<p class="err" role="alert">${esc(a.anyMsg)}</p>` : ""}</div>`;
 }
 async function aiAny() {
@@ -267,22 +260,17 @@ async function aiAny() {
   X.ai.any = raw; X.ai.anyMsg = "";
   if (!raw) { X.ai.anyMsg = "Type a ticker first."; render(); return; }
   if (!/^[A-Z0-9.\-]{1,20}$/.test(raw)) { X.ai.anyMsg = "A ticker has letters, digits, dots and dashes only."; render(); return; }
-  if (DATA[raw]) { X.ai.t = raw; X.ai.any = ""; render(); liveAnalysis(raw); return; }
-  X.after[raw] = true;
-  await addCompany(raw, X.ai.anyMarket || "auto", "");
+  X.ai.extra = X.ai.extra || [];
+  if (!DATA[raw] && !X.ai.extra.includes(raw)) X.ai.extra.push(raw);
+  X.ai.t = raw; X.ai.any = "";
   render();
-}
-async function afterAdded(t) {  // a company added from the AI Analysis page: go on to its analysis
-  delete X.after[t];
-  X.ai.t = t; X.ai.any = "";
-  goPage("ai");
-  liveAnalysis(t);
+  liveAnalysis(raw);
 }
 function aiLiveCard(t, a) {
   const key = "ai:" + t, li = LIVE.ai[t], j = LIVE.busy[key], sel = llmSel();
   const badge = li ? `<span class="badge buy">${esc(li.model)} · ${esc(li.date)}</span>` : `<span class="badge">${a ? "saved session" : "no session yet"}</span>`;
   if (!sel) {
-    return card(`Run AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · ${nbLabel(t)}`, badge,
+    return card(`Run AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))}`, badge,
       `<p class="err" role="alert">No LLM is connected on this server. Start Ollama with a model pulled, or add an API key (ANTHROPIC_API_KEY for Claude, MOONSHOT_API_KEY for Kimi) to the server's .env and restart it.</p><p class="note" style="margin-top:8px">Stored runs below still open.</p>`);
   }
   const groups = llmProviders().map(p => `<optgroup label="${esc(p.label)}">${p.models.map(m => `<option value="${esc(p.key + "|" + m)}" ${p.key + "|" + m === X.ai.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</optgroup>`).join("");
@@ -292,12 +280,12 @@ function aiLiveCard(t, a) {
     : held && held.status === "failed" ? `<button type="button" class="btn primary" data-act="ai-live">Continue (${held.saved_answers} saved answers)</button>`
     : held ? `<button type="button" class="btn primary" data-act="ai-live">Resume${heldStep ? ` from step ${heldStep[1]} of ${heldStep[2]}` : ""}</button>`
     : `<button type="button" class="btn primary" data-act="ai-live">${storedToday && !X.ai.force ? "Open today's stored run" : `Run AI analysis for ${dShort(LIVE.health.date)}`}</button>`;
-  const how = sel.provider === "ollama" ? "Runs the company's whole notebook (Run All) on this server's Ollama. A 7B model on a computer without a GPU takes about 2 to 3 hours; smaller models are faster."
-    : `Runs the company's whole notebook (Run All) with ${esc(sel.p.label)} through the server's API key: minutes instead of hours, and the provider bills each run.`;
+  const how = sel.provider === "ollama" ? "Runs the whole analysis (analysts, debates, trader, risk, portfolio manager, verifier) on this server's Ollama. A 7B model on a computer without a GPU takes about 1 to 3 hours; smaller models are faster."
+    : `Runs the whole analysis with ${esc(sel.p.label)} through the server's API key: minutes instead of hours, and the provider bills each run.`;
   const holdNote = held ? ` The last run ${held.status === "failed" ? "stopped with an error" : "was held"} at ${esc(held.step || "an early step")}. Running it again reuses every saved answer whose inputs (prices, news, earlier answers) are unchanged, so it continues where it stopped; steps whose inputs changed run again.`
     : " Hold stops a run and keeps what it has done; running it again later continues from there while the market data is unchanged.";
-  const mem = LIVE.models.embeddings_ok === false ? " Memory: Ollama's nomic-embed-text is not reachable, so the notebook's memory uses a separate local store." : "";
-  return card(`Today's AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · ${nbLabel(t)} · runs for ${dLong(LIVE.health.date)}`, badge, `
+  const mem = LIVE.models.embeddings_ok === false ? " Memory: Ollama's nomic-embed-text is not reachable, so the memory uses a separate local store." : "";
+  return card(`Today's AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · runs for ${dLong(LIVE.health.date)}`, badge, `
     <div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
       <div class="field"><label for="ai-model">LLM model (connected on this server)</label><select id="ai-model" data-bind="ai-model" ${j ? "disabled" : ""}>${groups}</select></div>
       <div class="field"><span class="lbl">Options</span><div class="checks"><label><input type="checkbox" id="ai-force" data-bind="ai-force" ${X.ai.force ? "checked" : ""}> Run again even if stored today</label></div></div>
@@ -323,7 +311,7 @@ function aiHistoryCard(t) {
   return card("Stored runs on this server", "Every AI analysis run for this company, newest first. A held run resumes where it stopped.", "", body);
 }
 
-/* ----- add any company: the search box finds it, the server downloads its prices, builds its notebook and forecasts it ----- */
+/* ----- add any company: the search box finds it, the server downloads its prices, and forecasts it ----- */
 X.add = { q: "", results: null, market: "auto", msg: "" };
 const ADD_MARKETS = [["auto", "Find it automatically"], ["international", "Yahoo Finance (US, Hong Kong, Saudi, ...)"], ["dse", "Dhaka Stock Exchange"]];
 function hideAddBox() { const b = $("#addbox"); if (b) b.hidden = true; }
@@ -348,7 +336,7 @@ function renderAddBox() {
     <div class="addrow"><select id="add-market" aria-label="Market">${ADD_MARKETS.map(([v, l]) => `<option value="${v}"${a.market === v ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>
       <button type="button" class="btn sm" data-add="${esc(q)}" data-name="">Add ${esc(q)}</button></div>
     ${a.msg ? `<p class="sub" style="color:var(--sell)" role="alert">${esc(a.msg)}</p>` : ""}
-    <p class="sub">A new company takes several minutes: its prices, notebook and 7-day forecast are made on the server.</p>`;
+    <p class="sub">A new company takes several minutes: its prices and 7-day forecast are made on the server.</p>`;
   b.hidden = false;
 }
 async function loadCompany(t) {  // the saved forecast and extra data of a company, into the page
@@ -360,7 +348,7 @@ async function loadCompany(t) {  // the saved forecast and extra data of a compa
   Object.entries(b.fx || {}).forEach(([c, v]) => { if (v) EXTRA.fx[c] = v; });
   if (!ORDER.includes(t)) ORDER.push(t);
   if (!X.wl.includes(t)) { X.wl.push(t); if (lsGet("raem:wl", null)) lsSet("raem:wl", X.wl); }
-  try { if (LIVE.ok) LIVE.models = await api("models"); } catch (e) { /* the AI Analysis page then lists the new notebook after a reload */ }
+  try { if (LIVE.ok) LIVE.models = await api("models"); } catch (e) { /* the AI Analysis page then lists the new company after a reload */ }
   render();
 }
 async function addCompany(t, market, name) {
@@ -371,14 +359,13 @@ async function addCompany(t, market, name) {
     const res = await api("companies", { method: "POST", body: JSON.stringify({ ticker: t, market: market || "auto", name: name || null }) });
     if (res.reused === "exists") {
       await loadCompany(res.ticker || t); hideAddBox(); $("#q").value = "";
-      if (X.after[t]) afterAdded(res.ticker || t); else openTicker(res.ticker || t);
+      openTicker(res.ticker || t);
       return;
     }
     hideAddBox();
     $("#q").value = "";
     watchCompany(t, res.run.id);
   } catch (e) {
-    if (X.after[t]) { delete X.after[t]; X.ai.anyMsg = e.message; render(); return; }
     X.add.msg = e.message;
     renderAddBox();
   }
@@ -387,7 +374,7 @@ function watchCompany(t, id) {
   const key = "co:" + t;
   LIVE.err[key] = "";
   const p = pollRun(id, key, async () => {
-    try { await loadCompany(t); if (X.after[t]) afterAdded(t); else openTicker(t); } catch (e) { LIVE.err[key] = "It was added, but the page could not load it: " + e.message; }
+    try { await loadCompany(t); openTicker(t); } catch (e) { LIVE.err[key] = "It was added, but the page could not load it: " + e.message; }
   });
   renderAddProg();
   p.then(renderAddProg);
@@ -415,7 +402,6 @@ document.addEventListener("click", e => {
 });
 document.addEventListener("change", e => {
   if (e.target.id === "add-market") X.add.market = e.target.value;
-  if (e.target.id === "ai-any-market") X.ai.anyMarket = e.target.value;
 });
 document.addEventListener("input", e => { if (e.target.id === "ai-any") X.ai.any = e.target.value; });
 document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "ai-any") { e.preventDefault(); aiAny(); } });

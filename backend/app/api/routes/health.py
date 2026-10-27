@@ -23,4 +23,4 @@ def models():
     llm = config.llm_models()
     return {"forecast": [{"key": k, "label": l, "default": k in config.DEFAULT_MODELS} for k, l in config.FORECAST_MODELS],
             "llm": llm, "llm_providers": config.llm_providers(), "embeddings_ok": llm["embeddings_ok"],
-            "analysis_tickers": config.tickers(), "notebooks": config.notebooks()}  # every company on the site; one without a notebook gets it made
+            "analysis_tickers": config.tickers()}  # companies on the site; any other ticker can be analysed too

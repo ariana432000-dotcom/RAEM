@@ -37,7 +37,7 @@ def test_models_list_matches_exporter(client):
     assert sorted(re.findall(r'"(\w+)"', keep)) == sorted(defaults)
     assert m["llm"]["models"] == ["qwen2.5:7b", "llama3.2:3b"]
     from app.core import config
-    assert m["analysis_tickers"] == config.tickers() and m["notebooks"] == {"AAPL": "AAPL.ipynb", "IBM": "IBM.ipynb"}
+    assert m["analysis_tickers"] == config.tickers()
 
 
 def test_forecast_run_then_same_date_reuse(client):
@@ -161,16 +161,6 @@ def test_session_reader_keeps_new_steps_and_drops_nan(tmp_path, monkeypatch):
     assert ai_entry(str(tmp_path), "AAPL", since="2026-10-23") is None
 
 
-def test_notebook_rewrite():
-    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
-    from run_notebook import rewrite
-    src = '%pip install x -q\nif ok:\n    %pip install -r r.txt\nllm = ChatOllama(model="qwen2.5:7b", base_url="http://localhost:11434", repeat_penalty=1.15)\nu = "http://localhost:11434/api/embeddings"'
-    out, n = rewrite(src)
-    assert "%pip" not in out and "    pass" in out
-    assert 'model=RAEM_LLM_MODEL' in out and 'base_url=RAEM_OLLAMA_URL + ""' in out
-    assert 'RAEM_OLLAMA_URL + "/api/embeddings"' in out and "repeat_penalty=1.15" in out
-    assert n == 5
-    compile(out.replace("%", "#"), "cell", "exec")
 
 
 def test_archive_keeps_sessions_the_notebook_pruned(tmp_path, monkeypatch):
@@ -240,77 +230,10 @@ def test_cloud_analysis_run(client, monkeypatch):
     assert client.post("/api/analysis", json={"ticker": "AAPL", "llm_provider": "nope"}).status_code == 400
 
 
-def test_notebook_rewrite_for_cloud_and_memory():
-    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
-    from run_notebook import rewrite
-    src = ('from langchain_ollama import ChatOllama\nllm = ChatOllama(model="qwen2.5:7b", num_predict=2048)\n'
-           '_prev = ChatOllama.invoke\nChatOllama.invoke = _guard\n'
-           'ef = embedding_functions.OllamaEmbeddingFunction(url="http://localhost:11434/api/embeddings", model_name="nomic-embed-text")\n'
-           'CHROMA_DB_PATH = "./raem_chroma_db"')
-    local, _ = rewrite(src)
-    assert "ChatOllama(model=RAEM_LLM_MODEL" in local and "RAEMCloudChat" not in local
-    assert "RAEM_embedding_function(url=RAEM_OLLAMA_URL" in local and "CHROMA_DB_PATH = RAEM_CHROMA_PATH" in local
-    cloud, _ = rewrite(src, cloud=True)
-    assert "llm = RAEMCloudChat(model=RAEM_LLM_MODEL, num_predict=2048)" in cloud
-    assert "import ChatOllama" in cloud and "_prev = ChatOllama.invoke" in cloud and "ChatOllama.invoke = _guard" in cloud
 
 
-def test_cloud_adapter_keeps_the_fact_guard():
-    """RAEMCloudChat is a ChatOllama, so a patch on ChatOllama.invoke (the notebooks' Fact Guard) still wraps it."""
-    pytest.importorskip("langchain_ollama")
-    from langchain_core.language_models.fake_chat_models import FakeListChatModel
-    from langchain_core.messages import HumanMessage
-    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
-    from run_notebook import CONFIG_CELL
-    from langchain_ollama import ChatOllama
-    ns = {}
-    os.environ["RAEM_LLM_PROVIDER"], os.environ["RAEM_LLM_MODEL"] = "openai", "gpt-test"
-    try:
-        exec(CONFIG_CELL, ns)
-    finally:
-        os.environ.pop("RAEM_LLM_PROVIDER"), os.environ.pop("RAEM_LLM_MODEL")
-    calls = []
-
-    def fake_cloud(temperature, max_tokens):
-        calls.append((temperature, max_tokens))
-        if temperature is not None and len(calls) == 1:
-            class NoTemp(FakeListChatModel):
-                def _generate(self, *a, **k):
-                    raise ValueError("Unsupported value: 'temperature' does not support 0 with this model.")
-            return NoTemp(responses=["never"])
-        return FakeListChatModel(responses=["cloud text"])
-
-    ns["_raem_cloud_model"] = fake_cloud
-    original = ChatOllama.invoke
-    ChatOllama.invoke = lambda self, inp, *a, **k: original(self, inp, *a, **k).model_copy(update={"content": "guarded: cloud text"})
-    try:
-        llm = ns["RAEMCloudChat"](model="gpt-test", temperature=0, num_predict=900)
-        assert isinstance(llm, ChatOllama) and llm.model == "gpt-test"
-        assert llm.invoke([HumanMessage(content="hi")]).content == "guarded: cloud text"
-        assert calls == [(0, 900), (None, 900)]  # retried without a temperature
-    finally:
-        ChatOllama.invoke = original
 
 
-def test_memory_falls_back_to_hashing_when_no_model(monkeypatch):
-    """No Ollama nomic-embed-text and no downloadable chromadb model: the run still gets a working memory store."""
-    pytest.importorskip("chromadb")
-    pytest.importorskip("langchain_ollama")
-    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
-    import run_notebook as rn
-    monkeypatch.setattr(rn, "local_model_ready", lambda *a, **k: False)
-    monkeypatch.setenv("RAEM_EMBED", "local")
-    assert rn.embed_mode("http://127.0.0.1:9") == "hash"
-    monkeypatch.delenv("RAEM_EMBED")
-    assert rn.embed_mode("http://127.0.0.1:9") == "hash"  # Ollama unreachable, model unavailable
-    monkeypatch.setenv("RAEM_EMBED", "hash")
-    ns = {}
-    exec(rn.CONFIG_CELL, ns)
-    assert ns["RAEM_CHROMA_PATH"] == "./raem_chroma_db_hash"
-    ef = ns["RAEM_embedding_function"](url="x", model_name="nomic-embed-text")
-    a, b, c = ef(["Apple iPhone sales rise", "apple iphone sales", "Federal Reserve raises rates"])
-    assert len(a) == 384 and abs(float((a * a).sum()) - 1) < 1e-5
-    assert float(a @ b) > float(a @ c)  # shared words score higher
 
 
 def test_hold_and_resume(client, monkeypatch):
@@ -396,42 +319,6 @@ def test_kimi_provider_with_either_key_name(client, monkeypatch):
     wait_done(client, r["id"])
 
 
-def test_saved_answers_survive_a_new_kernel(tmp_path, monkeypatch):
-    """The resume file: a new kernel (CONFIG_CELL run again) answers an unchanged prompt without calling the model."""
-    pytest.importorskip("langchain_ollama")
-    from langchain_core.language_models.fake_chat_models import FakeListChatModel
-    from langchain_core.messages import HumanMessage
-    from langchain_ollama import ChatOllama
-    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
-    from run_notebook import CONFIG_CELL, saved_counts
-    cache = tmp_path / "AAPL__openai_x.json"
-    monkeypatch.setenv("RAEM_LLM_PROVIDER", "openai")
-    monkeypatch.setenv("RAEM_LLM_MODEL", "x")
-    monkeypatch.setenv("RAEM_LLM_CACHE", str(cache))
-    original = ChatOllama._generate
-    calls = []
-
-    def kernel(answer):
-        ChatOllama._generate = original
-        ns = {}
-        exec(CONFIG_CELL, ns)
-
-        def fake(temperature, max_tokens):
-            calls.append(answer)
-            return FakeListChatModel(responses=[answer])
-        ns["_raem_cloud_model"] = fake
-        return ns["RAEMCloudChat"](model="x", temperature=0, num_predict=100)
-
-    try:
-        llm = kernel("first answer")
-        assert llm.invoke([HumanMessage(content="AAPL close 339.50")]).content == "first answer"
-        llm2 = kernel("NEW answer")  # held, then resumed in a new kernel
-        assert llm2.invoke([HumanMessage(content="AAPL close 339.50")]).content == "first answer"  # same prompt: reused
-        assert llm2.invoke([HumanMessage(content="AAPL close 341.20")]).content == "NEW answer"    # price changed: asked again
-        assert calls == ["first answer", "NEW answer"]
-        assert saved_counts(str(cache)) == {"entries": 2, "reused": 1, "new": 1}
-    finally:
-        ChatOllama._generate = original
 
 
 def test_rating_formats():
@@ -526,51 +413,6 @@ def test_persist_links_folders_onto_the_volume(tmp_path, monkeypatch):
     assert persist.main() == 0
 
 
-def test_past_memory_is_copied_when_ollama_is_missing(tmp_path, monkeypatch):
-    """No nomic-embed-text (Railway): the notebooks' episodes and news are re-embedded into the run's own store."""
-    chromadb = pytest.importorskip("chromadb")
-    pytest.importorskip("langchain_ollama")
-    from chromadb.api.types import Documents, EmbeddingFunction
-    sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
-    from run_notebook import CONFIG_CELL
-
-    class Tiny(EmbeddingFunction[Documents]):  # stands in for nomic: other vectors, other size
-        def __init__(self):
-            pass
-
-        def __call__(self, input):
-            import numpy as np
-            return [np.full(8, float(len(d)), dtype=np.float32) for d in input]
-
-        @staticmethod
-        def name():
-            return "tiny-test"
-
-        def get_config(self):
-            return {}
-
-        @staticmethod
-        def build_from_config(config):
-            return Tiny()
-
-    src = chromadb.PersistentClient(path=str(tmp_path / "raem_chroma_db"))
-    src.get_or_create_collection("raem_news_corpus", embedding_function=Tiny()).add(
-        ids=["n1", "n2"], documents=["IBM cloud revenue beats estimates", "Apple iPhone sales rise"],
-        metadatas=[{"company": "IBM"}, {"company": "AAPL"}])
-    src.get_or_create_collection("raem_episodic_memory", embedding_function=Tiny()).add(
-        ids=["e1"], documents=["HOLD in a neutral regime"], metadatas=[{"regime": "NEUTRAL_RANGING"}])
-    del src
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("RAEM_EMBED", "hash")
-    ns = {}
-    exec(CONFIG_CELL, ns)
-    exec(CONFIG_CELL, {})  # a second run copies nothing twice
-    dst = chromadb.PersistentClient(path=str(tmp_path / "raem_chroma_db_hash"))
-    ef = ns["RAEM_embedding_function"]("", "nomic-embed-text")
-    news = dst.get_collection("raem_news_corpus", embedding_function=ef)
-    assert news.count() == 2 and dst.get_collection("raem_episodic_memory", embedding_function=ef).count() == 1
-    hit = news.query(query_texts=["IBM cloud revenue"], n_results=1, where={"company": "IBM"})
-    assert hit["ids"][0] == ["n1"]
 
 
 def test_hugging_face_upload_list_and_header():
@@ -590,7 +432,7 @@ def test_hf_dataset_keeps_state_across_restarts(tmp_path, monkeypatch):
     sys.path.insert(0, str(BACKEND / "tools"))
     import hf_sync
     web = tmp_path / "web"
-    for rel, text in {"backend/engine/notebooks/raem_chroma_db/x.bin": "memory v1", "backend/engine/notebooks/AAPL.ipynb": "code",
+    for rel, text in {"backend/engine/notebooks/raem_chroma_db/x.bin": "memory v1", "backend/engine/notebooks/AAPL.py": "code",
                       "backend/engine/data/IBM.csv": "p1", "backend/data/extra.json": "{}"}.items():
         (web / rel).parent.mkdir(parents=True, exist_ok=True)
         (web / rel).write_text(text, encoding="utf-8")
@@ -620,7 +462,7 @@ def test_hf_dataset_keeps_state_across_restarts(tmp_path, monkeypatch):
     assert hf_sync.restore(api=FakeApi(), download=fake_download) == 0      # first start: nothing saved yet
     (web / "backend/engine/notebooks/raem_chroma_db/x.bin").write_text("memory v2 (written by a run)", encoding="utf-8")
     assert hf_sync.save("analysis AAPL", api=FakeApi())
-    assert not (remote / "backend/engine/notebooks/AAPL.ipynb").exists()   # code is never synced
+    assert not (remote / "backend/engine/notebooks/AAPL.py").exists()   # code is never synced
     assert (remote / "backend/storage/raem.db").exists()
     # restart with a new image: the disk is back to the image, and one price file was pushed in git
     (web / "backend/engine/notebooks/raem_chroma_db/x.bin").write_text("memory v1", encoding="utf-8")
@@ -653,17 +495,17 @@ def test_archive_is_read_from_the_snapshot_when_there_is_no_database(tmp_path, m
 
 
 def test_failed_analysis_error_carries_the_cause(monkeypatch):
-    """The run's error names the reason the notebook runner printed, not just 'did not finish'."""
+    """The run's error names the reason the pipeline runner printed, not just 'did not finish'."""
     from app.workers import jobs
-    lines = ["== [41/51] Prediction Engine", "   Traceback ...", "!! A notebook cell failed:",
-             "!! Cause: DeadKernelError: Kernel died  (in step: Prediction Engine)", "!! Executed copy saved: /x.ipynb"]
+    lines = ["== [12/16] Risk Debate", "   Traceback ...", "!! The analysis failed:",
+             "!! Cause: RuntimeError: provider went away  (in step: Risk Debate)"]
 
     def fake_stream(rid, argv, timeout, env=None):
         jobs._live[rid] = list(lines)
         return False
     monkeypatch.setattr(jobs, "_stream", fake_stream)
-    run = {"id": "r1", "ticker": "AAPL", "model_key": "kimi:kimi-k3", "params": {"provider": "kimi", "llm_model": "kimi-k3", "notebook": "AAPL.ipynb"}}
+    run = {"id": "r1", "ticker": "AAPL", "model_key": "kimi:kimi-k3", "params": {"provider": "kimi", "llm_model": "kimi-k3"}}
     with pytest.raises(RuntimeError) as e:
         jobs._run_analysis(run)
-    assert "Cause: DeadKernelError: Kernel died (in step: Prediction Engine)" in str(e.value).replace("  (", " (")
+    assert "Cause: RuntimeError: provider went away (in step: Risk Debate)" in str(e.value).replace("  (", " (")
     jobs._live.pop("r1", None)

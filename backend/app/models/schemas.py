@@ -17,5 +17,5 @@ class AnalysisRequest(BaseModel):
     llm_provider: str = Field("ollama", description="ollama, openai, anthropic, google or groq")
     llm_model: str | None = Field(None, description="Model of that provider; the provider's default when empty")
     force: bool = False
-    market: str = Field("auto", description="Only for a company that has no notebook yet: auto, international (Yahoo Finance) or dse")
-    name: str | None = Field(None, description="Only for a company that has no notebook yet: its name")
+    market: str = Field("auto", description="auto, international (Yahoo Finance) or dse (used when a company is added)")
+    name: str | None = Field(None, description="The company's name (used when it is added)")

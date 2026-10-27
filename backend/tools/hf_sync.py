@@ -8,7 +8,7 @@ saves it after every finished run (`save()`): ChromaDB memory, the run database,
 saved results. Hugging Face only stores the parts of files that changed, so a save after a run is small.
 
 Same rule as persist.py: a file the image (git) changed since the last save keeps the image's version; any other saved
-file replaces the image's copy. Code (notebooks, .py) always comes from the image. Without the two settings nothing
+file replaces the image's copy. Code (.py) always comes from the image. Without the two settings nothing
 happens, so local runs, Railway and docker compose are unaffected.
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ WEB = Path(__file__).resolve().parents[2]
 MANIFEST = ".raem_image_files.json"                     # in the dataset: the image's hash of each file at the last save
 BOOT = Path(tempfile.gettempdir()) / "raem_image_files.json"  # the running image's hashes, written by restore()
 SKIP_SUFFIX = (".ipynb", ".py", ".pyc", ".tmp")
-SKIP_PARTS = {"__pycache__", "notebook_runs"}           # executed notebook copies are large and only for debugging
+SKIP_PARTS = {"__pycache__", "notebook_runs"}           # old executed notebook copies (no longer written)
 _lock = threading.Lock()
 
 

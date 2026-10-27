@@ -163,7 +163,6 @@ def test_too_little_history_is_refused(ac, monkeypatch, capsys):
 def test_main_runs_every_step_once_and_can_repeat(ac, monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(ac, "fetch_international", lambda t: (_yf_frame(), {"name": "Tesla, Inc.", "currency": "USD", "tz": "America/New_York"}))
     calls = []
-    monkeypatch.setattr(ac, "create_notebook", lambda t, m, n, s: calls.append(("notebook", t, m, n)))
 
     def fake_run(label, argv):
         calls.append(("script", os.path.basename(argv[3]), argv[4:]))
@@ -173,27 +172,11 @@ def test_main_runs_every_step_once_and_can_repeat(ac, monkeypatch, capsys, tmp_p
     assert ac.main(["--ticker", "tsla"]) == 0
     out = capsys.readouterr().out
     steps = [l for l in out.splitlines() if l.startswith("== ")]
-    assert steps[0] == "== Prices for TSLA" and steps[-1] == "== TSLA added" and len(steps) == 6
-    assert calls == [("notebook", "TSLA", "international", "Tesla, Inc."), ("script", "export_ticker.py", ["TSLA"]),
-                     ("script", "export_extra.py", ["--only", "TSLA"])]
+    assert steps[0] == "== Prices for TSLA" and steps[-1] == "== TSLA added" and len(steps) == 5
+    assert calls == [("script", "export_ticker.py", ["TSLA"]), ("script", "export_extra.py", ["--only", "TSLA"])]   # no notebook step
     reg = json.load(open(os.environ["RAEM_COMPANIES"]))
     assert reg["TSLA"]["name"] == "Tesla, Inc." and reg["TSLA"]["currency"] == "USD"
     assert ac.main(["--ticker", "TSLA"]) == 0 and "already on the site" in capsys.readouterr().out
-
-
-def test_notebook_command_picks_the_regional_template(ac, monkeypatch):
-    seen = []
-
-    class R:
-        returncode, stdout, stderr = 0, "Created x", ""
-    monkeypatch.setattr(ac, "notebook_exists", lambda t: False)
-    monkeypatch.setattr(ac.subprocess, "run", lambda argv, **kw: seen.append(argv) or R())
-    ac.create_notebook("0700.HK", "international", "Tencent", None)
-    ac.create_notebook("SQURPHARMA", "dse", "Square Pharmaceuticals", "Health Care")
-    ac.create_notebook("TSLA", "international", "Tesla", None)
-    assert seen[0][seen[0].index("--like") + 1] == "0300.HK"
-    assert seen[1][seen[1].index("--group") + 1] == "dse" and seen[1][seen[1].index("--sector") + 1] == "Health Care"
-    assert "--like" not in seen[2]
 
 
 # ---------------------------------------------------------------- export_extra.py --only (stub engine, no models needed)
@@ -235,117 +218,59 @@ def test_export_extra_only_updates_one_company(tmp_path):
     assert got["memory"] == {"keep": 1} and got["ai"] == {"AAPL": {"x": 1}} and got["dataset"]["AAPL"]   # the other company is untouched
 
 
-# ---------------------------------------------------------------- AI analysis of any company (no hand-made notebook file)
+# ---------------------------------------------------------------- AI analysis of any company (one pipeline, no notebook)
 
-def test_analysis_accepts_a_company_without_a_notebook(client):
+def test_analysis_accepts_any_company(client):
     from app.db import runs as db
     r = client.post("/api/analysis", json={"ticker": "tsla", "llm_model": "qwen2.5:7b", "market": "international", "name": "Tesla"})
     assert r.status_code == 202, r.text
     run = r.json()["run"]
     assert run["ticker"] == "TSLA"
     p = db.get(run["id"], with_result=False)["params"]
-    assert p["notebook"] is None and p["market"] == "international" and p["name"] == "Tesla"
+    assert p["market"] == "international" and p["name"] == "Tesla" and "notebook" not in p
     wait_done(client, run["id"])
-    # a company that has a notebook keeps working as before
-    p2 = db.get(client.post("/api/analysis", json={"ticker": "aapl", "llm_model": "qwen2.5:7b"}).json()["run"]["id"], with_result=False)["params"]
-    assert p2["notebook"] == "AAPL.ipynb"
+    assert client.post("/api/analysis", json={"ticker": "bad ticker!", "llm_model": "qwen2.5:7b"}).status_code == 400
+    assert client.post("/api/analysis", json={"ticker": "TSLA", "llm_model": "qwen2.5:7b", "market": "mars"}).status_code == 400
 
 
-def test_runner_gets_market_and_name_only_without_a_notebook(monkeypatch, tmp_path):
+def test_runner_is_the_pipeline_and_gets_no_market_flags(monkeypatch):
     from app.workers import jobs
     seen = []
     monkeypatch.setattr(jobs, "_stream", lambda rid, argv, timeout, env=None: seen.append(argv) or False)
-    for nb in (None, "AAPL.ipynb"):
-        run = {"id": "x", "ticker": "TSLA", "model_key": "qwen2.5:7b",
-               "params": {"provider": "ollama", "llm_model": "qwen2.5:7b", "notebook": nb, "market": "dse", "name": "Tesla"}}
-        with pytest.raises(RuntimeError):
-            jobs._run_analysis(run)
-    assert seen[0][-4:] == ["--market", "dse", "--name", "Tesla"] and "--market" not in seen[1]
+    run = {"id": "x", "ticker": "TSLA", "model_key": "qwen2.5:7b",
+           "params": {"provider": "ollama", "llm_model": "qwen2.5:7b", "market": "dse", "name": "Tesla"}}
+    with pytest.raises(RuntimeError) as e:
+        jobs._run_analysis(run)
+    assert os.path.basename(seen[0][3]) == "run_pipeline.py" and "--ticker" in seen[0] and "--market" not in seen[0]
+    assert "AI analysis did not finish" in str(e.value)
 
 
 def _runner():
-    spec = importlib.util.spec_from_file_location("run_notebook_under_test", BACKEND / "app" / "ai_engine" / "run_notebook.py")
+    spec = importlib.util.spec_from_file_location("run_pipeline_under_test", BACKEND / "app" / "ai_engine" / "run_pipeline.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     return m
 
 
-def test_prepare_notebook_makes_a_missing_notebook_once(monkeypatch, capsys):
-    rn = _runner()
-    have = {}
-    monkeypatch.setattr(rn, "notebook_map", lambda d: dict(have))
-    calls = []
-
-    class P:
-        def __init__(self, argv, **kw):
-            calls.append(argv)
-            have["TSLA"] = "TSLA.ipynb"
-            self.stdout = iter(["== Prices for TSLA\n", "== TSLA is ready for the AI analysis\n"])
-
-        def wait(self):
-            return 0
-    monkeypatch.setattr(rn.subprocess, "Popen", P)
-    assert rn.prepare_notebook("TSLA", "international", "Tesla") == "TSLA.ipynb"
-    a = calls[0]
-    assert a[a.index("--ticker") + 1] == "TSLA" and "--prepare" in a and a[a.index("--market") + 1] == "international" and a[a.index("--name") + 1] == "Tesla"
-    assert "== Prices for TSLA" in capsys.readouterr().out
-    assert rn.prepare_notebook("TSLA") == "TSLA.ipynb" and len(calls) == 1      # there now: nothing is made again
-
-
-def test_prepare_notebook_reports_failure(monkeypatch):
-    rn = _runner()
-    monkeypatch.setattr(rn, "notebook_map", lambda d: {})
-
-    class P:
-        def __init__(self, argv, **kw):
-            self.stdout = iter(["!! No usable price history for NOPE.\n"])
-
-        def wait(self):
-            return 1
-    monkeypatch.setattr(rn.subprocess, "Popen", P)
-    assert rn.prepare_notebook("NOPE") is None
-
-
-class _Node(dict):
-    __getattr__ = dict.__getitem__
-
-
 def test_failure_cause_names_the_step_and_the_reason(monkeypatch):
     rn = _runner()
-    nb = _Node(cells=[
-        _Node(cell_type="code", source="log_step('Market analyst')", outputs=[]),
-        _Node(cell_type="code", source="log_step('Trader')", outputs=[{"output_type": "error", "ename": "NotFoundError"}]),
-    ])
-    nb.cells = nb["cells"]
-    err = "An error occurred while executing the following cell:\n...\n\x1b[0;31mNotFoundError\x1b[0m: Error code: 404 - {'error': {'message': 'Not found the model kimi-k2-0905-preview'}}\n"
+    err = "NotFoundError: Error code: 404 - {'error': {'message': 'Not found the model kimi-k2-0905-preview'}}\x1b[0m"
     monkeypatch.setenv("RAEM_LLM_PROVIDER", "kimi")
-    lines = rn.failure_cause(nb, err)
-    assert lines[0].startswith("!! Cause: NotFoundError: Error code: 404") and "(in step: Trader)" in lines[0] and "\x1b" not in lines[0]
+    lines = rn.failure_cause(err, "Trader Proposal")
+    assert lines[0].startswith("!! Cause: NotFoundError: Error code: 404") and "(in step: Trader Proposal)" in lines[0] and "\x1b" not in lines[0]
     assert "RAEM_KIMI_MODELS" in lines[1]
-    keyed = rn.failure_cause(nb, "AuthenticationError: Error code: 401 - invalid api key")
-    assert "API key" in keyed[1]
-    assert len(rn.failure_cause(nb, "ZeroDivisionError: division by zero")) == 1
-    # a traceback that only quotes code mentioning a model, and a missing package, are not a refused model
-    assert len(rn.failure_cause(nb, "---> 82 ChatOllama(model=m)  # unknown model\n\nModuleNotFoundError: No module named 'langchain_ollama'")) == 1
+    assert "API key" in rn.failure_cause("AuthenticationError: Error code: 401 - invalid api key", "News Analyst")[1]
+    assert "no credit left" in rn.failure_cause("OpenAIRateLimitError: Error code: 429 - Your credit balance is running low", None)[1]
+    assert len(rn.failure_cause("ZeroDivisionError: division by zero", None)) == 1
+    # a missing package is not a refused model
+    assert len(rn.failure_cause("ModuleNotFoundError: No module named 'langchain_ollama' (model)", None)) == 1
 
 
-def test_add_company_prepare_stops_before_the_forecast(ac, monkeypatch, capsys):
-    monkeypatch.setattr(ac, "fetch_international", lambda t: (_yf_frame(), {"name": "Tesla, Inc.", "currency": "USD", "tz": "America/New_York"}))
-    made = []
-    monkeypatch.setattr(ac, "create_notebook", lambda t, m, n, s: made.append(t))
-    monkeypatch.setattr(ac, "run_script", lambda *a: (_ for _ in ()).throw(AssertionError("no forecast in --prepare")))
-    assert ac.main(["--ticker", "TSLA", "--prepare"]) == 0
-    out = capsys.readouterr().out
-    assert made == ["TSLA"] and out.strip().splitlines()[-1] == "== TSLA is ready for the AI analysis"
-    Path(ac.TICKERS_DIR, "TSLA.json").write_text("{}")             # on the site already: --prepare still checks the notebook
-    assert ac.main(["--ticker", "TSLA", "--prepare"]) == 0 and made == ["TSLA", "TSLA"]
+def test_add_company_does_not_make_a_notebook(ac):
+    assert not hasattr(ac, "create_notebook") and not hasattr(ac, "notebook_exists")
 
 
-def test_kernel_import_path_has_the_engine_folder(monkeypatch):
-    """With the notebooks folder linked onto a volume the kernel's `..` has no predictor_lib; PYTHONPATH must carry the engine."""
-    rn = _runner()
-    monkeypatch.delenv("PYTHONPATH", raising=False)
-    assert rn.add_engine_to_path().split(os.pathsep) == [str(rn.ENGINE)]
-    monkeypatch.setenv("PYTHONPATH", "/x" + os.pathsep + str(rn.ENGINE))
-    assert rn.add_engine_to_path().split(os.pathsep) == ["/x", str(rn.ENGINE)]     # not added twice
-    assert (rn.ENGINE / "predictor_lib.py").exists()
+def test_no_notebook_files_are_left():
+    eng = BACKEND / "engine"
+    assert not list((eng / "notebooks").glob("*.ipynb")) and not (eng / "notebooks" / "raem_analysts").exists()
+    assert not (BACKEND / "app" / "ai_engine" / "run_notebook.py").exists()
