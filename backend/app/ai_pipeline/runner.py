@@ -141,9 +141,12 @@ class PipelineRunner:
         for ln in logs:
             yield {"type": "log", "stage": "fundamentals", "line": ln}
         self.session.log_step("Fundamentals Analyst", fundamentals_input,
-                              {"metrics": out.get("fund_metrics", {}), "report": out.get("fundamentals_report", "")})
+                              {"metrics": out.get("fund_metrics", {}),
+                               "report": out.get("fundamentals_report_llm", out.get("fundamentals_report", "")),
+                               "facts_sent_to_other_agents": out.get("fundamentals_facts", ""),
+                               "llm_verdict_hidden_from_agents": (out.get("fund_verdict", "") if agents.FUND_NUMBERS_ONLY else "NOT HIDDEN")})
         yield {"type": "stage_done", "stage": "fundamentals",
-               "html": md_to_html(out["fundamentals_report"]),
+               "html": md_to_html(out.get("fundamentals_report_llm", out["fundamentals_report"])),
                "meta": {"metrics": out.get("fund_metrics", {}),
                         "confidence": out.get("fundamentals_confidence", 0.0)},
                "input": fundamentals_input}
@@ -177,20 +180,32 @@ class PipelineRunner:
         logs = []
         node = agents.create_news_analyst(llm, log=logs.append)
         news_input = {"company": self.company, "date": self.trade_date,
-                      "tools_used": "get_news, get_global_news"}
+                      "tools_used": "get_news, get_global_news, web search (press coverage)"}
         out = node(self.state)
         self.state.update(out)
         for ln in logs:
             yield {"type": "log", "stage": "news", "line": ln}
         try:
-            n_chunks = memory.ingest_news(self.company, self.trade_date,
-                                          out.get("news_raw", {}).get("company_news", ""),
-                                          out.get("news_raw", {}).get("global_news", ""))
-            yield {"type": "log", "stage": "news", "line": f"ingested {n_chunks} news chunks into RAG corpus"}
+            from . import news_rag
+            memory.connect()
+            full = out.get("news_raw_full") or out.get("news_raw", {})
+            rag_logs = []
+            n_chunks = news_rag.ingest_news(memory.news, self.company, self.trade_date,
+                                            full.get("company_news", ""), full.get("global_news", ""),
+                                            web_news=full.get("web_news", ""), sector_news=out.get("sector_news_full", ""),
+                                            log=rag_logs.append)
+            for ln in rag_logs:
+                yield {"type": "log", "stage": "news", "line": ln}
+            query = f"{self.company} stock catalysts, risks, earnings, orders, and analyst sentiment as of {self.trade_date}"
+            ctx, comp, mkt = news_rag.build_news_rag_context(memory.news, self.company, self.trade_date, query)
+            self.state["news_rag_context"] = ctx
+            yield {"type": "log", "stage": "news",
+                   "line": f"news RAG: {n_chunks} new chunks stored; context has {len(comp)} company + {len(mkt)} exchange-wide chunks"}
         except Exception as e:  # noqa: BLE001
-            yield {"type": "log", "stage": "news", "line": f"news RAG ingest skipped: {e}"}
+            yield {"type": "log", "stage": "news", "line": f"news RAG skipped: {e}"}
         self.session.log_step("News Analyst", news_input,
-                              {"news_metrics": out.get("news_metrics", {}), "report": out.get("news_report", "")})
+                              {"news_metrics": out.get("news_metrics", {}), "news_table_md": out.get("news_table_md", ""),
+                               "report": out.get("news_report", "")})
         yield {"type": "stage_done", "stage": "news",
                "html": md_to_html(out["news_report"]),
                "meta": {"news_metrics": out.get("news_metrics", {}),
@@ -201,9 +216,14 @@ class PipelineRunner:
         idx += 1
         yield self._start("sentiment", idx)
         logs = []
-        node = agents.create_sentiment_analyst(llm, log=logs.append)
+        try:
+            memory.connect()
+            news_collection = memory.news
+        except Exception:  # noqa: BLE001
+            news_collection = None
+        node = agents.create_sentiment_analyst(llm, news_collection=news_collection, log=logs.append)
         sentiment_input = {"company": self.company, "date": self.trade_date,
-                            "source": "News Analyst's per-headline sentiment table"}
+                            "source": "rule-based keyword score of the stored company news (code); the LLM explains it"}
         out = node(self.state)
         self.state.update(out)
         for ln in logs:
@@ -314,6 +334,7 @@ class PipelineRunner:
             f"{self.company} trading decision in {today_regime} market regime",
             company=self.company, regime_filter=today_regime, n_results=3)
         memory_context = _memory_context(today_regime, episodes, reflection)
+        self.state["memory_context"] = memory_context or ""   # read by debate_data.format_shared_context
         macro_regime = self.state.get("macro_regime", "")
         if macro_regime:
             memory_context = (memory_context or "") + (
@@ -390,6 +411,8 @@ class PipelineRunner:
             + memory_context
         )
         if post_mortem_lessons:
+            self.state["memory_context"] = (self.state.get("memory_context", "") +
+                                            f"\n\nPost-mortem lessons: {post_mortem_lessons}")[:2000]
             self.state["investment_plan"] += (
                 f"\n\n**Post-Mortem Lessons (cross-regime track record):**\n{post_mortem_lessons}"
             )
