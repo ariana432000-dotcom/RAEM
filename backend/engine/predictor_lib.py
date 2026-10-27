@@ -278,7 +278,27 @@ def get_fx_rate_to_usd(currency: str) -> float:
     pair = FX_PAIRS.get(currency)
     if pair is None:
         return 1.0
-    return float(yf.Ticker(pair).history(period="5d")["Close"].iloc[-1])
+    # Yahoo can fail (offline, rate-limited cloud IP, empty answer). Fall back to the last good rate in cache/fx_<CUR>.json,
+    # else NaN. A forecast must never fail because of FX: the rate only converts prices to USD for display.
+    import json
+    path = os.path.join(CACHE_DIR, f"fx_{currency}.json")
+    try:
+        rate = float(yf.Ticker(pair).history(period="5d")["Close"].iloc[-1])
+        if not np.isfinite(rate) or rate <= 0:
+            raise ValueError("bad rate")
+        try:
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"rate": rate, "saved": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}, f)
+        except OSError:
+            pass
+        return rate
+    except Exception:
+        try:
+            with open(path, encoding="utf-8") as f:
+                return float(json.load(f)["rate"])
+        except Exception:
+            return float("nan")
 
 
 # --------------------------------------------------------------------------
@@ -304,7 +324,10 @@ def price_features(df: pd.DataFrame) -> pd.DataFrame:
     delta = d["Close"].diff()
     up = delta.clip(lower=0).rolling(14).mean()
     down = (-delta.clip(upper=0)).rolling(14).mean()
-    d["rsi_14"] = 100 - (100 / (1 + up / down.replace(0, np.nan)))
+    rsi = 100 - (100 / (1 + up / down.replace(0, np.nan)))
+    # no down days in the window is RSI 100 (no move at all is 50), not a missing value
+    rsi = rsi.mask((down == 0) & (up > 0), 100.0).mask((down == 0) & (up == 0), 50.0)
+    d["rsi_14"] = rsi
     return d
 
 
@@ -338,6 +361,7 @@ KALMAN_LEVEL_GRID = ["local level", "local linear trend", "smooth trend"]
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
 TUNING_MAX_AGE_DAYS = 30   # re-tune roughly monthly; hyperparameters drift slowly
+MODEL_VERSION = 2          # bump when model code changes what a cached result means (v2: embargo, LSTM windows, scaler)
 
 
 def _cache_file(ticker: str, kind: str) -> str:
@@ -409,14 +433,14 @@ def load_model_results(ticker: str, data_end_date: str, n_rows: int) -> dict | N
     if not cached:
         return None
     if (cached.get("data_end_date") != data_end_date or cached.get("n_rows") != n_rows
-            or cached.get("horizon") != HORIZON):
+            or cached.get("horizon") != HORIZON or cached.get("model_version") != MODEL_VERSION):
         return None  # a HORIZON change invalidates predictions fit against the old target
     return cached.get("results")
 
 
 def save_model_results(ticker: str, data_end_date: str, n_rows: int, results: dict) -> None:
     _write_cache(ticker, "results", {
-        "horizon": HORIZON,
+        "horizon": HORIZON, "model_version": MODEL_VERSION,
         "ticker": ticker, "data_end_date": data_end_date,
         "n_rows": n_rows, "cached_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "results": results,
@@ -458,8 +482,9 @@ def cache_status() -> pd.DataFrame:
 
 
 def tune_xgboost(X_train, y_train, n_splits: int = 3):
-    """Grid search scored by TimeSeriesSplit CV inside the training portion only."""
-    tscv = TimeSeriesSplit(n_splits=n_splits)
+    """Grid search scored by TimeSeriesSplit CV inside the training portion only (gap = HORIZON rows: a row's 7-day target
+    reaches that far into the next fold)."""
+    tscv = TimeSeriesSplit(n_splits=n_splits, gap=HORIZON)
     best_params, best_score = XGB_PARAM_GRID[0], np.inf
     for params in XGB_PARAM_GRID:
         fold_maes = []
@@ -474,7 +499,9 @@ def tune_xgboost(X_train, y_train, n_splits: int = 3):
 
 
 def run_xgboost(labeled: pd.DataFrame, feat: pd.DataFrame, split: int, params: dict | None = None):
-    X_train, y_train = labeled[FEATURES].iloc[:split], labeled["target"].iloc[:split]
+    # the last HORIZON training rows have 7-day targets that reach into the holdout, so they are left out of the scored fit
+    fit_end = split - HORIZON
+    X_train, y_train = labeled[FEATURES].iloc[:fit_end], labeled["target"].iloc[:fit_end]
     X_test, y_test = labeled[FEATURES].iloc[split:], labeled["target"].iloc[split:]
 
     # `params` from cache skips the grid search -- the single biggest cost here
@@ -493,8 +520,9 @@ def run_xgboost(labeled: pd.DataFrame, feat: pd.DataFrame, split: int, params: d
 
 
 def tune_ridge(X_train, y_train, n_splits: int = 3):
-    """Grid search scored by TimeSeriesSplit CV inside the training portion only."""
-    tscv = TimeSeriesSplit(n_splits=n_splits)
+    """Grid search scored by TimeSeriesSplit CV inside the training portion only (gap = HORIZON rows: a row's 7-day target
+    reaches that far into the next fold)."""
+    tscv = TimeSeriesSplit(n_splits=n_splits, gap=HORIZON)
     best_alpha, best_score = RIDGE_ALPHA_GRID[0], np.inf
     for alpha in RIDGE_ALPHA_GRID:
         fold_maes = []
@@ -512,7 +540,8 @@ def run_ridge(labeled: pd.DataFrame, feat: pd.DataFrame, split: int, params: dic
     """Linear baseline on the same feature set as XGBoost. Cheap, and a useful
     check: if a linear model matches the tree/deep models, the extra
     complexity of those isn't earning its keep on this ticker."""
-    X_train, y_train = labeled[FEATURES].iloc[:split], labeled["target"].iloc[:split]
+    fit_end = split - HORIZON   # embargo: see run_xgboost
+    X_train, y_train = labeled[FEATURES].iloc[:fit_end], labeled["target"].iloc[:fit_end]
     X_test, y_test = labeled[FEATURES].iloc[split:], labeled["target"].iloc[split:]
 
     best_params = params or tune_ridge(X_train, y_train)
@@ -589,11 +618,13 @@ class LSTMNet(nn.Module):
 
 
 def build_sequences(feat_scaled, targets, seq_len: int):
+    """Windows of seq_len rows ending ON row i (row i's own features included), labelled with row i's 7-day target.
+    The live forecast reads the last seq_len rows, which also end on the forecast origin, so training and prediction match."""
     X, y = [], []
-    for i in range(seq_len, len(feat_scaled)):
+    for i in range(seq_len - 1, len(feat_scaled)):
         if np.isnan(targets[i]):
             continue
-        X.append(feat_scaled[i - seq_len:i])
+        X.append(feat_scaled[i - seq_len + 1:i + 1])
         y.append(targets[i])
     return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
 
@@ -633,12 +664,14 @@ def tune_lstm(X_train_full, y_train_full, n_features, epochs: int = 100):
 
 def run_lstm(feat: pd.DataFrame, epochs: int = 150, seed: int = 42, params: dict | None = None):
     valid = feat.dropna(subset=FEATURES)
-    scaler = StandardScaler()
-    scaled_all = scaler.fit_transform(valid[FEATURES])
+    # the scaler sees training rows only (the holdout must not shape the inputs); the embargo drops the last HORIZON
+    # training windows because their 7-day targets reach into the holdout
+    scaler = StandardScaler().fit(valid[FEATURES].iloc[:max(int(len(valid) * SPLIT_RATIO) - HORIZON, 2)])
+    scaled_all = scaler.transform(valid[FEATURES])
 
     X, y = build_sequences(scaled_all, valid["target"].values, SEQ_LEN)
     split = int(len(X) * SPLIT_RATIO)
-    X_train, y_train = X[:split], y[:split]
+    X_train, y_train = X[:split - HORIZON], y[:split - HORIZON]
     X_test, y_test = X[split:], y[split:]
 
     best_params = params or tune_lstm(X_train, y_train, n_features=len(FEATURES))
@@ -651,7 +684,7 @@ def run_lstm(feat: pd.DataFrame, epochs: int = 150, seed: int = 42, params: dict
     mae = mean_absolute_error(y_test, preds_test) if len(X_test) else float("nan")
     dacc = direction_acc(y_test, preds_test)
 
-    last_window = scaler.transform(feat[FEATURES].dropna().iloc[-SEQ_LEN:])
+    last_window = scaler.transform(feat[FEATURES].dropna().iloc[-SEQ_LEN:])   # same train-only scaler as the model saw
     with torch.no_grad():
         pred_return = float(model(torch.tensor(last_window[None, :, :].astype(np.float32))).numpy()[0])
     return pred_return, mae, dacc, best_params
