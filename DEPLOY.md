@@ -18,14 +18,14 @@ A Space runs the same Docker image on Hugging Face's free CPU (2 vCPU, 16 GB of 
 2. In PowerShell, from this folder:
    ```powershell
    $env:HF_TOKEN = "hf_..."
-   python backend/tools/deploy_hf.py <hf-username>/ream
+   python backend/tools/deploy_hf.py <hf-username>/raem
    ```
-   The script creates the Space (Docker) and a private dataset `<hf-username>/ream-data` for its data, sets `PORT=8000`,
+   The script creates the Space (Docker) and a private dataset `<hf-username>/raem-data` for its data, sets `PORT=8000`,
    `TZ` and `RAEM_HF_DATASET`, and uploads the files git would push.
 3. The Space page → **Settings → Variables and secrets → New secret**: `RAEM_RUN_TOKEN`, `HF_TOKEN` (the same write token:
    it lets the Space save its data), and `ANTHROPIC_API_KEY` and/or `MOONSHOT_API_KEY`. (Or set them in the same PowerShell
    window first and add `--secrets` to the command.)
-4. Wait for the build (the **Logs** tab, 10 to 20 minutes), then open `https://<hf-username>-ream.hf.space`.
+4. Wait for the build (the **Logs** tab, 10 to 20 minutes), then open `https://<hf-username>-raem.hf.space`.
 5. Later changes: run step 2 again; the Space rebuilds.
 
 **Data stays, for free.** A Space's own disk starts over on every restart, so the app keeps its changing data in the
