@@ -174,22 +174,33 @@ def reviewer_agent(fcast: dict, plan: dict) -> dict:
     shrink, holdout_mvn, dir_acc = 1.0, np.nan, np.nan
     pred, actual = _holdout_combo(fcast, members)
     if pred is not None:
-        naive_mae = float(np.mean(np.abs(actual)))
-        maes = {s: float(np.mean(np.abs(actual - s * pred))) for s in SHRINK_GRID}
-        full = maes[1.0]
-        best_s = min(maes, key=maes.get)
+        # The shrink factor is CHOSEN on the first half of the holdout dates and its effect is REPORTED on the second half,
+        # so the quoted improvement is not the same data that picked the factor. Too few dates to split: use all of them.
+        n_h = len(pred)
+        cut = n_h // 2 if n_h >= 2 * MIN_BAND_ORIGINS else 0
+        fit_p, fit_a = (pred[:cut], actual[:cut]) if cut else (pred, actual)
+        chk_p, chk_a = (pred[cut:], actual[cut:]) if cut else (pred, actual)
+        fit_maes = {s_: float(np.mean(np.abs(fit_a - s_ * fit_p))) for s_ in SHRINK_GRID}
+        best_s = min(fit_maes, key=fit_maes.get)
+        gain_fit = (fit_maes[1.0] - fit_maes[best_s]) / fit_maes[1.0] if fit_maes[1.0] > 0 else 0.0
+        chosen = float(best_s) if (best_s < 1.0 and gain_fit >= SHRINK_MIN_GAIN) else 1.0
+        naive_mae = float(np.mean(np.abs(chk_a)))
+        full = float(np.mean(np.abs(chk_a - chk_p)))                 # unshrunk, on dates that did not pick the factor
+        kept = float(np.mean(np.abs(chk_a - chosen * chk_p)))
         holdout_mvn = full / naive_mae
         dir_acc = float(np.mean(np.sign(pred[:, -1]) == np.sign(actual[:, -1])))
-        if best_s < 1.0 and (full - maes[best_s]) / full >= SHRINK_MIN_GAIN:
-            shrink = float(best_s)
+        where = (f"first {cut} of {n_h} holdout dates picked the factor; the other {n_h - cut} score it" if cut
+                 else f"all {n_h} holdout dates (too few to split)")
+        if chosen < 1.0 and kept < full:
+            shrink = chosen
             note("Calibration", "FIXED",
                  f"the 3-model average is over-confident on the holdout (error vs naive {full / naive_mae:.2f}); "
-                 f"scaled every move by {shrink:.1f}, which cuts holdout error {100 * (full - maes[best_s]) / full:.0f}% "
-                 f"(vs naive {maes[best_s] / naive_mae:.2f}).")
+                 f"scaled every move by {shrink:.1f}, which cuts error {100 * (full - kept) / full:.0f}% "
+                 f"(vs naive {kept / naive_mae:.2f}). {where}.")
         else:
             note("Calibration", "PASS",
-                 f"holdout error vs naive {full / naive_mae:.2f} over {len(pred)} dates; no shrink improves it by "
-                 f"{SHRINK_MIN_GAIN:.0%} or more.")
+                 f"holdout error vs naive {full / naive_mae:.2f}; no shrink that helped on the first half "
+                 f"({SHRINK_MIN_GAIN:.0%} or more) also helped on the rest. {where}.")
         path = path * shrink
     else:
         note("Calibration", "WARN", "members share too few holdout dates to calibrate; forecast left unscaled.")
