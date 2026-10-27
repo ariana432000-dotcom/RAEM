@@ -152,7 +152,7 @@ POST responses look like `{"run": {...}, "reused": "stored" | "active" | "resume
 
 ## Put it on GitHub and host it
 
-**Railway + Vercel, or Hugging Face Spaces (free):** step by step in [DEPLOY.md](DEPLOY.md). Railway runs the app with one volume and Vercel serves the page and forwards `/api`; a Space runs the whole app on a free 16 GB CPU (`python backend/tools/deploy_hf.py <hf-username>/ream`) and keeps ChromaDB memory, runs and logs in a private Hugging Face dataset, so they survive restarts.
+**Railway + Vercel, or Hugging Face Spaces (free):** step by step in [DEPLOY.md](DEPLOY.md). Railway runs the app with one volume and Vercel serves the page and forwards `/api`; a Space runs the whole app on a free 16 GB CPU (`python backend/tools/deploy_hf.py <hf-username>/raem`) and keeps ChromaDB memory, runs and logs in a private Hugging Face dataset, so they survive restarts.
 
 1. Create an empty repository and push this folder as its root (`git init`, `git add .`, `git commit`, `git push`). `.gitignore` keeps out `.env`, the run database and caches. The engine data (about 30 MB) is included so a fresh clone works.
 2. Pick a host:
