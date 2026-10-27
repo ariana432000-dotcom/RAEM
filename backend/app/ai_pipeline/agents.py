@@ -864,6 +864,9 @@ At the very end, output a Markdown table with EXACTLY these columns:
 # ==========================================================================
 # Investment debate (bull / bear / facilitator)
 # ==========================================================================
+from . import debate_data as dd  # noqa: E402
+
+
 def _rag_tail(state) -> str:
     """The news retrieved from the corpus (company items first, exchange-wide notices labelled), appended to the news evidence."""
     rag = str(state.get("news_rag_context") or "").strip()
@@ -905,13 +908,18 @@ def create_bull_researcher(llm):
         # below (see runner.py's investment debate loop comment).
         last_bear_argument = _last_turn(ds.get("bear_history", ""))
         prompt = f"""IMPORTANT: Use ONLY the data in the reports below. Do NOT invent facts or figures.
+{dd.MISATTRIBUTION_RULE}
+{dd.HARD_DATA_RULE}
 You are a Bull Analyst advocating for investing in the stock.
+HARD DATA (ground-truth numeric indicators): {dd.format_hard_indicators(state)}
+Macro context: {dd.format_shared_context(state, news=False, macro=True, memory=False)}
 Market report: {market}
 Sentiment report: {sentiment}
 News report: {news}
 Fundamentals report: {fundamentals}
 Debate history: {ds.get('history', '')}
 Last bear argument: {last_bear_argument}
+{dd.EVIDENCE_RULE}
 Present a compelling bull argument with specific growth opportunities and strengths.
 """ + U["get_language_instruction"]()
         argument = f"Bull Analyst: {invoke_llm_with_retry(llm, prompt).content}"
@@ -937,13 +945,17 @@ def create_bear_researcher(llm):
         # generic current_response field.
         last_bull_argument = _last_turn(ds.get("bull_history", ""))
         prompt = f"""IMPORTANT: Use ONLY the data in the reports below. Do NOT invent facts or figures.
+{dd.HARD_DATA_RULE}
 You are a Bear Analyst making the case against investing in the stock.
+HARD DATA (ground-truth numeric indicators): {dd.format_hard_indicators(state)}
+Macro context: {dd.format_shared_context(state, news=False, macro=True, memory=False)}
 Market report: {market}
 Sentiment report: {sentiment}
 News report: {news}
 Fundamentals report: {fundamentals}
 Debate history: {ds.get('history', '')}
 Last bull argument: {last_bull_argument}
+{dd.EVIDENCE_RULE}
 Present a compelling bear argument with specific risks and weaknesses.
 """ + U["get_language_instruction"]()
         argument = f"Bear Analyst: {invoke_llm_with_retry(llm, prompt).content}"
@@ -978,6 +990,10 @@ side technically "answered" the other last. Evaluate each round's points
 on their own factual/logical merit, and explicitly check: are there Bull
 points from EARLIER rounds that Bear never actually rebutted, just spoke
 after? An unrebutted earlier point is still a live point.
+
+HARD DATA (ground-truth numbers; a side that cites a different figure is wrong): {dd.format_hard_indicators(state)}
+Shared context:
+{dd.format_shared_context(state, news=True, macro=True, memory=False)}
 
 Full Debate History:
 {ds.get('history', '')}
@@ -1022,6 +1038,9 @@ def create_trader(llm):
                 f"insights from current technical market trends, macroeconomic indicators, and "
                 f"social media sentiment. Use this plan as a foundation for evaluating your next "
                 f"trading decision.\n\nProposed Investment Plan: {investment_plan}\n\n"
+                f"HARD DATA (ground-truth numeric indicators; cite these exact values, never your own estimate):\n"
+                f"{dd.format_hard_indicators(state)}\n\n"
+                f"{dd.format_shared_context(state, news=True, macro=True, memory=False)}\n\n"
                 f"Leverage these insights to make an informed and strategic decision.")},
         ]
 
@@ -1073,6 +1092,10 @@ Market Report: {market}
 Sentiment: {sentiment}
 News: {news}
 Fundamentals: {fundamentals}
+HARD DATA (ground-truth numbers): {dd.format_hard_indicators(state)}
+Shared context:
+{dd.format_shared_context(state, news=False, macro=True, memory=True)}
+{dd.HARD_DATA_RULE}
 History: {rd.get('history', '')}
 Conservative argument: {rd.get('current_conservative_response', '')}
 Neutral argument: {rd.get('current_neutral_response', '')}
@@ -1102,6 +1125,10 @@ Market Report: {market}
 Sentiment: {sentiment}
 News: {news}
 Fundamentals: {fundamentals}
+HARD DATA (ground-truth numbers): {dd.format_hard_indicators(state)}
+Shared context:
+{dd.format_shared_context(state, news=False, macro=True, memory=True)}
+{dd.HARD_DATA_RULE}
 History: {rd.get('history', '')}
 Aggressive argument: {rd.get('current_aggressive_response', '')}
 Neutral argument: {rd.get('current_neutral_response', '')}
@@ -1131,6 +1158,10 @@ Market Report: {market}
 Sentiment: {sentiment}
 News: {news}
 Fundamentals: {fundamentals}
+HARD DATA (ground-truth numbers): {dd.format_hard_indicators(state)}
+Shared context:
+{dd.format_shared_context(state, news=False, macro=True, memory=True)}
+{dd.HARD_DATA_RULE}
 History: {rd.get('history', '')}
 Aggressive argument: {rd.get('current_aggressive_response', '')}
 Conservative argument: {rd.get('current_conservative_response', '')}
@@ -1169,6 +1200,10 @@ You are the Risk Management Debate Facilitator.
 Trader's Original Decision: {trader_decision}
 
 After {rd.get('count', 0)} total arguments across the rounds, evaluate the risk debate:
+
+HARD DATA (ground-truth numbers): {dd.format_hard_indicators(state)}
+Shared context:
+{dd.format_shared_context(state, news=False, macro=True, memory=True)}
 
 Aggressive Analyst Summary:
 {rd.get('aggressive_history', '')[-800:]}
@@ -1283,6 +1318,12 @@ def create_portfolio_manager(llm):
             prompt_text += f"{verified_snapshot}\n\n"
         if past_context:
             prompt_text += f"Past context:\n{past_context}\n\n"
+        prompt_text += (
+            "HARD DATA (ground-truth numeric indicators -- if the trader proposal or risk debate cite RSI/MACD/SMA/"
+            "Bollinger numbers, verify against these, not their text):\n"
+            f"{dd.format_hard_indicators(state)}\n\n"
+            f"{dd.format_shared_context(state, news=True, macro=True, memory=True)}\n\n"
+            "Cite the [F#]/[N#]/[W#] id after the main evidence in the executive summary.\n\n")
         prompt_text += get_language_instruction()
 
         messages = [

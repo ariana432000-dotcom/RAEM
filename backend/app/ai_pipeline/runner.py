@@ -334,6 +334,7 @@ class PipelineRunner:
             f"{self.company} trading decision in {today_regime} market regime",
             company=self.company, regime_filter=today_regime, n_results=3)
         memory_context = _memory_context(today_regime, episodes, reflection)
+        self.state["memory_context"] = memory_context or ""   # read by debate_data.format_shared_context
         macro_regime = self.state.get("macro_regime", "")
         if macro_regime:
             memory_context = (memory_context or "") + (
@@ -410,6 +411,8 @@ class PipelineRunner:
             + memory_context
         )
         if post_mortem_lessons:
+            self.state["memory_context"] = (self.state.get("memory_context", "") +
+                                            f"\n\nPost-mortem lessons: {post_mortem_lessons}")[:2000]
             self.state["investment_plan"] += (
                 f"\n\n**Post-Mortem Lessons (cross-regime track record):**\n{post_mortem_lessons}"
             )

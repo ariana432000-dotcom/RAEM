@@ -189,6 +189,8 @@ The AI analysis is the pipeline of the any_with_dse app, ported without changes 
 
 The four analysts (fundamentals, market, news, sentiment) work as in the research notebooks: Fundamentals passes only code-extracted numbers to the other agents (its own verdict stays in the log), Market avoids bull/bear wording, News adds dated press coverage and stores every item once by type (company, web, sector, exchange-wide) without ever using news from after the trade date, and Sentiment is a score computed in code from the stored news with a keyword list, which the LLM only explains (`RAEM_RULE_SENTIMENT=0` turns that off). Dhaka companies read the notebook's DSE data layer (`backend/app/ai_pipeline/dse_layer.py`).
 
+The debate agents (Bull, Bear, facilitators, trader, risk debaters, portfolio manager) also follow the notebook: each prompt carries the raw indicator numbers (never cut), a numbered fact sheet computed in code (price against the 50-day average, RSI zone, MACD sign, dividend trend, valuation, dated news items) and the news, macro and memory context, with rules to cite the fact id and not to invent events (`backend/app/ai_pipeline/debate_data.py`).
+
 | Pipeline part | On the site |
 |---|---|
 | Fundamentals, Market, Macro regime, News (with RAG), Sentiment analysts | AI Analysis pipeline tabs, News and Fundamentals pages |
