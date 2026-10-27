@@ -203,10 +203,23 @@ def import_snapshot() -> int:
     return len(rows)
 
 
+def _snapshot_sessions(ticker: str) -> list[tuple[dict, str | None]]:
+    """The saved snapshot read directly, for a checkout that has no run database yet (a fresh clone, CI, an export run)."""
+    p = snapshot_path()
+    if not os.path.exists(p):
+        return []
+    try:
+        with gzip.open(p, "rt", encoding="utf-8") as fh:
+            rows = json.load(fh)
+    except Exception:
+        return []
+    return [(r["data"], r.get("signal")) for r in sorted((r for r in rows if r.get("company") == ticker), key=lambda r: str(r.get("session_start", "")))]
+
+
 def archived(ticker: str) -> list[tuple[dict, str | None]]:
     c = _archive(create=False)
     if c is None:
-        return []
+        return _snapshot_sessions(ticker)
     try:
         return [(json.loads(d), g) for d, g in c.execute("SELECT data, signal FROM sessions WHERE company=? ORDER BY session_start", (ticker,))]
     except Exception:

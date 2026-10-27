@@ -147,6 +147,7 @@ def test_failed_run_is_recorded(client, monkeypatch):
 
 def test_session_reader_keeps_new_steps_and_drops_nan(tmp_path, monkeypatch):
     monkeypatch.setenv("RAEM_DB", str(tmp_path / "archive.db"))
+    monkeypatch.setenv("RAEM_SNAPSHOT", str(tmp_path / "no-snapshot.json.gz"))   # only the log written below counts
     sys.path[:0] = [str(BACKEND / "app" / "pipeline"), str(BACKEND / "app" / "ai_engine")]
     from sessions import ai_entry
     log = [{"company": "AAPL", "trade_date": "2026-10-22", "session_start": "2026-10-22 10:00:00", "session_end": "x",
@@ -631,3 +632,21 @@ def test_hf_dataset_keeps_state_across_restarts(tmp_path, monkeypatch):
     assert sqlite3.connect(web / "backend/storage/raem.db").execute("select id from runs").fetchall() == [("r1",)]
     monkeypatch.delenv("HF_TOKEN")
     assert hf_sync.restore(api=FakeApi(), download=fake_download) == 0 and not hf_sync.save("x", api=FakeApi())
+
+
+def test_archive_is_read_from_the_snapshot_when_there_is_no_database(tmp_path, monkeypatch):
+    """A checkout without a run database (fresh clone, an export run) still sees the saved session history."""
+    import gzip, json, sys
+    sys.path.insert(0, str(BACKEND / "app" / "pipeline"))
+    import sessions
+    snap = tmp_path / "snap.json.gz"
+    rows = [{"company": "AAPL", "session_start": "2026-10-22 10:00:00", "trade_date": "2026-10-22", "signal": "HOLD", "data": {"company": "AAPL", "n": 2}},
+            {"company": "AAPL", "session_start": "2026-10-05 10:00:00", "trade_date": "2026-10-05", "signal": "BUY", "data": {"company": "AAPL", "n": 1}},
+            {"company": "IBM", "session_start": "2026-10-05 10:00:00", "trade_date": "2026-10-05", "signal": "HOLD", "data": {"company": "IBM", "n": 9}}]
+    with gzip.open(snap, "wt", encoding="utf-8") as fh:
+        json.dump(rows, fh)
+    monkeypatch.setenv("RAEM_SNAPSHOT", str(snap))
+    monkeypatch.setenv("RAEM_DB", str(tmp_path / "missing.db"))
+    got = sessions.archived("AAPL")
+    assert [d["n"] for d, _ in got] == [1, 2] and [g for _, g in got] == ["BUY", "HOLD"]
+    assert sessions.archived("NOPE") == []
