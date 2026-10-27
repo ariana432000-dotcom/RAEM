@@ -339,3 +339,13 @@ def test_add_company_prepare_stops_before_the_forecast(ac, monkeypatch, capsys):
     assert made == ["TSLA"] and out.strip().splitlines()[-1] == "== TSLA is ready for the AI analysis"
     Path(ac.TICKERS_DIR, "TSLA.json").write_text("{}")             # on the site already: --prepare still checks the notebook
     assert ac.main(["--ticker", "TSLA", "--prepare"]) == 0 and made == ["TSLA", "TSLA"]
+
+
+def test_kernel_import_path_has_the_engine_folder(monkeypatch):
+    """With the notebooks folder linked onto a volume the kernel's `..` has no predictor_lib; PYTHONPATH must carry the engine."""
+    rn = _runner()
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    assert rn.add_engine_to_path().split(os.pathsep) == [str(rn.ENGINE)]
+    monkeypatch.setenv("PYTHONPATH", "/x" + os.pathsep + str(rn.ENGINE))
+    assert rn.add_engine_to_path().split(os.pathsep) == ["/x", str(rn.ENGINE)]     # not added twice
+    assert (rn.ENGINE / "predictor_lib.py").exists()
