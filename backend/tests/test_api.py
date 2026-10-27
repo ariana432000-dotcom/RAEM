@@ -31,13 +31,29 @@ def test_models_list_matches_exporter(client):
     m = client.get("/api/models").json()
     keys = [x["key"] for x in m["forecast"]]
     defaults = [x["key"] for x in m["forecast"] if x["default"]]
-    assert len(keys) == 14 and len(defaults) == 6
+    assert len(keys) == 6 and defaults == keys          # only the best six are offered, and all six run by default
     src = (BACKEND / "app" / "pipeline" / "export_ticker.py").read_text(encoding="utf-8")
     keep = re.search(r"KEEP_MODELS = \[(.*?)\]", src).group(1)
     assert sorted(re.findall(r'"(\w+)"', keep)) == sorted(defaults)
     assert m["llm"]["models"] == ["qwen2.5:7b", "llama3.2:3b"]
     from app.core import config
     assert m["analysis_tickers"] == config.tickers() and m["notebooks"] == {"AAPL": "AAPL.ipynb", "IBM": "IBM.ipynb"}
+
+
+def test_forecast_refuses_the_dropped_models(client):
+    r = client.post("/api/forecast", json={"ticker": "AAPL", "models": ["ridge", "tft"]})
+    assert r.status_code == 400 and "tft" in r.json()["detail"]
+
+
+def test_model_runs_use_the_container_cpu_limit(monkeypatch):
+    from app.core import config
+    monkeypatch.setenv("RAEM_THREADS", "2")
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    assert config.cpu_limit() == 2 and config.thread_env()["OMP_NUM_THREADS"] == "2"
+    monkeypatch.setenv("OMP_NUM_THREADS", "1")                # a value set on the server wins
+    assert config.thread_env()["OMP_NUM_THREADS"] == "1" and config.thread_env()["LOKY_MAX_CPU_COUNT"] == "2"
+    monkeypatch.delenv("RAEM_THREADS")
+    assert config.cpu_limit() >= 1
 
 
 def test_forecast_run_then_same_date_reuse(client):
@@ -136,11 +152,11 @@ def test_failed_run_is_recorded(client, monkeypatch):
     def boom(run):
         raise RuntimeError("model crashed")
     monkeypatch.setitem(jobs.RUNNERS, "forecast", boom)
-    r = client.post("/api/forecast", json={"ticker": "IBM", "models": ["tft"]}).json()
+    r = client.post("/api/forecast", json={"ticker": "IBM", "models": ["theta"]}).json()
     done = wait_done(client, r["run"]["id"])
     assert done["status"] == "failed" and "model crashed" in done["error"]
     # a failed run is not reused
-    again = client.post("/api/forecast", json={"ticker": "IBM", "models": ["tft"]}).json()
+    again = client.post("/api/forecast", json={"ticker": "IBM", "models": ["theta"]}).json()
     assert again["reused"] is None
     assert wait_done(client, again["run"]["id"])["status"] == "failed"
 

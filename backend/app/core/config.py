@@ -44,15 +44,15 @@ FORECAST_TIMEOUT = int(os.environ.get("RAEM_FORECAST_TIMEOUT", "1800"))
 COMPANY_TIMEOUT = int(os.environ.get("RAEM_COMPANY_TIMEOUT", "3600"))  # adding a company: prices, notebook, forecast, page data
 MAX_QUEUE = int(os.environ.get("RAEM_MAX_QUEUE", "12"))  # queued + running runs allowed at once
 
-# forecast_lib model keys and their labels, best average rank first. DEFAULT_MODELS must match
-# KEEP_MODELS in app/pipeline/export_ticker.py (a test checks this).
+# The forecast models a run may use: the best six by average rank (forecast_lib has 14; the other eight -- Kalman, ARIMAX,
+# WSAE-LSTM, XGBoost, LSTM, DNN, TFT, RegimeSwitch -- ranked lower and the deep ones took most of a run's time and memory on
+# a hosted server). DEFAULT_MODELS must match KEEP_MODELS in app/pipeline/export_ticker.py (a test checks this).
 FORECAST_MODELS = [
     ("nbeats", "N-BEATS"), ("lasso", "LASSO"), ("ridge", "Ridge"), ("random_forest", "RandomForest"),
-    ("theta", "Theta"), ("arima", "ARIMA"), ("kalman", "Kalman"), ("arimax", "ARIMAX"), ("wsae_lstm", "WSAE-LSTM"),
-    ("xgboost", "XGBoost"), ("lstm", "LSTM"), ("dnn", "DNN"), ("tft", "TFT"), ("regime", "RegimeSwitch"),
+    ("theta", "Theta"), ("arima", "ARIMA"),
 ]
 FORECAST_KEYS = [k for k, _ in FORECAST_MODELS]
-DEFAULT_MODELS = ["nbeats", "lasso", "ridge", "random_forest", "theta", "arima"]
+DEFAULT_MODELS = list(FORECAST_KEYS)
 
 
 # Cloud LLM providers for AI analysis: (key, label, API-key variable, default models). A provider shows as usable when its
@@ -99,6 +99,37 @@ def llm_providers(max_age: float = 30.0) -> list[dict]:
 def llm_key(provider: str, model: str) -> str:
     """The run key of an AI analysis: the bare model name for Ollama (as before), provider:model for the cloud."""
     return model if provider == "ollama" else f"{provider}:{model}"
+
+
+def cpu_limit() -> int:
+    """CPUs this container may really use. A hosted container (Railway) sees every core of the host machine, but its plan
+    allows only a few; numpy, torch and scikit-learn would start a thread per host core and spend the run being throttled.
+    RAEM_THREADS overrides; else the cgroup CPU quota, else the CPUs the process may run on."""
+    if os.environ.get("RAEM_THREADS", "").isdigit() and int(os.environ["RAEM_THREADS"]) > 0:
+        return int(os.environ["RAEM_THREADS"])
+    try:  # cgroup v2: "<quota> <period>" or "max <period>"
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()[:2]
+        if quota != "max":
+            return max(1, int(int(quota) / int(period)))
+    except (OSError, ValueError):
+        pass
+    try:  # cgroup v1
+        quota = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text())
+        if quota > 0:
+            return max(1, int(quota / int(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text())))
+    except (OSError, ValueError):
+        pass
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
+
+
+def thread_env() -> dict:
+    """Environment for a model run (forecast, notebook, add company): its numeric libraries use cpu_limit() threads."""
+    n = str(cpu_limit())
+    return {k: os.environ.get(k) or n for k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                                                "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS", "LOKY_MAX_CPU_COUNT")}
 
 
 def today() -> str:

@@ -83,7 +83,7 @@ When the rewrite is wrong or Railway is down, the Vercel page still shows the sa
 ## 3. After deploy
 
 - Open **Settings** on the site, paste `RAEM_RUN_TOKEN` into **Access token** (saved in that browser). Without it the server refuses runs.
-- First test: Forecast → a company → Run (about 2 to 3 minutes for all 14 models); then AI Analysis → a company → a Claude or Kimi model → Run.
+- First test: Forecast → a company → Run (the best 6 models, about 1 to 3 minutes); then AI Analysis → a company → a Claude or Kimi model → Run.
 - New code or data: push to GitHub; Railway and Vercel redeploy by themselves. Rebuild the page first if you changed
   `frontend/src` or `backend/data` (`python backend/refresh.py --build-only`) and commit `frontend/dist/index.html`.
 
