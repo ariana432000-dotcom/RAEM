@@ -108,7 +108,7 @@ function liveStatus(key) {
 // The notebook's agents in run order (sessions.STEP_LABELS); a notebook's own extra steps are added where they appear
 const AGENT_STAGES = ["Fundamentals", "Market", "Macro regime", "News", "Sentiment", "Graph analyst", "Forecasting agent", "Bull vs bear debate",
   "Debate facilitator", "Post-mortem", "Trader", "Risk debate", "Risk facilitator", "Portfolio manager", "Prediction engine", "7-day forecast",
-  "Verifier", "Position sizing", "10-day scenario"];
+  "Verifier", "10-day scenario"];
 function agentBoard(j) {
   const L = j.entry && j.entry.latest, steps = (L && L.steps) || {}, done = Object.keys(steps);
   const all = AGENT_STAGES.concat(done.filter(s => !AGENT_STAGES.includes(s))), next = all.find(s => !done.includes(s)), last = done[done.length - 1];

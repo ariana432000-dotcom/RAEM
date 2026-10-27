@@ -24,7 +24,7 @@ from export_ticker import clean  # noqa: E402
 
 from sessions import ai_entry, trunc  # noqa: E402
 
-out = {"ai": {}, "dataset": {}, "backtest": {}, "memory": {}, "news_corpus": [], "papers": []}
+out = {"ai": {}, "dataset": {}, "backtest": {}, "memory": {}, "news_corpus": []}
 EXTRA_PATH = os.path.join(os.path.dirname(HERE), "..", "data", "extra.json")
 EXTRA_PATH = os.path.abspath(EXTRA_PATH)
 
@@ -143,10 +143,6 @@ for col in c2.list_collections():
         out["news_corpus"] = items
     else:
         out["memory"][name] = items
-
-# ---- research papers ----
-for p in sorted(glob.glob(os.path.join(ROOT, "paper", "*.pdf"))):
-    out["papers"].append({"file": os.path.basename(p), "mb": round(os.path.getsize(p) / 1e6, 2)})
 
 out["asof"] = pd.Timestamp.now().strftime("%Y-%m-%d")   # the page's "Data as of" date (frontend/src/build.py reads it)
 

@@ -13,7 +13,7 @@ The notebook file itself is never changed. The run works on an in-memory copy wh
     notebooks' nomic-embed-text store when Ollama has that model, else chromadb's built-in model in its own store,
   * `%pip install` lines are skipped (install packages from backend/requirements.txt instead).
 Everything else (analysts, debate, Graph Analyst, Forecasting Agent, Prediction Engine, Verifier,
-Position Sizing, scenario, memory, trading log) runs exactly as written in the notebook.
+scenario, memory, trading log) runs exactly as written in the notebook.
 """
 from __future__ import annotations
 
