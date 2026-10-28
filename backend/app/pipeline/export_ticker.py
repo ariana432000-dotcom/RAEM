@@ -70,8 +70,21 @@ DAILY_KEYS = ["final_signal", "final_expected_return", "signal_threshold", "sign
               "kalman_pred_return", "kalman_direction_acc", "kalman_holdout_mae"]
 
 
+def top_up_prices(t):
+    """Append the exchange's newly finished trading days to this company's price CSV, so a run forecasts from the latest
+    prices (a run on an unchanged file repeats the same chart and prediction). RAEM_TOP_UP=0 skips it; offline it adds nothing."""
+    if os.environ.get("RAEM_TOP_UP", "1") == "0":
+        return
+    print(f"== Prices for {t}", flush=True)
+    try:
+        pl.top_up_data_csv(t, verbose=True)
+    except Exception as e:  # the saved prices still work
+        print(f"  {t}: price top-up failed ({type(e).__name__}: {e}) -- using the saved prices", flush=True)
+
+
 def export(t, models=None, out_path=None):
     models = list(models or KEEP_MODELS)
+    top_up_prices(t)
     out = {"ticker": t, "meta": pl.TICKERS[t],
            "run_info": {"models": models, "generated_at": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")}}
     # --- daily signal (no memory write) ---
