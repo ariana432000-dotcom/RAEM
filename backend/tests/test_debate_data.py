@@ -1,7 +1,11 @@
 """Hard data, fact sheet and shared context for the debate agents (ported from the research notebook)."""
 import types
 
-from app.ai_pipeline import debate_data as dd
+import pytest
+
+pytest.importorskip("langchain_core")   # debate_data imports the agents; the slim CI job has only the API packages
+
+from app.ai_pipeline import debate_data as dd  # noqa: E402
 
 CSV = "Date,Open,High,Low,Close,Volume\n2026-10-01,10,11,9,100.0,5\n2026-10-02,10,11,9,90.0,5\n"
 
