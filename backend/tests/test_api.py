@@ -31,7 +31,7 @@ def test_models_list_matches_exporter(client):
     m = client.get("/api/models").json()
     keys = [x["key"] for x in m["forecast"]]
     defaults = [x["key"] for x in m["forecast"] if x["default"]]
-    assert len(keys) == 6 and defaults == keys          # only the best six are offered, and all six run by default
+    assert len(keys) == 5 and defaults == keys          # only the best five are offered, and all five run by default
     src = (BACKEND / "app" / "pipeline" / "export_ticker.py").read_text(encoding="utf-8")
     keep = re.search(r"KEEP_MODELS = \[(.*?)\]", src).group(1)
     assert sorted(re.findall(r'"(\w+)"', keep)) == sorted(defaults)
@@ -41,8 +41,8 @@ def test_models_list_matches_exporter(client):
 
 
 def test_forecast_refuses_the_dropped_models(client):
-    r = client.post("/api/forecast", json={"ticker": "AAPL", "models": ["ridge", "tft"]})
-    assert r.status_code == 400 and "tft" in r.json()["detail"]
+    r = client.post("/api/forecast", json={"ticker": "AAPL", "models": ["ridge", "arima"]})
+    assert r.status_code == 400 and "arima" in r.json()["detail"]
 
 
 def test_model_runs_use_the_container_cpu_limit(monkeypatch):

@@ -8,7 +8,7 @@ data = {}
 for p in sorted(glob.glob(os.path.join(HERE, "..", "..", "backend", "data", "tickers", "*.json"))):   # sorted: same bytes on every OS
     d = json.load(open(p, encoding="utf-8"))
     d["forecast"].pop("scoreboard", None)
-    shown = {"N-BEATS", "LASSO", "Ridge", "RandomForest", "Theta", "ARIMA", "Ensemble", "Fusion", "Fusion-Top3"}
+    shown = {"N-BEATS", "LASSO", "Ridge", "RandomForest", "Theta", "Ensemble", "Fusion", "Fusion-Top3"}
     d["hitrate"]["per_model"] = [r for r in d["hitrate"].get("per_model") or [] if r.get("model") in shown]
     if d.get("agent"):
         d["agent"].pop("table", None)
@@ -17,7 +17,7 @@ tpl = open(os.path.join(HERE, "template3.html"), encoding="utf-8").read()
 assert "/*__DATA__*/null" in tpl
 out = tpl.replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/"))
 extra = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "extra.json"), encoding="utf-8"))
-shown = {"N-BEATS", "LASSO", "Ridge", "RandomForest", "Theta", "ARIMA", "Ensemble", "Fusion", "Fusion-Top3"}
+shown = {"N-BEATS", "LASSO", "Ridge", "RandomForest", "Theta", "Ensemble", "Fusion", "Fusion-Top3"}
 extra["backtest"] = {t: {m: r for m, r in v.items() if m in shown} for t, v in extra["backtest"].items()}
 # "Data as of" date: written by export_extra.py on each refresh; the newest price date is the fallback for older exports
 asof = extra.get("asof") or max(d["forecast"]["last_date"] for d in data.values())

@@ -1,7 +1,7 @@
 {
   "ticker": "2222.SR",
-  "tuned_on": "2026-09-21",
-  "data_end_date": "2026-09-17",
+  "tuned_on": "2026-10-28",
+  "data_end_date": "2026-10-26",
   "xgb": {
     "max_depth": 2,
     "learning_rate": 0.02,

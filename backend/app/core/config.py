@@ -44,12 +44,12 @@ FORECAST_TIMEOUT = int(os.environ.get("RAEM_FORECAST_TIMEOUT", "1800"))
 COMPANY_TIMEOUT = int(os.environ.get("RAEM_COMPANY_TIMEOUT", "3600"))  # adding a company: prices, notebook, forecast, page data
 MAX_QUEUE = int(os.environ.get("RAEM_MAX_QUEUE", "12"))  # queued + running runs allowed at once
 
-# The forecast models a run may use: the best six by average rank (forecast_lib has 14; the other eight -- Kalman, ARIMAX,
-# WSAE-LSTM, XGBoost, LSTM, DNN, TFT, RegimeSwitch -- ranked lower and the deep ones took most of a run's time and memory on
-# a hosted server). DEFAULT_MODELS must match KEEP_MODELS in app/pipeline/export_ticker.py (a test checks this).
+# The forecast models a run uses: the best five by average rank (forecast_lib has 14; the other nine -- ARIMA, Kalman,
+# ARIMAX, WSAE-LSTM, XGBoost, LSTM, DNN, TFT, RegimeSwitch -- ranked lower and the deep ones took most of a run's time and
+# memory on a hosted server). The page offers no model choice. DEFAULT_MODELS must match KEEP_MODELS in
+# app/pipeline/export_ticker.py (a test checks this).
 FORECAST_MODELS = [
-    ("nbeats", "N-BEATS"), ("lasso", "LASSO"), ("ridge", "Ridge"), ("random_forest", "RandomForest"),
-    ("theta", "Theta"), ("arima", "ARIMA"),
+    ("nbeats", "N-BEATS"), ("lasso", "LASSO"), ("ridge", "Ridge"), ("random_forest", "RandomForest"), ("theta", "Theta"),
 ]
 FORECAST_KEYS = [k for k, _ in FORECAST_MODELS]
 DEFAULT_MODELS = list(FORECAST_KEYS)

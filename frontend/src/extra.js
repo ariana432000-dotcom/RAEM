@@ -542,6 +542,35 @@ function plainSummary(d) {
     ${(b => b && !b.stale ? `<p class="lead2" style="margin-top:6px">The latest AI analysis rated it ${ratingBadge(b.rating)} on ${dShort(b.date)}; with that view the forecast becomes <b>${fmtPct(b.adj * 100)}</b> (about ${fmtP(b.price)} ${esc(cur)}; ${aiWhy(b)}).</p>` : "")(aiBlend(t))}
     ${age > 5 ? `<p class="sub" style="margin-top:6px;color:var(--hold)">These prices are from ${dLong(f.last_date)}, ${age} days before the export.</p>` : ""}</div></section>`;
 }
+/* ----- "If you invest 100 tk": what the forecast says that money could become (Forecast page, every company) ----- */
+const INVEST_TK = 100;
+const tkMoney = v => Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " tk";
+const tkSigned = v => Math.abs(v) < 0.005 ? "0.00 tk" : (v > 0 ? "+" : "−") + tkMoney(v);
+function investCard(d) {
+  const t = S.t, f = d.forecast, last = f.last_price, p = fcPath(t);
+  if (!p || !last) return "";
+  const val = (path, i) => INVEST_TK * path[i] / last, band = fcBand(t), r = p[6] / last - 1;
+  const end = val(p, 6), age = daysBetween(f.last_date, ASOF), cur = d.meta.currency, fx = EXTRA.fx || {};
+  const models = ["Ensemble", ...BASE.filter(m => f.paths[m])].filter(m => f.paths[m] && f.paths[m].length > 6)
+    .map(m => ({ m, end: val(f.paths[m], 6) })).sort((a, b) => b.end - a.end);
+  const best = models[0], worst = models[models.length - 1];
+  const lo = band ? INVEST_TK * band[6][0] / last : worst.end, hi = band ? INVEST_TK * band[6][1] / last : best.end;
+  const verdict = r > 0.005 ? `The models expect ${esc(d.meta.name)} to <b>${moveWord(r)}</b>, so 100 tk could grow to about <b>${tkMoney(end)}</b>: a profit of about <b class="up">${tkMoney(end - INVEST_TK)}</b> in 7 trading days.`
+    : r < -0.005 ? `The models expect ${esc(d.meta.name)} to <b>${moveWord(r)}</b>, so 100 tk could shrink to about <b>${tkMoney(end)}</b>: a loss of about <b class="down">${tkMoney(end - INVEST_TK)}</b> in 7 trading days.`
+    : `The models expect ${esc(d.meta.name)} to <b>stay roughly flat</b>: 100 tk stays at about <b>${tkMoney(end)}</b> after 7 trading days (${tkSigned(end - INVEST_TK)}), so there is little to gain or lose.`;
+  const days = p.slice(0, 7).map((_, i) => `<div class="kv"><p class="k">Day ${i + 1}</p><p class="v ${cls(p[i] / last - 1)}" style="font-size:15px">${tkSigned(val(p, i) - INVEST_TK)}</p><p class="s">${tkMoney(val(p, i))}</p></div>`).join("");
+  const rows = models.map(x => `<tr><td class="t">${esc(x.m)}${x.m === "Ensemble" ? ' <span class="sub">(main forecast)</span>' : ""}</td><td>${tkMoney(x.end)}</td><td class="${cls(x.end - INVEST_TK)}">${tkSigned(x.end - INVEST_TK)}</td><td class="${cls(x.end - INVEST_TK)}">${fmtPct((x.end / INVEST_TK - 1) * 100)}</td></tr>`).join("");
+  const usd100 = fx.BDT ? INVEST_TK / fx.BDT : null;
+  return card("If you invest 100 tk", `What ${esc(d.meta.name)}'s forecast says your 100 tk could become after 7 trading days (day 1 is the next trading day after ${dLong(f.last_date)}).`, "",
+    `<p class="lead2">${verdict}</p>
+    <div class="kvs" style="margin-top:14px"><div class="kv"><p class="k">After 7 days</p><p class="v ${cls(r)}">${tkMoney(end)}</p><p class="s">${fmtPct(r * 100)} on ${INVEST_TK} tk</p></div>
+      <div class="kv"><p class="k">Profit / loss</p><p class="v ${cls(r)}">${tkSigned(end - INVEST_TK)}</p><p class="s">main forecast (Ensemble)</p></div>
+      <div class="kv"><p class="k">Likely range</p><p class="v" style="font-size:15px">${tkSigned(lo - INVEST_TK)} to ${tkSigned(hi - INVEST_TK)}</p><p class="s">${band ? "10–90% of past forecast errors" : "lowest to highest model"}</p></div>
+      <div class="kv"><p class="k">Best / worst model</p><p class="v" style="font-size:15px"><span class="up">${tkSigned(best.end - INVEST_TK)}</span> / <span class="down">${tkSigned(worst.end - INVEST_TK)}</span></p><p class="s">${esc(best.m)} / ${esc(worst.m)}</p></div></div>
+    <p class="l" style="margin:6px 0 8px">Day by day (main forecast)</p><div class="kvs" style="grid-template-columns:repeat(auto-fit,minmax(88px,1fr))">${days}</div>
+    <div class="scroll"><table><thead><tr><th>Model</th><th>100 tk after 7 days</th><th>Profit / loss</th><th>Return</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="src">An estimate from the models, not a promise: real prices can end outside the range, and brokerage, fees and tax are not counted. The return in % is applied to your 100 tk${cur !== "BDT" ? `; ${esc(S.t)} trades in ${esc(cur)}${usd100 ? `, and 100 tk is about $${usd100.toFixed(2)} at the saved rate of ${fx.BDT.toFixed(1)} tk per US dollar` : ""}` : ""}.${age > 5 ? ` <span style="color:var(--hold)">These prices are from ${dLong(f.last_date)}, ${age} days before the export; press Run to bring them up to date.</span>` : ""}</p>`);
+}
 function renderHelp() {
   const steps = [["Pick a stock", "Use the cards on Home, the Forecast menu or the search box."], ["Run the forecast", "Press Run forecast to see the 7-day path, the daily signal and every model's numbers."], ["Read the plain summary", "The 'In plain words' box says what the models expect and how sure they are."], ["Check the evidence", "Track record, Backtest and Memory show how past calls really did."]];
   return `<div class="page-h"><h1>Help and glossary</h1><p>How to use this site, and what each term means, in plain language.</p></div>

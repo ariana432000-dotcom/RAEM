@@ -123,7 +123,7 @@ function tokenRow() {
 }
 
 /* forecast runs (Forecast page) */
-function lfcModels() {  // every model the server offers: the best six (the Ensemble then averages the best two of them)
+function lfcModels() {  // every model the server offers: the best five, always all of them (the Ensemble then averages the best two)
   if (!X.lfc.models) X.lfc.models = new Set(LIVE.models.forecast.map(m => m.key));
   return X.lfc.models;
 }

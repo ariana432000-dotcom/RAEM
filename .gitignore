@@ -12,3 +12,6 @@ __pycache__/
 
 # generated during the page build
 frontend/src/template3.html
+
+# price-file backups made by the first top-up
+backend/engine/data/*.bak

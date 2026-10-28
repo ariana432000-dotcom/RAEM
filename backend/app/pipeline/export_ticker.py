@@ -1,6 +1,6 @@
 """Export one ticker's daily signal, 7-day forecast, model table and hit-rate to JSON.
 
-    python app/pipeline/export_ticker.py AAPL IBM                       # default six models -> data/tickers/<T>.json
+    python app/pipeline/export_ticker.py AAPL IBM                       # default five models -> data/tickers/<T>.json
     python app/pipeline/export_ticker.py AAPL --models ridge,tft --out run.json   # chosen models, one file (used by the API)
 
 Reads the engine's CSV price files like the notebooks do. In --out mode a failure exits with code 1.
@@ -27,9 +27,9 @@ import forecast_agent as fa  # noqa: E402
 import forecast_lib as fl  # noqa: E402
 import predictor_lib as pl  # noqa: E402
 
-# The website shows only these six: the best average rank across the 8 tickers (error vs naive,
+# The website shows only these five: the best average rank across the 8 tickers (error vs naive,
 # common holdout, export of 2026-10-20). Ensemble, Fusion and the reviewer are rebuilt from them.
-KEEP_MODELS = ["nbeats", "lasso", "ridge", "random_forest", "theta", "arima"]
+KEEP_MODELS = ["nbeats", "lasso", "ridge", "random_forest", "theta"]
 # forecast_lib only fits the blends when their keys are in the list
 BLENDS = ["ensemble", "fusion", "fusion_top3"]
 

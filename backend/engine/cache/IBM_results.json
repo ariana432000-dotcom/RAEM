@@ -1,45 +1,46 @@
 {
   "horizon": 7,
+  "model_version": 2,
   "ticker": "IBM",
-  "data_end_date": "2026-10-19",
-  "n_rows": 524,
-  "cached_at": "2026-10-20 11:51:02",
+  "data_end_date": "2026-10-27",
+  "n_rows": 530,
+  "cached_at": "2026-10-28 11:21:18",
   "results": {
-    "xgb_ret": 0.015536627732217312,
-    "xgb_mae": 0.0756040972001197,
-    "xgb_dacc": 0.6338028169014085,
+    "xgb_ret": 0.01052021887153387,
+    "xgb_mae": 0.06400069183823787,
+    "xgb_dacc": 0.5416666666666666,
     "xgb_params": {
-      "max_depth": 2,
+      "max_depth": 3,
       "learning_rate": 0.02,
       "n_estimators": 300,
       "subsample": 0.8,
       "colsample_bytree": 0.8,
       "random_state": 42
     },
-    "lstm_ret": 0.03224113583564758,
-    "lstm_mae": 0.0615093857049942,
-    "lstm_dacc": 0.6323529411764706,
+    "lstm_ret": 0.04739660024642944,
+    "lstm_mae": 0.055360425263643265,
+    "lstm_dacc": 0.7246376811594203,
     "lstm_params": {
       "hidden": 16,
       "lr": 0.001
     },
-    "arima_ret": 0.0008578444985165579,
-    "arima_mae": 0.05922072784069874,
-    "arima_dacc": 0.4788732394366197,
+    "arima_ret": -0.0006513429131757009,
+    "arima_mae": 0.05379262039371088,
+    "arima_dacc": 0.4861111111111111,
     "arima_order": [
       1,
       1,
       0
     ],
-    "ridge_ret": -0.005304270270597947,
-    "ridge_mae": 0.061545412575884105,
-    "ridge_dacc": 0.5915492957746479,
+    "ridge_ret": -0.013906500798325536,
+    "ridge_mae": 0.055710758949136054,
+    "ridge_dacc": 0.6527777777777778,
     "ridge_params": {
       "alpha": 10.0
     },
-    "kalman_ret": -6.855289669260856e-10,
-    "kalman_mae": 0.059410407535840405,
-    "kalman_dacc": 0.5211267605633803,
+    "kalman_ret": 4.749232118683722e-10,
+    "kalman_mae": 0.05403486568345014,
+    "kalman_dacc": 0.5138888888888888,
     "kalman_level": "local level"
   }
 }

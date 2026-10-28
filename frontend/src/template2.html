@@ -298,13 +298,13 @@ const BASE_ORDER = ["AAPL","IBM","2222.SR","0300.HK","ABBANK","BATBC","BPML","WA
 // the eight research companies first, then any company added from the search box (saved in the page after a rebuild)
 const ORDER = BASE_ORDER.filter(t => DATA[t]).concat(Object.keys(DATA).filter(t => !BASE_ORDER.includes(t)).sort());
 // The six models the site shows (best average rank across the 8 tickers); see ui/export_ticker.py KEEP_MODELS.
-const BASE = ["N-BEATS","LASSO","Ridge","RandomForest","Theta","ARIMA","Kalman","ARIMAX","WSAE-LSTM","XGBoost","LSTM","DNN","TFT","RegimeSwitch"];  // listed when present in a run; the default export has the first six
+const BASE = ["N-BEATS","LASSO","Ridge","RandomForest","Theta","ARIMA","Kalman","ARIMAX","WSAE-LSTM","XGBoost","LSTM","DNN","TFT","RegimeSwitch"];  // listed when present in a run; the default export has the first five
 const VIEWS = [["Ensemble","Ensemble"],["Fusion","Fusion"],["Fusion-Top3","Fusion Top 3"],["Agent","Reviewed agent"],["Best","Best single model"]];
 const STEPS = [
   ["Fetching market data", "Loaded prices and daily log rows"],
   ["Building features", "Return, volatility and trend features"],
   ["Daily 5-model signal", "Ridge, XGBoost, LSTM, ARIMA, Kalman"],
-  ["Fitting the forecast models", "The six best: N-BEATS, LASSO, Ridge, RandomForest, Theta, ARIMA"],
+  ["Fitting the forecast models", "The five best: N-BEATS, LASSO, Ridge, RandomForest, Theta"],
   ["Fusion and ensemble", "Learned blend and best-two average"],
   ["Reviewer check", "Audit, shrink, clip and add band"],
   ["Grading track record", "Past forecasts vs actual closes"],
@@ -498,10 +498,9 @@ function renderTicker() {
         <label><input type="checkbox" id="o-band" ${S.band ? "checked" : ""} ${S.view === "Agent" ? "" : "disabled"}> 10–90% band (reviewed agent only)</label>
         <label><input type="checkbox" id="o-naive" ${S.naive ? "checked" : ""}> “No change” line</label></div></div>
     </div>
-    ${live ? `<div class="field" style="margin-top:14px"><span class="lbl">Models to run ${hint(GLOSS.runfc)}</span><p class="sub">The best ${nAll}: ${esc(LIVE.models.forecast.map(m => m.label).join(", "))}</p>
-        <div class="checks" style="margin-top:10px"><label><input type="checkbox" id="lfc-force" data-bind="lfc-force" ${X.lfc.force ? "checked" : ""}> Run again even if the same models ran today</label></div>${tokenRow()}</div>` : ""}
+    ${live ? tokenRow() : ""}
     <div class="runbar"><button type="button" class="btn primary" id="run" ${S.running || fcBusy ? "disabled" : ""}>${S.running || fcBusy ? "Running…" : live ? `Run ${nSel} models` : ran ? "Run again" : "Run forecast"}</button>
-      <p class="note">${live ? `Runs the models now on the server's price data (about 1 to 3 minutes). The Ensemble is the average of the two models with the lowest holdout error, as in the forecast notebook.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(ASOF)}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(ASOF)} results: daily signal, 6 forecast models, fusion, reviewer and track record.`}</p></div>
+      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The Ensemble is the average of the two models with the lowest holdout error, as in the forecast notebook.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(ASOF)}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(ASOF)} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
@@ -511,6 +510,7 @@ function renderTicker() {
     ${statCard("Daily rows", f.n_rows, "price history used", "", "db")}
     ${statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain")}
   </div>
+  ${investCard(d)}
   ${form}
   <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
   ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}

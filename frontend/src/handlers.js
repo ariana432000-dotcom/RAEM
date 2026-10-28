@@ -42,7 +42,6 @@ document.addEventListener("change", e => {
   const v = e.target.value;
   if (b === "ds-from") { X.ds.from = v; X.ds.page = 0; } else if (b === "ds-to") { X.ds.to = v; X.ds.page = 0; }
   else if (b === "mem-t") X.mem.t = v;
-  else if (b === "lfc-force") X.lfc.force = e.target.checked;
   else if (b === "ai-model") X.ai.model = v;
   else if (b === "ai-force") X.ai.force = e.target.checked;
   else if (b === "set-token") return;  // saved on input; a re-render here would swallow the click that caused the blur
