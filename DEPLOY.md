@@ -62,6 +62,8 @@ visit wakes them in a minute or two.
 
 Railway notes:
 - Give the service at least **4 GB of memory** (Settings → Resources): the forecast models and an AI analysis run use 2 to 3 GB.
+- The **Hobby plan** is enough (up to 48 vCPU / 48 GB per service). It bills CPU and memory by use, so each model run
+  uses only 2 threads (`RAEM_THREADS`; more did not make the models faster, they only cost more CPU time).
 - Keep **one replica** and leave **App Sleeping off**; a sleeping or second container would stop or split the run queue.
 - The volume keeps the run database, held runs, AI sessions, prices, trading logs and memory across redeploys
   (`backend/tools/persist.py`). A file you change in git and push replaces the volume copy on the next deploy.
@@ -83,7 +85,7 @@ When the rewrite is wrong or Railway is down, the Vercel page still shows the sa
 ## 3. After deploy
 
 - Open **Settings** on the site, paste `RAEM_RUN_TOKEN` into **Access token** (saved in that browser). Without it the server refuses runs.
-- First test: Forecast → a company → Run (about 2 to 3 minutes for all 14 models); then AI Analysis → a company → a Claude or Kimi model → Run.
+- First test: Forecast → a company → Run (the best 6 models, about 1 to 3 minutes); then AI Analysis → a company → a Claude or Kimi model → Run.
 - New code or data: push to GitHub; Railway and Vercel redeploy by themselves. Rebuild the page first if you changed
   `frontend/src` or `backend/data` (`python backend/refresh.py --build-only`) and commit `frontend/dist/index.html`.
 

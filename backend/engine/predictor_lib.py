@@ -178,29 +178,33 @@ def top_up_data_csv(ticker: str, verbose: bool = True) -> int:
         raise ValueError(f"{path} looks empty -- refusing to touch it")
 
     header = lines[0].split(",")
-    if header[0] != "Date":
-        # DSE/bdshare layout has no yfinance equivalent to top up from
-        if verbose:
-            print(f"  {ticker}: not a yfinance-format CSV -- skipping top-up")
-        return 0
-
+    # DSE/bdshare layout (lower-case "date"): new days come from the DSE day-end archive (dse_archive.py), in the
+    # same column names; the yfinance layout ("Date") tops up from Yahoo
+    dse = header[0] == "date"
     last_date = pd.to_datetime(lines[-1].split(",")[0])
+    final_through = last_final_session(ticker)
 
     try:
-        fresh = yf.Ticker(ticker).history(period="3mo", auto_adjust=True)
+        if dse:
+            import dse_archive
+            fresh = (dse_archive.history(ticker, last_date.date() + pd.Timedelta(days=1), final_through)
+                     if last_date.date() < final_through else pd.DataFrame())
+        else:
+            fresh = yf.Ticker(ticker).history(period="3mo", auto_adjust=True)
     except Exception as e:
         if verbose:
             print(f"  {ticker}: could not reach the price feed ({type(e).__name__}) -- keeping existing data")
         return 0
 
     if fresh.empty:
+        if verbose and dse:
+            print(f"  {ticker}: already current (last row {last_date.date()})")
         return 0
 
     new = fresh[fresh.index > last_date]
     # Yahoo sometimes serves a volume-only bar with blank prices; appending it
     # would advance last_date and block the real bar for that day forever.
-    new = new.dropna(subset=["Open", "High", "Low", "Close"])
-    final_through = last_final_session(ticker)
+    new = new.dropna(subset=["open", "high", "low", "close"] if dse else ["Open", "High", "Low", "Close"])
     in_progress = new[[d.date() > final_through for d in new.index]]
     new = new[[d.date() <= final_through for d in new.index]]
     if new.empty:
@@ -214,9 +218,13 @@ def top_up_data_csv(ticker: str, verbose: bool = True) -> int:
     # the tz-suffixed date format stay exactly as they were.
     out_lines = []
     for idx, row in new.iterrows():
-        vals = [str(idx)]
+        vals = [idx.strftime("%Y-%m-%d") if dse else str(idx)]
         for col in header[1:]:
-            vals.append("" if col not in new.columns or pd.isna(row[col]) else str(row[col]))
+            v = row[col] if col in new.columns else None
+            if v is None or pd.isna(v):
+                vals.append("")    # a DSE file's rsi/macd/boll/sma columns: nothing reads them back
+            else:
+                vals.append(str(int(v)) if dse and col in ("trade", "volume") else str(v))
         out_lines.append(",".join(vals))
 
     if not os.path.exists(path + ".bak"):

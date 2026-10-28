@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -179,7 +180,9 @@ def _log(rid: str, line: str) -> None:
 
 
 def _stream(rid: str, argv: list[str], timeout: int, env: dict | None = None) -> bool:
-    e = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONDONTWRITEBYTECODE="1", **(env or {}))
+    e = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONDONTWRITEBYTECODE="1", **config.thread_env(), **(env or {}))
+    if os.name == "posix" and shutil.which("nice"):
+        argv = ["nice", "-n", "10"] + list(argv)   # the models get the CPU the web server leaves, so the page stays responsive
     p = subprocess.Popen(argv, cwd=str(config.BACKEND), env=e, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                          text=True, encoding="utf-8", errors="replace")
     _procs[rid] = p

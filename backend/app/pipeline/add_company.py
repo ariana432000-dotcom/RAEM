@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import glob
-import io
 import os
 import re
 import subprocess
@@ -62,33 +61,11 @@ def fetch_international(ticker: str):
 
 
 def fetch_dse(ticker: str):
-    """Two years of daily prices of a Dhaka Stock Exchange code, as a frame with the DSE_COLUMNS (bdshare first, dsebd.org second)."""
-    import pandas as pd
-    end, start = date.today(), date.today() - timedelta(days=740)
-    try:
-        from bdshare import get_hist_data
-        df = get_hist_data(str(start), str(end), ticker)
-        if df is not None and len(df):
-            df = df.reset_index() if "date" not in df.columns else df
-            return _dse_frame(df)
-    except Exception as e:
-        print(f"   bdshare gave nothing ({type(e).__name__}); asking dsebd.org directly", flush=True)
-    import requests
-    r = requests.get("https://www.dsebd.org/day_end_archive.php",
-                     params={"startDate": str(start), "endDate": str(end), "inst": ticker, "archive": "data"},
-                     headers={"User-Agent": "Mozilla/5.0"}, timeout=60)
-    r.raise_for_status()
-    tables = pd.read_html(io.StringIO(r.text))
-    hist = next((t for t in tables if any("CLOSEP" in str(c).upper() for c in t.columns)), None)
-    if hist is None:
-        return pd.DataFrame(columns=DSE_COLUMNS)
-    cols = {str(c).upper(): c for c in hist.columns}
-    pick = lambda *names: next((cols[n] for n in cols if any(n.startswith(x) for x in names)), None)
-    out = pd.DataFrame({"date": hist[pick("DATE")], "symbol": ticker, "ltp": hist[pick("LTP")], "high": hist[pick("HIGH")],
-                        "low": hist[pick("LOW")], "open": hist[pick("OPENP")], "close": hist[pick("CLOSEP")],
-                        "ycp": hist[pick("YCP")], "trade": hist[pick("TRADE")], "value": hist[pick("VALUE")],
-                        "volume": hist[pick("VOLUME")]})
-    return _dse_frame(out)
+    """Two years of daily prices of a Dhaka Stock Exchange code, as a frame with the DSE_COLUMNS (from old.dsebd.org:
+    www.dsebd.org and bdshare's dse.com.bd answer 410 Gone)."""
+    import dse_archive
+    df = dse_archive.history(ticker, date.today() - timedelta(days=740), date.today())
+    return _dse_frame(df.reset_index())
 
 
 def _dse_frame(df):

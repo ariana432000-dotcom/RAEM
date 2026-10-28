@@ -151,3 +151,47 @@ def test_reviewer_runs_and_reports_the_split_honestly():
     assert 0.0 <= out["shrink"] <= 1.0
     # pure-noise members never beat 'no change': confidence must not be HIGH
     assert out["confidence"] in ("LOW", "MEDIUM")
+
+
+def test_dse_top_up_appends_archive_days_in_the_file_layout(tmp_path, monkeypatch):
+    import dse_archive
+    head = "date,symbol,ltp,high,low,open,close,ycp,trade,value,volume,rsi,macd,boll_ub,boll_lb,sma_50\n"
+    old = head + "2026-09-16,ABBANK,4.8,4.8,4.4,4.5,4.8,4.4,302,5.826,1259205,59.0,-0.08,4.87,4.32,4.8\n"
+    (tmp_path / "AB_Bank_ABBANK_2y.csv").write_text(old, encoding="utf-8")
+    monkeypatch.setattr(pl, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(pl, "last_final_session", lambda t: pd.Timestamp("2026-09-20").date())
+    asked = []
+
+    def history(symbol, start, end):
+        asked.append((symbol, str(start)[:10], str(end)))
+        cols = ["symbol", "ltp", "high", "low", "open", "close", "ycp", "trade", "value", "volume"]
+        return pd.DataFrame([["ABBANK", 4.7, 4.8, 4.6, 4.8, 4.7, 4.8, 147.0, 1.057, 224183.0],
+                             ["ABBANK", 4.6, 4.7, 4.5, 4.7, 4.6, 4.7, 90.0, 0.5, 100.0]], columns=cols,
+                            index=pd.DatetimeIndex(["2026-09-17", "2026-09-21"], name="date"))   # the 21st is not final yet
+
+    monkeypatch.setattr(dse_archive, "history", history)
+    assert pl.top_up_data_csv("ABBANK", verbose=False) == 1
+    assert asked == [("ABBANK", "2026-09-17", "2026-09-20")]
+    text = (tmp_path / "AB_Bank_ABBANK_2y.csv").read_text(encoding="utf-8")
+    assert text == old + "2026-09-17,ABBANK,4.7,4.8,4.6,4.8,4.7,4.8,147,1.057,224183,,,,,\n"
+    assert pl.load_data_csv("ABBANK")["Close"].tolist() == [4.8, 4.7]
+
+
+def test_dse_archive_reads_the_day_end_table(monkeypatch):
+    pytest.importorskip("bs4")
+    pytest.importorskip("lxml")
+    import dse_archive
+    page = """<table class="table table-bordered background-white shares-table fixedHeader">
+      <thead><tr><th>#</th><th>DATE</th><th>TRADING CODE</th><th>LTP*</th><th>HIGH</th><th>LOW</th><th>OPENP*</th>
+      <th>CLOSEP*</th><th>YCP</th><th>TRADE</th><th>VALUE (mn)</th><th>VOLUME</th></tr></thead>
+      <tbody><tr><td>1</td><td>2026-10-27</td><td>SQURPHARMA</td><td>218.8</td><td>220.4</td><td>218.2</td><td>219.6</td>
+      <td>218.8</td><td>218.8</td><td>1,998</td><td>77.972</td><td>355,398</td></tr>
+      <tr><td>2</td><td>2026-10-26</td><td>SQURPHARMA</td><td>218.8</td><td>219.7</td><td>217.9</td><td>219</td>
+      <td>218.8</td><td>218.9</td><td>1,550</td><td>53.212</td><td>243,592</td></tr></tbody></table>"""
+    calls = []
+    monkeypatch.setattr(dse_archive, "_get", lambda path, params: calls.append(params) or page)
+    df = dse_archive.history("squrpharma", pd.Timestamp("2026-10-26").date(), pd.Timestamp("2026-10-27").date())
+    assert calls[0]["inst"] == "SQURPHARMA" and len(calls) == 1
+    assert [str(d)[:10] for d in df.index] == ["2026-10-26", "2026-10-27"]
+    assert df["close"].tolist() == [218.8, 218.8] and df["volume"].tolist() == [243592, 355398]
+    assert df["value"].iloc[1] == 77.972 and df["trade"].iloc[1] == 1998

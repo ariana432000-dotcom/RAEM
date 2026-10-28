@@ -450,7 +450,7 @@ const STEPS = [
   ["Fetching market data", "Loaded prices and daily log rows"],
   ["Building features", "Return, volatility and trend features"],
   ["Daily 5-model signal", "Ridge, XGBoost, LSTM, ARIMA, Kalman"],
-  ["Fitting the forecast models", "The six best in this copy; all 14 when run on the server"],
+  ["Fitting the forecast models", "The six best: N-BEATS, LASSO, Ridge, RandomForest, Theta, ARIMA"],
   ["Fusion and ensemble", "Learned blend and best-two average"],
   ["Reviewer check", "Audit, shrink, clip and add band"],
   ["Grading track record", "Past forecasts vs actual closes"],
@@ -644,12 +644,10 @@ function renderTicker() {
         <label><input type="checkbox" id="o-band" ${S.band ? "checked" : ""} ${S.view === "Agent" ? "" : "disabled"}> 10–90% band (reviewed agent only)</label>
         <label><input type="checkbox" id="o-naive" ${S.naive ? "checked" : ""}> “No change” line</label></div></div>
     </div>
-    ${live ? `<div class="field" style="margin-top:14px"><span class="lbl">Models to run ${hint(GLOSS.runfc)}</span><div class="pills">
-        <button type="button" class="pillbtn" data-act="lfc-all" aria-pressed="${nSel === nAll}"><i></i>All ${nAll} models (as in the forecast notebook)</button>
-        <button type="button" class="pillbtn" data-act="lfc-best" aria-pressed="${nSel !== nAll && lfcModels().size === 6}"><i></i>Best 6 (faster)</button></div>
+    ${live ? `<div class="field" style="margin-top:14px"><span class="lbl">Models to run ${hint(GLOSS.runfc)}</span><p class="sub">The best ${nAll}: ${esc(LIVE.models.forecast.map(m => m.label).join(", "))}</p>
         <div class="checks" style="margin-top:10px"><label><input type="checkbox" id="lfc-force" data-bind="lfc-force" ${X.lfc.force ? "checked" : ""}> Run again even if the same models ran today</label></div>${tokenRow()}</div>` : ""}
     <div class="runbar"><button type="button" class="btn primary" id="run" ${S.running || fcBusy ? "disabled" : ""}>${S.running || fcBusy ? "Running…" : live ? `Run ${nSel} models` : ran ? "Run again" : "Run forecast"}</button>
-      <p class="note">${live ? `Runs the models now on the server's price data (about 2 to 3 minutes for all ${nAll}). The Ensemble is the average of the two models with the lowest holdout error, as in the forecast notebook.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(ASOF)}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(ASOF)} results: daily signal, 6 forecast models, fusion, reviewer and track record.`}</p></div>
+      <p class="note">${live ? `Runs the models now on the server's price data (about 1 to 3 minutes). The Ensemble is the average of the two models with the lowest holdout error, as in the forecast notebook.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(ASOF)}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(ASOF)} results: daily signal, 6 forecast models, fusion, reviewer and track record.`}</p></div>
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
@@ -1521,7 +1519,7 @@ function tokenRow() {
 }
 
 /* forecast runs (Forecast page) */
-function lfcModels() {  // all models by default, as the forecast notebook runs them (the Ensemble then picks the best two of all)
+function lfcModels() {  // every model the server offers: the best six (the Ensemble then averages the best two of them)
   if (!X.lfc.models) X.lfc.models = new Set(LIVE.models.forecast.map(m => m.key));
   return X.lfc.models;
 }
@@ -1886,8 +1884,6 @@ document.addEventListener("click", e => {
   else if (a === "ai-resume") { X.ai.model = selFromKey(v); liveAnalysis(X.ai.t); return; }
   else if (a === "ai-load") { loadAiRun(v); return; }
   else if (a === "lfc-m") { const m = lfcModels(); m.has(v) ? m.delete(v) : m.add(v); }
-  else if (a === "lfc-best") { X.lfc.models = new Set(LIVE.models.forecast.filter(x => x.default).map(x => x.key)); }
-  else if (a === "lfc-all") { X.lfc.models = new Set(LIVE.models.forecast.map(x => x.key)); }
   else if (a === "ai-runall") { aiRun(AI_T.slice()); return; }
   else if (d.stage) X.ai.stage = d.stage;
   else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); }

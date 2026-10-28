@@ -10,8 +10,6 @@ document.addEventListener("click", e => {
   else if (a === "ai-resume") { X.ai.model = selFromKey(v); liveAnalysis(X.ai.t); return; }
   else if (a === "ai-load") { loadAiRun(v); return; }
   else if (a === "lfc-m") { const m = lfcModels(); m.has(v) ? m.delete(v) : m.add(v); }
-  else if (a === "lfc-best") { X.lfc.models = new Set(LIVE.models.forecast.filter(x => x.default).map(x => x.key)); }
-  else if (a === "lfc-all") { X.lfc.models = new Set(LIVE.models.forecast.map(x => x.key)); }
   else if (a === "ai-runall") { aiRun(AI_T.slice()); return; }
   else if (d.stage) X.ai.stage = d.stage;
   else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); }
