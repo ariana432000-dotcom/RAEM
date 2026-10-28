@@ -119,8 +119,8 @@ def test_analysis_validation(client):
 def test_run_token(client, monkeypatch):
     from app.core import config
     monkeypatch.setattr(config, "RUN_TOKEN", "s3cret")
-    assert client.post("/api/forecast", json={"ticker": "AAPL", "models": ["arima"]}).status_code == 401
-    ok = client.post("/api/forecast", json={"ticker": "AAPL", "models": ["arima"]}, headers={"Authorization": "Bearer s3cret"})
+    assert client.post("/api/forecast", json={"ticker": "AAPL", "models": ["theta"]}).status_code == 401
+    ok = client.post("/api/forecast", json={"ticker": "AAPL", "models": ["theta"]}, headers={"Authorization": "Bearer s3cret"})
     assert ok.status_code == 202
     wait_done(client, ok.json()["run"]["id"])
     assert client.get("/api/health").json()["run_token_required"] is True
