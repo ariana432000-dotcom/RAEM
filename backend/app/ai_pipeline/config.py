@@ -38,7 +38,7 @@ LLM_TEMPERATURE = float(_env("RAEM_LLM_TEMPERATURE", "0"))
 DATA_DIR = Path(_env("RAEM_LOG_DIR", str(ENGINE / "notebooks")))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CHROMA_DB_PATH = _env("RAEM_CHROMA_PATH", str(DATA_DIR / "raem_chroma_db"))   # the nomic-embed-text store
-LOG_MAX_DAYS = int(_env("RAEM_LOG_MAX_DAYS", "10"))
+LOG_MAX_DAYS = int(_env("RAEM_LOG_MAX_DAYS", "0"))   # 0 = keep every session in the trading log; N>0 drops sessions older than N days
 
 
 def log_file_for(company: str) -> Path:

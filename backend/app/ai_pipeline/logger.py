@@ -2,8 +2,8 @@
 Session logger — a faithful port of the notebook's "SESSION LOGGER v2".
 
 Each run is a session: an ordered list of steps plus a structured summary_table
-that the dashboard reads. Sessions are stored per-ticker as JSON and pruned to a
-rolling window (LOG_MAX_DAYS) so the backtest view stays tidy.
+that the dashboard reads. Sessions are stored per-ticker as JSON and all of them are kept; set
+RAEM_LOG_MAX_DAYS=N to drop sessions older than N days instead.
 """
 
 from __future__ import annotations
@@ -50,6 +50,8 @@ class SessionLog:
             return []
 
     def _prune(self, sessions: list) -> list:
+        if config.LOG_MAX_DAYS <= 0:
+            return sessions
         cutoff = datetime.now() - timedelta(days=config.LOG_MAX_DAYS)
         kept = []
         for s in sessions:

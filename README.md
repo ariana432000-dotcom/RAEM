@@ -17,7 +17,7 @@ This folder is self-contained: put it on GitHub, clone it anywhere and run it. I
 
 **Stored runs.** Every forecast and AI analysis run is saved in a database (SQLite, `backend/storage/raem.db`). Asking again on the same date for the same company and the same model(s) returns the stored result at once instead of running everything again. Tick "Run again" to force a new run. The notebooks also cache their own analysts per company, date and model.
 
-**Every AI session is kept.** The trading logs keep only the last 10 days and drop older sessions on each run. The server copies every session into the database first (table `sessions`) and keeps a compressed copy in `backend/data/session_archive.json.gz`, which is in git, so history survives new runs, restarts and fresh clones.
+**Every AI session is kept.** The trading logs keep every session; nothing is deleted after 10 days (`RAEM_LOG_MAX_DAYS=N` would bring a limit back). The server also copies every session into the database (table `sessions`) and keeps a compressed copy in `backend/data/session_archive.json.gz`, which is in git, so history survives new runs, restarts and fresh clones.
 
 **Page links.** Every page has its own link, e.g. `/#ai`, `/#tk-AAPL`.
 

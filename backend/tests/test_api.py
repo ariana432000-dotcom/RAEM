@@ -178,6 +178,18 @@ def test_archive_keeps_sessions_the_notebook_pruned(tmp_path, monkeypatch):
     assert [s["date"] for s in e["sessions"]] == ["2026-09-01", "2026-10-22"] and e["latest"]["rating"] == "Buy"
 
 
+def test_trading_log_keeps_every_session_unless_a_limit_is_set(tmp_path, monkeypatch):
+    from app.ai_pipeline import config, logger
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(config, "log_file_for", lambda t: tmp_path / f"trading_log_{t}.json")
+    old = {"company": "IBM", "trade_date": "2025-01-02", "session_start": "2025-01-02 10:00:00", "steps": []}
+    (tmp_path / "trading_log_IBM.json").write_text(json.dumps([old]), encoding="utf-8")
+    log = logger.SessionLog("IBM", "2026-10-22")
+    assert log._persist() == 2                                   # the 2025 session is still there: no 10-day limit
+    monkeypatch.setattr(config, "LOG_MAX_DAYS", 10)              # RAEM_LOG_MAX_DAYS=10 brings the old rolling window back
+    assert logger.SessionLog("IBM", "2026-10-23")._persist() == 2
+
+
 def test_queue_limit(client, monkeypatch):
     from app.core import config
     from app.workers import jobs

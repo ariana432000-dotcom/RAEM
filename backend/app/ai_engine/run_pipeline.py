@@ -123,7 +123,7 @@ def main() -> int:
     if saved_before:
         print(f"== Resuming: {saved_before} saved LLM answers from the earlier run are reused while their prompts are unchanged", flush=True)
 
-    kept = archive_logs(str(config.DATA_DIR))   # the log keeps 10 days; copy every session into the archive first
+    kept = archive_logs(str(config.DATA_DIR))   # copy every session into the archive first
     print(f"== Archived {kept} logged sessions before the run", flush=True)
     started = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     trade_date = datetime.now().strftime("%Y-%m-%d")

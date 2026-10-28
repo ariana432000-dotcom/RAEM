@@ -110,8 +110,8 @@ def sessions_for(nb_dir: str, ticker: str) -> list[tuple[dict, str | None]]:
 
 
 # ---- permanent archive ----
-# The notebooks keep only the last MAX_DAYS (10) days in trading_log_*.json and drop older sessions on every run.
-# Every session seen is therefore also kept in the run database (table `sessions`), so history is never lost.
+# trading_log_*.json keeps every session (RAEM_LOG_MAX_DAYS=N would drop those older than N days). Every session seen is also
+# kept in the run database (table `sessions`), so history is never lost.
 ARCHIVE_SQL = ("CREATE TABLE IF NOT EXISTS sessions (company TEXT NOT NULL, session_start TEXT NOT NULL, trade_date TEXT, "
                "signal TEXT, data TEXT NOT NULL, archived_at TEXT, PRIMARY KEY (company, session_start))")
 
