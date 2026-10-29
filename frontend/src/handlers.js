@@ -33,7 +33,7 @@ document.addEventListener("click", e => {
   else if (a === "ds-clear") { X.ds.from = ""; X.ds.to = ""; X.ds.page = 0; }
   else if (a === "ds-prev") X.ds.page = Math.max(0, X.ds.page - 1);
   else if (a === "ds-next") X.ds.page++;
-  else if (a === "set-reset") { Object.assign(settings, { theme: "system", win: 120, unit: "price", view: "Ensemble" }); lsDel("raem:set"); applySettings(true); }
+  else if (a === "set-reset") { Object.assign(settings, { theme: "system", win: 120, unit: "price", view: "Agent" }); lsDel("raem:set"); applySettings(true); }
   else return;
   render();
 });

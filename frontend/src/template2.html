@@ -299,7 +299,7 @@ const BASE_ORDER = ["AAPL","IBM","2222.SR","0300.HK","ABBANK","BATBC","BPML","WA
 const ORDER = BASE_ORDER.filter(t => DATA[t]).concat(Object.keys(DATA).filter(t => !BASE_ORDER.includes(t)).sort());
 // The six models the site shows (best average rank across the 8 tickers); see ui/export_ticker.py KEEP_MODELS.
 const BASE = ["N-BEATS","LASSO","Ridge","RandomForest","Theta","ARIMA","Kalman","ARIMAX","WSAE-LSTM","XGBoost","LSTM","DNN","TFT","RegimeSwitch"];  // listed when present in a run; the default export has the first five
-const VIEWS = [["Ensemble","Ensemble"],["Fusion","Fusion"],["Fusion-Top3","Fusion Top 3"],["Agent","Reviewed agent"],["Best","Best single model"]];
+const VIEWS = [["Agent","Reviewed forecast"],["Ensemble","Ensemble"],["Fusion","Fusion"],["Fusion-Top3","Fusion Top 3"],["Best","Best single model"]];
 const STEPS = [
   ["Fetching market data", "Loaded prices and daily log rows"],
   ["Building features", "Return, volatility and trend features"],
@@ -328,7 +328,7 @@ const ICONS = {
 };
 const ic = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[n]}</svg>`;
 
-const S = { more: false, optOpen: false, page: "dash", t: ORDER[0], ran: {}, running: false, prog: null, tab: "signal", log: [], view: "Ensemble", overlays: new Set(), win: 120, unit: "price", base: true, band: true, naive: false, sort: { k: "day7", dir: -1 } };
+const S = { more: false, optOpen: false, page: "dash", t: ORDER[0], ran: {}, running: false, prog: null, tab: "signal", log: [], view: "Agent", overlays: new Set(), win: 120, unit: "price", base: true, band: true, naive: false, sort: { k: "day7", dir: -1 } };
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const D = () => DATA[S.t];
@@ -362,11 +362,11 @@ function spark(vals, w = 120, h = 28) {
 function mainSeries(d) {
   const f = d.forecast, last = f.last_price;
   if (S.view === "Agent" && d.agent && d.agent.plan && d.agent.plan.path_ret) {
-    const p = d.agent.plan;
-    return { name: "Reviewed agent", vals: p.path_ret.map(r => last * (1 + r)), band: (p.band_ret || []).map(b => [last * (1 + b[0]), last * (1 + b[1])]) };
+    return { name: "Reviewed forecast", vals: d.agent.plan.path_ret.map(r => last * (1 + r)), band: fcBand(d.ticker) || [] };
   }
   if (S.view === "Best") return { name: f.best_model, vals: f.paths[f.best_model] };
-  return { name: S.view, vals: f.paths[S.view] };
+  const v = f.paths[S.view] ? S.view : "Ensemble";  // the reviewed view of a run without a reviewer
+  return { name: v, vals: f.paths[v] };
 }
 const overlayList = () => [...S.overlays].filter(m => D().forecast.paths[m]);
 const tr = (v, last) => S.unit === "pct" ? (v / last - 1) * 100 : v;
@@ -495,12 +495,12 @@ function renderTicker() {
         <div style="height:14px"></div><label for="unit">Chart units</label><select id="unit"><option value="price" ${S.unit === "price" ? "selected" : ""}>Price (${esc(d.meta.currency)})</option><option value="pct" ${S.unit === "pct" ? "selected" : ""}>Change from last close (%)</option></select></div>
       <div class="field"><span class="lbl">Chart layers</span><div class="checks">
         <label><input type="checkbox" id="o-base" ${S.base ? "checked" : ""}> Other base models in grey</label>
-        <label><input type="checkbox" id="o-band" ${S.band ? "checked" : ""} ${S.view === "Agent" ? "" : "disabled"}> 10–90% band (reviewed agent only)</label>
+        <label><input type="checkbox" id="o-band" ${S.band ? "checked" : ""} ${S.view === "Agent" ? "" : "disabled"}> 10–90% band (reviewed forecast only)</label>
         <label><input type="checkbox" id="o-naive" ${S.naive ? "checked" : ""}> “No change” line</label></div></div>
     </div>
     ${live ? tokenRow() : ""}
     <div class="runbar"><button type="button" class="btn primary" id="run" ${S.running || fcBusy ? "disabled" : ""}>${S.running || fcBusy ? "Running…" : live ? `Run ${nSel} models` : ran ? "Run again" : "Run forecast"}</button>
-      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The Ensemble is the average of the two models with the lowest holdout error, as in the forecast notebook.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(ASOF)}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(ASOF)} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
+      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three models with the lowest holdout error; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(ASOF)}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(ASOF)} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
@@ -525,28 +525,30 @@ function signalPanel(d) {
   const sw = pos(-thr), bw = 100 - pos(thr), hold = pos(thr) - pos(-thr);
   const rows = DAILY_MODELS.map(([key, nm]) => ({ key, nm, ret: k[key + "_pred_return"], acc: k[key + "_direction_acc"] })).filter(x => x.ret != null);
   const rmax = Math.max(...rows.map(x => Math.abs(x.ret)), 0.001), win = (k.winner_model || "").toLowerCase();
-  const stale = daysBetween(k.data_end_date, ASOF) > 5;
-  const band = d.agent && d.agent.plan && d.agent.plan.band_ret ? d.agent.plan.band_ret[6] : null, last = d.forecast.last_price;
-  const pc = to => `${to >= last ? "+" : ""}${((to / last - 1) * 100).toFixed(1)}%`;
-  const rec = card(`Recommendation ${hint(GLOSS.rec)}`, "", sigBadge(sig), `
-    <div class="sigrow">${ring(sig, k.winner_direction_acc, "dir acc")}
-      <div class="sigtext"><p class="conf">holdout direction accuracy ${(k.winner_direction_acc * 100).toFixed(0)}% · ${esc((k.winner_model || "").toUpperCase())}</p>
-      <p class="sum">${esc(sig)} for the next 7 days: expected ${fmtPct(r * 100)}, to about ${fmtP(k.pred_price_7d)} ${esc(cur)}. ${esc(k.winner_model)} had the best holdout direction accuracy of the five daily models.</p>
-      <p style="margin-top:6px;font-size:12px;color:var(--faint)">Time horizon: 7 trading days</p></div></div>
-    <div class="sect"><p class="l">Entry${stale ? ` (close on ${dShort(k.data_end_date)})` : ""}</p><p class="v">${fmtP(k.last_price)} ${esc(cur)}</p></div>
-    ${band ? `<div class="sect"><p class="l">7-day range (est., 10–90%)</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div><p class="l" style="margin:0">If it drops</p><p class="v down">${fmtP(last * (1 + band[0]))}</p><p class="vs down">${pc(last * (1 + band[0]))}</p></div>
-      <div><p class="l" style="margin:0">If it rises</p><p class="v up">${fmtP(last * (1 + band[1]))}</p><p class="vs up">${pc(last * (1 + band[1]))}</p></div></div>
-      <p class="small">A range from this stock's own past forecast errors, not a prediction of where the price will end up.</p></div>` : ""}
-    <div class="sect"><p class="l">Why ${esc(sig)}</p><p class="why">${esc(k.signal_basis)}. ${esc(k.memory_note)}</p></div>
-    ${stale ? `<div class="sect"><div class="card warn" style="padding:12px;font-size:12px;color:var(--muted)">This signal was computed on prices up to ${dLong(k.data_end_date)} (${daysBetween(k.data_end_date, ASOF)} days before export). daily.py reads only the data snapshot, so later closes from the notebook logs are not in it.</div></div>` : ""}`);
-  const models = card(`Five daily models ${hint(GLOSS.daily)}`, "Predicted cumulative 7-day return per model. ★ = used for the signal.", "", `
+  const stale = daysBetween(k.data_end_date, ASOF) > 5, o = outlook(S.t), last = d.forecast.last_price;
+  const pcm = to => `${to >= last ? "+" : ""}${((to / last - 1) * 100).toFixed(1)}%`;
+  // the recommendation follows the main (reviewed) forecast, its tested range and the trading costs
+  const odds = o.sig === "BUY" ? o.pGain : o.sig === "SELL" ? o.pFall : Math.max(o.pGain || 0, o.pFall || 0);
+  const rec = card(`Recommendation ${hint(GLOSS.rec)}`, "", sigBadge(o.sig), `
+    <div class="sigrow">${ring(o.sig, odds, "odds")}
+      <div class="sigtext"><p class="conf">${esc(o.name)}${o.conf ? ` · confidence ${esc(o.conf.toLowerCase())}` : ""}${o.skill != null ? ` · error ${o.err.toFixed(2)}× “no change”` : ""}</p>
+      <p class="sum">${esc(o.sig)} for the next 7 trading days: the forecast is ${fmtPct(o.m * 100)}, to about ${fmtP(o.p[6])} ${esc(cur)}.</p>
+      <p style="margin-top:6px;font-size:12px;color:var(--faint)">Time horizon: 7 trading days · trading costs ${(o.side * 100).toFixed(1)}% a side (assumed)</p></div></div>
+    <div class="sect"><p class="l">Entry (close on ${dShort(d.forecast.last_date)})</p><p class="v">${fmtP(last)} ${esc(cur)}</p></div>
+    ${o.lo != null ? `<div class="sect"><p class="l">7-day range (est., 10–90%)</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><p class="l" style="margin:0">If it drops</p><p class="v down">${fmtP(last * (1 + o.lo))}</p><p class="vs down">${pcm(last * (1 + o.lo))}</p></div>
+      <div><p class="l" style="margin:0">If it rises</p><p class="v up">${fmtP(last * (1 + o.hi))}</p><p class="vs up">${pcm(last * (1 + o.hi))}</p></div></div>
+      <p class="small">A range from this stock's own past forecast errors, around the forecast: 8 times in 10 the price ended inside it.</p></div>` : ""}
+    ${o.pGain != null ? `<div class="sect"><p class="l">Odds</p><p class="why">Gain after costs: <b>${pc(o.pGain)}</b> · fall: <b>${pc(o.pFall)}</b>. BUY or SELL needs ${pc(MIN_ODDS)}.</p></div>` : ""}
+    <div class="sect"><p class="l">Why ${esc(o.sig)}</p><p class="why">${o.why[0].toUpperCase() + o.why.slice(1)}.</p></div>`);
+  const models = card(`Second opinion: daily models ${hint(GLOSS.daily)}`, `An older, separate set of five models. ★ = the one its own signal uses (${esc(sig)}, ${fmtPct(r * 100)}); it does not set the recommendation.`, sigBadge(sig), `
     <div class="kvs"><div class="kv"><p class="k">Expected return</p><p class="v ${cls(r)}">${fmtPct(r * 100)}</p></div><div class="kv"><p class="k">Signal threshold</p><p class="v">±${(thr * 100).toFixed(2)}%</p></div><div class="kv"><p class="k">30-day volatility</p><p class="v">${(k.volatility_30d * 100).toFixed(2)}%</p><p class="s">per day</p></div></div>
     <div class="zones"><div class="gtrack"><b class="gz-s" style="width:${sw}%"></b><b class="gz-h" style="width:${hold}%"></b><b class="gz-b" style="width:${bw}%"></b><span class="gmark" style="left:${pos(r)}%"></span></div>
       <div class="glabels"><span style="left:${sw / 2}%">SELL</span><span style="left:${pos(-thr)}%">−${(thr * 100).toFixed(2)}%</span><span style="left:50%">HOLD</span><span style="left:${pos(thr)}%">+${(thr * 100).toFixed(2)}%</span><span style="left:${pos(thr) + bw / 2}%">BUY</span></div></div>
     <div class="rows" style="margin-top:14px">${rows.map(x => `<div class="row"><span>${x.nm}${x.key === win ? " ★" : ""}</span>
       <div class="dv"><b class="${x.ret >= 0 ? "pos" : "neg"}" style="${x.ret >= 0 ? `left:50%;width:${Math.min(50, x.ret / rmax * 50)}%` : `right:50%;width:${Math.min(50, -x.ret / rmax * 50)}%`}"></b></div>
       <span class="val"><span class="${cls(x.ret)}">${fmtPct(x.ret * 100)}</span> · ${(x.acc * 100).toFixed(0)}% dir</span></div>`).join("")}</div>
+    ${stale ? `<div class="card warn" style="margin-top:12px;padding:12px;font-size:12px;color:var(--muted)">These models used prices up to ${dLong(k.data_end_date)} (${daysBetween(k.data_end_date, ASOF)} days before export); daily.py reads only the data snapshot.</div>` : ""}
     <p class="src">Source: predictor_lib.run_pipeline() and decide_signal(), as in daily.py.</p>`);
   return `<div class="two">${rec}${models}</div>`;
 }
