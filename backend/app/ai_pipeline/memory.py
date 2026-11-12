@@ -281,7 +281,8 @@ class RAEMMemory:
                      verifier_status: str | None = None,
                      llm_provider: str | None = None,
                      run_key: str | None = None,
-                     confidence: float | None = None) -> dict:
+                     confidence: float | None = None,
+                     extra_meta: dict | None = None) -> dict:
         self.connect()
         # 🔴 FIXED: compute the id ONCE, here, and pass it into
         # build_episode_document() -- it needs the id too, for the
@@ -300,6 +301,7 @@ class RAEMMemory:
             macro_regime=macro_regime, verifier_status=verifier_status,
             llm_provider=llm_provider, ep_id=ep_id, confidence=confidence,
         )
+        meta.update(extra_meta or {})   # e.g. the news-graph topics and the GNN status of this run (graph_memory reads them back)
         self.episodic.upsert(ids=[ep_id], documents=[doc], metadatas=[meta])
         return {"id": ep_id, "regime": meta["regime"], "signal": meta["final_signal"],
                 "document": doc, "metadata": meta}

@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 
 NEWS_RAG_CAP = 1600
+PEER_REL_BAND = 1.0      # |own 20d return - peer 20d return| below this many percentage points = IN LINE
 
 
 def is_dse(state: dict) -> bool:
@@ -133,6 +134,23 @@ def dividend_trend_fact(raw) -> str:
     return txt
 
 
+def peer_relation_facts(gm) -> list:
+    """'OUTPERFORMS' / 'UNDERPERFORMS' / 'IN LINE' against the sector peers and the correlated peers (20-day returns), computed in
+    code so a small model cannot flip them. The wording is what fact_guard's relation check looks for."""
+    out, own = [], (gm or {}).get("own_ret20_pct")
+    if not isinstance(own, (int, float)):
+        return out
+    for key, lab in (("sector_peer_ret20_pct", "sector peers"), ("corr_peer_ret20_pct", "correlated peers")):
+        v = gm.get(key)
+        if isinstance(v, (int, float)):
+            d = own - v
+            word = "OUTPERFORMS" if d >= PEER_REL_BAND else ("UNDERPERFORMS" if d <= -PEER_REL_BAND else "IN LINE")
+            out.append(f"vs {lab} (20d): own {own:+.2f}% vs {v:+.2f}%: {word}"
+                       + (f" by {abs(d):.2f} pts" if word != "IN LINE" else f" (gap {d:+.2f} pts)")
+                       + " [20-day window only; says nothing about longer horizons]")
+    return out
+
+
 def build_fact_sheet(state: dict, max_chars: int = 2800) -> str:
     """Numbered facts [F#] and news items [N#] [W#] computed or copied IN CODE from this run's data."""
     lines = []
@@ -171,6 +189,14 @@ def build_fact_sheet(state: dict, max_chars: int = 2800) -> str:
     dt_fact = dividend_trend_fact(fm.get("cash_dividend"))
     if dt_fact:
         add(dt_fact)
+    gm = state.get("graph_metrics") or {}
+    gparts = [f"{lab} {gm[k]:+.2f}%" for k, lab in (("own_ret20_pct", "own 20d return"), ("sector_peer_ret20_pct", "sector peers"),
+                                                    ("corr_peer_ret20_pct", "correlated peers"), ("universe_ret20_pct", "whole universe"))
+              if isinstance(gm.get(k), (int, float))]
+    if gparts:
+        add("peer graph (secondary evidence; a GNN rank is across ALL graph stocks, not a sector rank): " + ", ".join(gparts))
+    for pl in peer_relation_facts(gm):
+        add(pl)
     macro = str(state.get("macro_regime") or "").strip()
     if macro:
         add(f"macro regime: {macro}" + (" (DSEX data UNAVAILABLE -- unknown, not neutral)" if _dsex_missing(state) else ""))
@@ -215,6 +241,10 @@ def format_hard_indicators(state: dict) -> str:
         base += ("\nFACT SHEET (trend facts, fundamentals and news items computed or copied in code from this run's "
                  "data -- authoritative, never contradict them; cite the [F#]/[N#]/[W#] id after every number or "
                  "claim):\n" + sheet)
+    graph_ctx = str(state.get("graph_context") or "").strip()
+    if graph_ctx:
+        base += ("\nPEER-GRAPH CONTEXT (secondary evidence from the DSE peer graph; it is NOT a source for RSI/MACD/SMA/Bollinger "
+                 "numbers, and a GNN score marked as failed validation must be ignored): " + graph_ctx[:900])
     return base + "\n" + market_rules(state)
 
 
@@ -224,7 +254,7 @@ def format_shared_context(state: dict, news: bool = True, macro: bool = True, me
     if news:
         rag = str(state.get("news_rag_context") or "").strip()
         if rag:
-            parts.append("NEWS RAG:\n" + rag[:NEWS_RAG_CAP])
+            parts.append("NEWS RAG:\n" + rag[:int(state.get("news_rag_cap") or NEWS_RAG_CAP)])
     if macro:
         regime = str(state.get("macro_regime") or "").strip()
         if regime:

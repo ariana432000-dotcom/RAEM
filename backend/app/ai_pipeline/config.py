@@ -14,6 +14,14 @@ def _env(name: str, default: str) -> str:
     return val if val is not None and val.strip() != "" else default
 
 
+def flag(name: str, default: bool = True) -> bool:
+    """An on/off switch read from the environment each time it is asked (RAEM_X=0 turns it off, so a test or an ablation run can flip it)."""
+    val = os.environ.get(name)
+    if val is None or val.strip() == "":
+        return default
+    return val.strip().lower() not in ("0", "false", "no", "off")
+
+
 BACKEND = Path(__file__).resolve().parents[2]
 ENGINE = Path(os.environ.get("RAEM_ENGINE") or BACKEND / "engine")
 

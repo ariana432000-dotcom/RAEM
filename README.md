@@ -39,7 +39,7 @@ web/
 │   │   ├── workers/jobs.py       the run queue and its runners (forecast, analysis, refresh)
 │   │   ├── pipeline/             export_ticker.py (forecast one company -> JSON), add_company.py (any ticker: prices, forecast, page data), export_extra.py, patch_daily.py, sessions.py (trading logs -> JSON)
 │   │   ├── ai_engine/            run_pipeline.py (the AI analysis of any ticker with a chosen LLM, Ollama or cloud)
-│   │   └── ai_pipeline/          the any_with_dse pipeline: runner.py (16 steps), agents.py, llm.py (providers + saved answers), memory.py (RAEM memory), embeddings.py, market_data.py, logger.py
+│   │   └── ai_pipeline/          the any_with_dse pipeline: runner.py (17 steps), agents.py, llm.py (providers + saved answers), memory.py (RAEM memory), embeddings.py, market_data.py, logger.py
 │   ├── tradingagents/            vendored TradingAgents package (data tools incl. the Dhaka Stock Exchange vendor)
 │   ├── engine/                   forecasting code and its data (CSV prices, trading logs, memory)
 │   │   └── notebooks/            trading_log_<TICKER>.json/.csv written by the AI analysis, and raem_chroma_db (episodic memory, news)
@@ -187,7 +187,7 @@ Know before you host:
 
 ## The AI pipeline
 
-The AI analysis is the pipeline of the any_with_dse app, ported without changes to its agents: `backend/app/ai_pipeline/runner.py` runs 16 steps in order: outcome backfill, fundamentals, market, news (with RAG), sentiment, macro regime, bull vs bear debate, facilitator, memory (regime reflection and retrieval of similar past episodes), post-mortem, trader, risk debate, risk facilitator, portfolio manager, decision verifier, save episode. One code path serves every ticker, international or Dhaka Stock Exchange (`backend/tradingagents/dataflows/dse_*.py`). There are no per-company notebooks. A fix in `agents.py` reaches every company.
+The AI analysis is the pipeline of the any_with_dse app, ported without changes to its agents: `backend/app/ai_pipeline/runner.py` runs 17 steps in order: outcome backfill, fundamentals, market, news (with RAG), sentiment, macro regime, graph analyst (DSE peer graph, skipped for other tickers), bull vs bear debate, facilitator, memory (regime reflection and retrieval of similar past episodes), post-mortem, trader, risk debate, risk facilitator, portfolio manager, decision verifier, save episode. The notebook's Fact Guard (code checks that cut or correct unsupported claims), analyst cache, news graph, peer episodes and graph memory are part of the same path; each has a `RAEM_*` switch (see `CLAUDE.md`). One code path serves every ticker, international or Dhaka Stock Exchange (`backend/tradingagents/dataflows/dse_*.py`). There are no per-company notebooks. A fix in `agents.py` reaches every company.
 
 The four analysts (fundamentals, market, news, sentiment) work as in the research notebooks: Fundamentals passes only code-extracted numbers to the other agents (its own verdict stays in the log), Market avoids bull/bear wording, News adds dated press coverage and stores every item once by type (company, web, sector, exchange-wide) without ever using news from after the trade date, and Sentiment is a score computed in code from the stored news with a keyword list, which the LLM only explains (`RAEM_RULE_SENTIMENT=0` turns that off). Dhaka companies read the notebook's DSE data layer (`backend/app/ai_pipeline/dse_layer.py`).
 
@@ -201,7 +201,7 @@ The debate agents (Bull, Bear, facilitators, trader, risk debaters, portfolio ma
 | Episodic memory, regime reflection, outcome backfill | Memory page; used inside each run |
 | Trading log, 7-day hit rate, forecast agent and reviewer | Track record, Reviewer tab, Backtest, Return Calculator |
 
-The 7-day forecast (5 models, Ensemble, Fusion, reviewer) is a separate run (**Forecast → Run**). Older saved sessions, made by the former notebooks, also carry Graph Analyst, Forecasting Agent, Prediction Engine and 10-day scenario steps; they stay readable, new runs do not make them.
+The 7-day forecast (5 models, Ensemble, Fusion, reviewer) is a separate run (**Forecast → Run**). Older saved sessions, made by the former notebooks, also carry Forecasting Agent, Prediction Engine and 10-day scenario steps; they stay readable, new runs do not make them.
 
 ## Limits
 

@@ -37,3 +37,4 @@ markdown>=3.6          # agent reports to HTML
 anthropic>=0.34        # raw SDK call of the DSE statement extractor (langchain-anthropic brings it too)
 huggingface_hub>=0.30          # free storage on a Hugging Face Space (backend/tools/hf_sync.py)
 ddgs>=9.0
+networkx>=3.2          # news graph and graph memory (ai_pipeline/news_graph.py, graph_memory.py)

@@ -26,7 +26,7 @@ import time
 import traceback
 from datetime import datetime
 
-from . import config, memory as mem
+from . import analyst_cache, config, fact_guard, graph_analyst, graph_memory, memory as mem, news_graph, peer_episodes
 from .logger import SessionLog
 from .render import md_to_html, first_signal
 
@@ -38,6 +38,7 @@ STAGES = [
     ("news", "News Analyst"),
     ("sentiment", "Sentiment Analyst"),
     ("macro_regime", "Macro Regime Analyst"),
+    ("graph_analyst", "Graph Analyst"),
     ("investment_debate", "Bull vs Bear Debate"),
     ("investment_facilitator", "Investment Facilitator"),
     ("memory", "Episodic Memory (RAEM)"),
@@ -106,6 +107,8 @@ class PipelineRunner:
         from . import agents
         from .llm import make_llm, provider_label
 
+        fact_guard.reset()
+        analyst_cache.reset_stats()
         llm = make_llm(provider_override=self.provider_override)
         self._llm_provider = provider_label(self.provider_override)
         memory = mem.RAEMMemory()
@@ -254,6 +257,53 @@ class PipelineRunner:
                         "macro_snapshot": out.get("macro_snapshot", {})},
                "input": macro_input}
 
+        # -- graph analyst: DSE peer graph + GAT, peer episodes, graph-linked news (needs the news corpus filled above) --
+        idx += 1
+        yield self._start("graph_analyst", idx)
+        logs = []
+        graph_input = {"company": self.company, "date": self.trade_date,
+                       "universe": (graph_analyst.GRAPH_PEERS[:6] + ["..."]) if graph_analyst.is_dse(self.company) else "none (DSE tickers only)"}
+        try:
+            gres = graph_analyst.run_graph_analyst(self.company, self.trade_date, log=logs.append)
+        except Exception as e:  # noqa: BLE001 -- the graph is secondary evidence: a failure must not stop the run
+            logs.append(f"graph analyst failed: {e}")
+            gres = {"graph_context": "", "metrics": {"status": "ERROR", "reason": str(e)[:200]}, "report": f"Graph analyst failed: {e}"}
+        gmetrics = gres.get("metrics", {})
+        self.state["graph_context"] = gres.get("graph_context", "")
+        self.state["graph_metrics"] = gmetrics
+        sector_peers, corr_peers = list(gmetrics.get("sector_peers") or []), list(gmetrics.get("corr_peers") or [])
+        today_regime_now = mem.classify_regime(indicators)
+        self.session.log_step("Graph Analyst", graph_input, {"metrics": gmetrics, "report": gres.get("report", "")})
+        try:
+            memory.connect()
+            pe_stats = peer_episodes.store_peer_episodes(memory, self.company, self.trade_date, sector_peers + corr_peers,
+                                                         gres.get("close"), horizon=graph_analyst.GRAPH_HORIZON, log=logs.append)
+        except Exception as e:  # noqa: BLE001
+            logs.append(f"peer episodes skipped: {e}")
+            pe_stats = {"enabled": peer_episodes.enabled(), "peers": [], "stored": 0, "error": str(e)[:200]}
+        self.session.log_step("Peer Episodes", {"company": self.company, "date": self.trade_date}, pe_stats)
+        universe = (set(graph_analyst.GRAPH_PEERS) | {self.company}) if graph_analyst.is_dse(self.company) else {self.company}
+        try:
+            ng = news_graph.run_news_graph(memory, self.company, self.trade_date, self.state.get("news_rag_context", ""),
+                                           sector_peers, corr_peers, universe=universe, today_regime=today_regime_now,
+                                           llm=llm, log=logs.append)
+            self.state["news_rag_context"], self.state["news_rag_cap"], self.state["news_topics"] = ng["context"], ng["cap"], ng["topics"]
+            ng_result = ng["result"]
+        except Exception as e:  # noqa: BLE001
+            logs.append(f"news graph skipped: {e}")
+            ng_result = {"enabled": news_graph.enabled(), "items": 0, "error": str(e)[:200]}
+        self.session.log_step("Graph News", {"company": self.company, "date": self.trade_date}, ng_result)
+        for ln in logs:
+            yield {"type": "log", "stage": "graph_analyst", "line": ln}
+        graph_md = (f"**Peer graph:** {gres.get('report') or 'not available'}\n\n"
+                    f"**Peer episodes:** {pe_stats.get('stored', 0)} new stored for {pe_stats.get('peers') or 'no peers'}\n\n"
+                    f"**Graph-linked news:** {ng_result.get('items', 0)} item(s), {ng_result.get('peer_episodes', 0)} peer episode line(s)"
+                    + (f", topics {ng_result.get('today_topics')}" if ng_result.get("today_topics") else ""))
+        yield {"type": "stage_done", "stage": "graph_analyst", "html": md_to_html(graph_md),
+               "meta": {"status": gmetrics.get("status"), "gnn_status": gmetrics.get("gnn_status"), "peers": sector_peers + corr_peers,
+                        "news_graph_items": ng_result.get("items", 0)},
+               "input": graph_input}
+
         # -- investment debate --
         idx += 1
         yield self._start("investment_debate", idx)
@@ -334,6 +384,14 @@ class PipelineRunner:
             f"{self.company} trading decision in {today_regime} market regime",
             company=self.company, regime_filter=today_regime, n_results=3)
         memory_context = _memory_context(today_regime, episodes, reflection)
+        gm_lines = []
+        gm_ctx = graph_memory.episode_graph_context(memory, self.company, self.trade_date, today_regime,
+                                                    self.state.get("macro_regime") or "N/A", topics=self.state.get("news_topics"), log=gm_lines.append)
+        for ln in gm_lines:
+            yield {"type": "log", "stage": "memory", "line": ln}
+        if gm_ctx:   # prepended: format_shared_context keeps only the first 700 characters of the memory
+            memory_context = "\n" + gm_ctx + "\n" + (memory_context or "")
+        self.session.data["summary_table"]["graph_memory"] = gm_ctx
         self.state["memory_context"] = memory_context or ""   # read by debate_data.format_shared_context
         macro_regime = self.state.get("macro_regime", "")
         if macro_regime:
@@ -527,6 +585,10 @@ class PipelineRunner:
         for ln in logs:
             yield {"type": "log", "stage": "decision_verifier", "line": ln}
         verification = out.get("verification_result", {})
+        self.session.data["summary_table"]["fact_guard"] = fact_guard.summary()
+        self.session.data["summary_table"]["analyst_cache"] = dict(analyst_cache.STATS)
+        for ln in fact_guard.fact_guard_report().splitlines():
+            yield {"type": "log", "stage": "decision_verifier", "line": ln}
         self.session.log_step("Decision Verifier", decision_verifier_input, verification)
         verifier_md = f"**Verification Status: {verification.get('status', 'N/A')}**\n\n{verification.get('notes', '')}"
         yield {"type": "stage_done", "stage": "decision_verifier",
@@ -570,6 +632,9 @@ class PipelineRunner:
                 verifier_status=verification.get("status"),
                 llm_provider=self._llm_provider,
                 confidence=episode_confidence,
+                extra_meta={"news_topics": ",".join(self.state.get("news_topics") or []) or "NONE",
+                            "graph_gnn_status": str(self.state.get("graph_metrics", {}).get("gnn_status", "N/A")),
+                            "graph_gnn_rank": str(self.state.get("graph_metrics", {}).get("gnn_rank", "N/A"))},
                 # 🔴 FIXED: without this, two runs for the same ticker on
                 # the same calendar day (e.g. Kimi then Sonnet -- exactly
                 # the documented workflow for a provider comparison, or
