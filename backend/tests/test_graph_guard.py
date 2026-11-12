@@ -148,6 +148,25 @@ def test_a_flipped_dividend_trend_and_a_flipped_peer_comparison_are_cut():
     assert "increased sharply" not in new and "outperforms" not in new and "oversold" in new
 
 
+MACD_PROMPT = PROMPT + "[F6] MACD -1.250 is negative (bearish momentum)\n[F7] dividend yield: data not available (this is NOT 0%)\n"
+
+
+def test_macd_sign_flip_is_flagged_but_a_correct_or_negated_sentence_is_not():
+    bad = "The MACD is positive, confirming bullish momentum [F6]. RSI 28.5 is oversold [F2]." + FILLER
+    assert "MACD sign" in msgs_of(fg.guard_check(MACD_PROMPT, bad))
+    good = "The MACD of -1.25 is negative and points to bearish momentum [F6]. RSI 28.5 is oversold [F2]." + FILLER
+    assert fg.guard_check(MACD_PROMPT, good) == []
+    hedged = "The MACD is not positive, so bullish momentum is missing [F6]. RSI 28.5 is oversold [F2]." + FILLER
+    assert "MACD sign" not in msgs_of(fg.guard_check(MACD_PROMPT, hedged))
+
+
+def test_dividend_yield_zero_is_flagged_when_the_data_says_not_published():
+    bad = "The dividend yield is 0%, so there is no income cushion [F7]. RSI 28.5 is oversold [F2]." + FILLER
+    assert "Dividend yield is NOT published" in msgs_of(fg.guard_check(MACD_PROMPT, bad))
+    ok = "The dividend yield is not available in the data, so no income view is possible [F7]. RSI 28.5 is oversold [F2]." + FILLER
+    assert fg.guard_check(MACD_PROMPT, ok) == []
+
+
 def test_the_relation_and_memory_claim_checks_have_switches(monkeypatch):
     text = "The cash dividend increased sharply compared with last year [F4]. RSI 28.5 is oversold [F2]." + FILLER
     assert fg.guard_check(PROMPT, text)

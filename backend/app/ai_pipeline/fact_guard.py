@@ -274,7 +274,7 @@ def guard_check(prompt_text: str, output_text: str, decision=None) -> list:
                 issues.append(_g_issue(f"Price {px} is ABOVE the 50-day SMA {sma}, so the SMA is SUPPORT, not resistance. Sentence: \"{s.strip()[:90]}\"", [seg],
                                        sub=(r"\bresistance\b", "support")))
 
-    for lab in set(re.findall(r"^\s*[-*]?\s*([A-Za-z][A-Za-z0-9 /&()\-\.]{2,40}?):\s*(?:N/A|data not available|None)\b", prompt_text, re.M)):
+    for lab in set(re.findall(r"^\s*[-*]?\s*(?:\[F\d+\]\s*)?([A-Za-z][A-Za-z0-9 /&()\-\.]{2,40}?):\s*(?:N/A|data not available|None)\b", prompt_text, re.M)):
         base = re.sub(r"\s*\(.*?\)\s*", " ", lab).strip()
         if len(base) < 4:
             continue
@@ -283,6 +283,12 @@ def guard_check(prompt_text: str, output_text: str, decision=None) -> list:
             if re.search(re.escape(base) + r"[^.\n]{0,25}?[:=\s]\s*[৳$]?-?\d", s, re.I) and not re.search(r"not available|n/a|unavailable|no data|none|missing", s, re.I):
                 issues.append(_g_issue(f"'{base}' is N/A in your data but you cite a value: \"{s.strip()[:90]}\". Say 'data not available' instead.", [seg]))
                 break
+
+    # the numbers-only fundamentals block says "Dividend yield: not published by DSE (do NOT write 0%)", which the label rule above cannot read
+    if re.search(r"dividend yield:\s*(?:not published|data not available|N/A)", prompt_text, re.I):
+        for seg in segs:
+            if re.search(r"dividend yield[^.\n]{0,40}?\b0(?:\.0+)?\s*%", seg[2], re.I) and not re.search(r"not available|n/a|unavailable|not published|no data", seg[2], re.I):
+                issues.append(_g_issue(f"Dividend yield is NOT published in your data; it is not 0%. Sentence: \"{seg[2].strip()[:90]}\"", [seg]))
 
     if "NOT trailing-12-month" in prompt_text:
         for seg in segs:
@@ -345,6 +351,19 @@ def guard_check(prompt_text: str, output_text: str, decision=None) -> list:
                     issues.append(_g_issue(f"Peer comparison: the FACT SHEET (code-computed, 20d) says the stock UNDERPERFORMS its {kind} peers, but you wrote it outperforms. Sentence: \"{s_.strip()[:90]}\"", [seg]))
                 elif word == "OUTPERFORMS" and under_ and not out_:
                     issues.append(_g_issue(f"Peer comparison: the FACT SHEET (code-computed, 20d) says the stock OUTPERFORMS its {kind} peers, but you wrote it underperforms. Sentence: \"{s_.strip()[:90]}\"", [seg]))
+
+        mm = re.search(r"MACD [+-]?[\d.]+ is (negative|positive)", prompt_text)
+        if mm:                                                 # the sign of the MACD is a code fact (trend_fact_list); a sentence must not flip it
+            for seg in segs:
+                s_, sl = seg[2], seg[2].lower()
+                if "macd" not in sl or _G_NEG.search(sl) or re.search(r"\b(?:histogram|cross\w*|diverg\w*)\b", sl):
+                    continue
+                pos = re.search(r"\b(?:positive|bullish|upward)\b", sl)
+                neg = re.search(r"\b(?:negative|bearish|downward)\b", sl)
+                if mm.group(1) == "negative" and pos and not neg:
+                    issues.append(_g_issue(f"MACD sign: the FACT SHEET (code-computed) says the MACD is NEGATIVE, but you wrote it is positive/bullish. Sentence: \"{s_.strip()[:90]}\"", [seg]))
+                elif mm.group(1) == "positive" and neg and not pos:
+                    issues.append(_g_issue(f"MACD sign: the FACT SHEET (code-computed) says the MACD is POSITIVE, but you wrote it is negative/bearish. Sentence: \"{s_.strip()[:90]}\"", [seg]))
 
     # (2c) v9 -- claims about stored past episodes need a stored positive outcome in the prompt
     if config.flag("RAEM_GUARD_MEMORY_CLAIMS", True) and not _g_memory_supported(prompt_text):
