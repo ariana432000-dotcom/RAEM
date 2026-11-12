@@ -151,14 +151,25 @@ def _normalize_content(content):
     return content
 
 
-def invoke_llm_with_retry(llm, prompt_or_messages, max_attempts: int = 3):
+def invoke_llm_with_retry(llm, prompt_or_messages, max_attempts: int = 3, who: str | None = None, guard: bool = True):
     """llm.invoke() with a back-off on rate limits. A billing error ("credit balance is too low", "insufficient_quota") is
-    not a rate limit: waiting does not help, so it is raised at once with the provider's own message."""
+    not a rate limit: waiting does not help, so it is raised at once with the provider's own message.
+
+    The answer goes through the Fact Guard (fact_guard.guard_output) before the next agent can read it; pass guard=False for a
+    call whose output is not prose for other agents."""
     last_err = None
+
+    def ask(msgs):
+        r = llm.invoke(msgs)
+        r.content = _normalize_content(r.content)
+        return r
+
     for attempt in range(max_attempts):
         try:
-            response = llm.invoke(prompt_or_messages)
-            response.content = _normalize_content(response.content)
+            response = ask(prompt_or_messages)
+            if guard:
+                from . import fact_guard
+                response = fact_guard.guard_output(llm, prompt_or_messages, response, ask, who=who)
             return response
         except Exception as e:  # noqa: BLE001
             last_err = e
@@ -170,3 +181,12 @@ def invoke_llm_with_retry(llm, prompt_or_messages, max_attempts: int = 3):
             else:
                 raise
     raise RuntimeError(f"{max_attempts} attempts hit the provider's rate limit, last error: {last_err}")
+
+
+def analyst_invoke(name: str, llm, prompt_or_messages, company: str = "", trade_date: str = "", log=print):
+    """invoke_llm_with_retry() for an analyst: an identical temperature-0 call made before today is answered from the
+    analyst cache (analyst_cache.py). The cached text is the guarded one, so a hit skips the model and the guard."""
+    from . import analyst_cache
+    return analyst_cache.cached_invoke(name, llm, prompt_or_messages,
+                                       lambda m: invoke_llm_with_retry(llm, m, who=f"{name}_analyst"),
+                                       company=company, trade_date=trade_date, log=log)

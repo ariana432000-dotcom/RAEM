@@ -12,7 +12,8 @@ import os
 import re
 import time
 
-from .llm import invoke_llm_with_retry
+from .llm import analyst_invoke, invoke_llm_with_retry
+from . import fact_guard
 from .render import first_signal
 
 
@@ -476,7 +477,7 @@ RULES:
             HumanMessage(content=prompt),
         ]
         if FUND_LLM_REPORT:
-            report = invoke_llm_with_retry(llm, messages).content
+            report = analyst_invoke("fundamentals", llm, messages, company, current_date, log).content
             log("fundamentals report ready")
         else:
             report = facts_block + "\n\n(LLM narrative skipped: RAEM_FUND_LLM_REPORT=0)"
@@ -578,7 +579,7 @@ In the Signal column use only: UPWARD, DOWNWARD, NEUTRAL, OVERBOUGHT, OVERSOLD.
             SystemMessage(content="You are a senior trading analyst. Write reports based only on provided data. Always end with the required Markdown table."),
             HumanMessage(content=prompt),
         ]
-        report = invoke_llm_with_retry(llm, messages).content
+        report = analyst_invoke("market", llm, messages, company, current_date, log).content
         if NEUTRAL_WORDING:
             report = _neutralise_bull_bear(report)
         log("market report ready")
@@ -709,7 +710,7 @@ see rule above, not a fixed target.)
             SystemMessage(content="You are a senior news analyst. Write reports based only on provided data. Always end with the required Markdown table."),
             HumanMessage(content=prompt),
         ]
-        report = invoke_llm_with_retry(llm, messages).content
+        report = analyst_invoke("news", llm, messages, company, current_date, log).content
         log("news report ready")
 
         sentiments = re.findall(r"\|\s*\w.*?\|\s*(POSITIVE|NEGATIVE|NEUTRAL)\s*\|", report, re.IGNORECASE)
@@ -806,7 +807,7 @@ At the very end, output a Markdown table with EXACTLY these columns:
             SystemMessage(content="You are a senior sentiment analyst. Be specific about data sources. Always end with the required Markdown table."),
             HumanMessage(content=prompt),
         ]
-        report = invoke_llm_with_retry(llm, messages).content
+        report = analyst_invoke("sentiment", llm, messages, company, current_date, log).content
         log("sentiment report ready")
 
         # The LLM's own score: the table first (| Source | Sentiment | Score (1-10) | Confidence | Key Signal |), then "x/10"
@@ -1055,6 +1056,7 @@ def create_trader(llm):
                     time.sleep(60 * (attempt + 1))
                 else:
                     raise
+        trader_plan = fact_guard.guard_postprocess("\n".join(str(m["content"]) for m in messages), trader_plan, "create_trader")
         return {"trader_investment_plan": trader_plan, "sender": "Trader"}
 
     return node
@@ -1341,6 +1343,7 @@ def create_portfolio_manager(llm):
                     time.sleep(60 * (attempt + 1))
                 else:
                     raise
+        final_decision = fact_guard.guard_postprocess(prompt_text, final_decision, "create_portfolio_manager")
         return {"final_trade_decision": final_decision}
 
     return node
@@ -1537,7 +1540,7 @@ Rule-based macro regime tag: {macro_regime}
                     SystemMessage(content="You are a senior DSE market strategist. Base your report only on the data given."),
                     HumanMessage(content=prompt),
                 ]
-                report = invoke_llm_with_retry(llm, messages).content
+                report = analyst_invoke("macro", llm, messages, company, current_date, log).content
                 log("macro regime report ready (DSE)")
                 return {"macro_report": report, "macro_regime": macro_regime, "macro_snapshot": snapshot}
 
@@ -1565,7 +1568,7 @@ Rule-based macro regime tag: {macro_regime}
             SystemMessage(content="You are a senior macro strategist. Base your report only on the data given."),
             HumanMessage(content=prompt),
         ]
-        report = invoke_llm_with_retry(llm, messages).content
+        report = analyst_invoke("macro", llm, messages, company, current_date, log).content
         log("macro regime report ready")
 
         return {"macro_report": report, "macro_regime": macro_regime, "macro_snapshot": snapshot}

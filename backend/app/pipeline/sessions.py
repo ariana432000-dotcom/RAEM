@@ -23,6 +23,8 @@ STEP_LABELS = {
     "News Analyst": "News",
     "Sentiment Analyst": "Sentiment",
     "Graph Analyst": "Graph analyst",
+    "Peer Episodes": "Peer episodes",
+    "Graph News": "Graph news",
     "Forecasting Agent": "Forecasting agent",
     "Investment Debate (Bull vs Bear)": "Bull vs bear debate",
     "Investment Debate Facilitator": "Debate facilitator",

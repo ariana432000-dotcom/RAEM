@@ -81,7 +81,9 @@ def env(tmp_path, monkeypatch, server):
     log_dir.mkdir()
     for k, v in {"RAEM_LOG_DIR": str(log_dir), "RAEM_CHROMA_PATH": str(tmp_path / "chroma"), "RAEM_EMBED": "hash",
                  "RAEM_OPENAI_BASE_URL": f"http://127.0.0.1:{server.server_address[1]}/v1", "OPENAI_API_KEY": "x",
-                 "RAEM_LLM_CACHE": str(tmp_path / "cache.json"), "RAEM_ENGINE": str(tmp_path / "engine")}.items():
+                 "RAEM_LLM_CACHE": str(tmp_path / "cache.json"), "RAEM_ENGINE": str(tmp_path / "engine"),
+                 # these tests count model calls and saved answers: the analyst cache and the model's graph extraction have their own tests
+                 "RAEM_ANALYST_CACHE": "0", "RAEM_LLM_GRAPH": "0"}.items():
         monkeypatch.setenv(k, v)
     monkeypatch.delenv("FMP_API_KEY", raising=False)
     monkeypatch.delenv("FINNHUB_API_KEY", raising=False)
@@ -132,7 +134,7 @@ def test_full_run_writes_a_session_the_website_can_read(env, capsys):
     code, out = run_cli(env)
     log = capsys.readouterr().out
     assert code == 0, log
-    assert "== [1/16] Outcome Backfill" in log and "== [16/16] Save Episode" in log
+    assert "== [1/17] Outcome Backfill" in log and "== [17/17] Save Episode" in log
     res = json.load(open(out, encoding="utf-8"))
     latest = res["entry"]["latest"]
     assert latest["rating"] == "Overweight" and latest["signal"] == "BUY"
@@ -141,6 +143,13 @@ def test_full_run_writes_a_session_the_website_can_read(env, capsys):
     assert latest["debate"]["complete"] is True and latest["llm_provider"] == "openai" and res["new_llm_calls"] > 5
     # the trading log is where sessions.py reads it
     assert (env / "logs" / "trading_log_AAA.json").exists()
+    # the notebook's graph and guard layers ran (a non-DSE ticker has no peer graph, the rest does not depend on it)
+    assert "== [7/17] Graph Analyst" in log and "0 flagged, 0 cut in code" in log
+    assert {"Graph analyst", "Graph news"} <= set(latest["steps"])
+    session = json.load(open(env / "logs" / "trading_log_AAA.json", encoding="utf-8"))
+    last = (session["sessions"] if isinstance(session, dict) and "sessions" in session else session)[-1]
+    table = last["summary_table"]
+    assert table["graph_analyst"]["status"] == "SKIPPED" and "checked" in table["fact_guard"] and "hits" in table["analyst_cache"]
 
 
 def test_analysts_follow_the_research_notebooks(env, capsys):

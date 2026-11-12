@@ -5,7 +5,7 @@ website's format. One Python pipeline for every ticker (app/ai_pipeline/, the an
     python app/ai_engine/run_pipeline.py --ticker ABBANK --provider ollama --model qwen2.5:7b --out result.json
 
 Printed lines (the server shows them as the run's log):
-    == [3/16] News Analyst        a stage starts
+    == [3/17] News Analyst        a stage starts
     !! Cause: <reason>  (in step: <stage>)   the run failed
 Environment: RAEM_LLM_CACHE (file of saved model answers: Continue after a hold or a failure), OLLAMA_BASE_URL, API keys.
 """

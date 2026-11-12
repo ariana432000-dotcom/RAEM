@@ -108,7 +108,7 @@ function liveStatus(key) {
     ${key.startsWith("ai:") && j.status === "running" ? agentBoard(j) : `<ol class="events">${lines.map(l => `<li><span>${esc(l.replace(/^== /, ""))}</span></li>`).join("")}</ol>`}</section>`;
 }
 // The pipeline's agents in run order (sessions.STEP_LABELS); any other logged step is added where it appears
-const AGENT_STAGES = ["Fundamentals", "Market", "News", "Sentiment", "Macro regime", "Bull vs bear debate",
+const AGENT_STAGES = ["Fundamentals", "Market", "News", "Sentiment", "Macro regime", "Graph analyst", "Peer episodes", "Graph news", "Bull vs bear debate",
   "Debate facilitator", "Post-mortem", "Trader", "Risk debate", "Risk facilitator", "Portfolio manager", "Verifier"];
 function agentBoard(j) {
   const L = j.entry && j.entry.latest, steps = (L && L.steps) || {}, done = Object.keys(steps);
