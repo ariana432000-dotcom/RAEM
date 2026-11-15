@@ -72,7 +72,7 @@ function renderAI() {
   if (choices.length && !choices.includes(X.ai.t)) X.ai.t = choices[0];
   const t = X.ai.t, a = EXTRA.ai[t];
   const head = `<div class="page-h"><h1>AI Analysis</h1><p>TradingAgents with RAEM's episodic memory, run with the LLM you choose (a local Ollama model or a cloud model) for any company: analysts, bull vs bear debate, trader, risk debate, portfolio manager and verifier. Research output, not advice.</p></div>
-    ${card("", "", "", `<div class="field"><span class="lbl">Company</span>${pillTabs(ORDER.concat(choices.filter(x => !ORDER.includes(x))).map(x => [x, x, !choices.includes(x)]), t, "data-ai")}</div>${!live && !ORDER.every(x => AI_T.includes(x)) ? `<p class="sub" style="margin-top:10px">No saved session for ${ORDER.filter(x => !AI_T.includes(x)).join(", ")} yet. Run it on the hosted site.</p>` : ""}`)}${live ? aiAnyCard() : ""}`;
+    ${live ? "" : card("", "", "", `<div class="field"><span class="lbl">Company</span>${pillTabs(ORDER.concat(choices.filter(x => !ORDER.includes(x))).map(x => [x, x, !choices.includes(x)]), t, "data-ai")}</div>${!live && !ORDER.every(x => AI_T.includes(x)) ? `<p class="sub" style="margin-top:10px">No saved session for ${ORDER.filter(x => !AI_T.includes(x)).join(", ")} yet. Run it on the hosted site.</p>` : ""}`)}${live ? aiAnyCard() : ""}`;
   if (live) {
     if (!a) return head + aiLiveCard(t, a) + aiHistoryCard(t) + (LIVE.busy["ai:" + t] ? "" : nonEmpty("brain", "No session for this company yet", "Choose a model and run the analysis above to create the first one."));
     return aiResults(t, a, head + aiLiveCard(t, a), aiHistoryCard(t));
