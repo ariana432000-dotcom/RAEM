@@ -76,7 +76,7 @@ async function loadStocks(refresh) {
   X.stk.lstate = "loading";
   try { X.stk.list = await api("stocks" + (refresh ? "?refresh=true" : "")); X.stk.lstate = "ok"; }
   catch (e) { X.stk.lstate = "err"; X.stk.lerr = e.message; }
-  if (S.page === "stocks") render();
+  if (S.page === "stocks" || (S.page === "ai" && !(document.activeElement && document.activeElement.id === "ai-co"))) render();
 }
 async function loadStock(code, refresh) {
   if (!LIVE.ok) return;
@@ -276,32 +276,33 @@ function unfinishedRunFor(t, key) {  // today's held run, or today's newest run 
   const rows = (LIVE.hist[t] || []).filter(r => r.run_date === LIVE.health.date && r.model_key === key);
   return rows.find(r => r.status === "held") || (rows[0] && rows[0].status === "failed" && rows[0].saved_answers ? rows[0] : null);
 }
-/* analyse any company: the pipeline needs no preparation, so any ticker runs at once; it is also listed on the page */
-function aiAnyCard() {
-  const a = X.ai;
-  return `<div class="field" style="margin-top:16px"><label for="ai-any">Analyse any company</label>
-    <div class="toolbar"><input class="inp grow" id="ai-any" placeholder="Any ticker: TSLA, 7203.T, 0700.HK, SQURPHARMA" value="${esc(a.any || "")}" aria-label="Ticker" autocomplete="off">
-      <button type="button" class="btn primary" data-act="ai-any">Analyse</button></div>
-    <p class="sub">Any company works, on the site or not: the prices, fundamentals and news are fetched when the analysis runs, with the model chosen below. A 7-day forecast needs the company added from the search box.</p>
-    ${a.anyMsg ? `<p class="err" role="alert">${esc(a.anyMsg)}</p>` : ""}</div>`;
+/* the company field: type a ticker or a company name and pick it from the list; any ticker works (the pipeline needs no preparation) */
+function aiCompanyField(t) {
+  const L = X.stk.list ? X.stk.list.stocks : [], seen = new Set();
+  const opts = [...L.map(r => [r.code, r.name]), ...Object.keys(DATA).map(k => [k, DATA[k].meta.name]), ...(LIVE.models ? LIVE.models.analysis_tickers : []).map(k => [k, ""])]
+    .filter(([c]) => !seen.has(c) && seen.add(c)).map(([c, n]) => `<option value="${esc(c)}">${esc(n || "")}</option>`).join("");
+  return `<div class="field"><label for="ai-co">Company</label>
+    <input class="inp" id="ai-co" list="ai-co-list" value="${esc(t)}" placeholder="Ticker or name: GP, SQURPHARMA, TSLA, 0700.HK" aria-label="Company" autocomplete="off" spellcheck="false">
+    <datalist id="ai-co-list">${opts}</datalist>
+    ${X.ai.anyMsg ? `<p class="err" role="alert">${esc(X.ai.anyMsg)}</p>` : `<p class="sub">${esc(d0(t))}. Type to search; any company works.</p>`}</div>`;
 }
-async function aiAny() {
-  const el = $("#ai-any"), raw = ((el && el.value) || X.ai.any || "").trim().toUpperCase();
-  X.ai.any = raw; X.ai.anyMsg = "";
-  if (!raw) { X.ai.anyMsg = "Type a ticker first."; render(); return; }
-  if (!/^[A-Z0-9.\-]{1,20}$/.test(raw)) { X.ai.anyMsg = "A ticker has letters, digits, dots and dashes only."; render(); return; }
+function aiPickCompany() {
+  const el = $("#ai-co"), raw = ((el && el.value) || "").trim();
+  X.ai.anyMsg = "";
+  if (!raw) { render(); return; }
+  const code = resolveStock(raw) || raw.toUpperCase();
+  if (!/^[A-Z0-9.&\-]{1,20}$/.test(code)) { X.ai.anyMsg = "Pick a company from the list, or type a ticker (letters, digits, dots and dashes)."; render(); return; }
   X.ai.extra = X.ai.extra || [];
-  if (!DATA[raw] && !X.ai.extra.includes(raw)) X.ai.extra.push(raw);
-  X.ai.t = raw; X.ai.any = "";
+  if (!DATA[code] && !X.ai.extra.includes(code)) X.ai.extra.push(code);
+  X.ai.t = code;
   render();
-  liveAnalysis(raw);
 }
 function aiLiveCard(t, a) {
   const key = "ai:" + t, li = LIVE.ai[t], j = LIVE.busy[key], sel = llmSel();
   const badge = li ? `<span class="badge buy">${esc(li.model)} · ${esc(li.date)}</span>` : `<span class="badge">${a ? "saved session" : "no session yet"}</span>`;
   if (!sel) {
     return card(`Run AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))}`, badge,
-      `<p class="err" role="alert">No LLM is connected on this server. Start Ollama with a model pulled, or add an API key (ANTHROPIC_API_KEY for Claude, MOONSHOT_API_KEY for Kimi) to the server's .env and restart it.</p><p class="note" style="margin-top:8px">Stored runs below still open.</p>`);
+      `${aiCompanyField(t)}<p class="err" role="alert">No LLM is connected on this server. Start Ollama with a model pulled, or add an API key (ANTHROPIC_API_KEY for Claude, MOONSHOT_API_KEY for Kimi) to the server's .env and restart it.</p><p class="note" style="margin-top:8px">Stored runs below still open.</p>`);
   }
   const groups = llmProviders().map(p => `<optgroup label="${esc(p.label)}">${p.models.map(m => `<option value="${esc(p.key + "|" + m)}" ${p.key + "|" + m === X.ai.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</optgroup>`).join("");
   const storedToday = li && li.date === LIVE.health.date && li.model === sel.key, held = !j && unfinishedRunFor(t, sel.key);
@@ -316,9 +317,11 @@ function aiLiveCard(t, a) {
     : " Hold stops a run and keeps what it has done; running it again later continues from there while the market data is unchanged.";
   const mem = LIVE.models.embeddings_ok === false ? " Memory: Ollama's nomic-embed-text is not reachable, so the memory uses a separate local store." : "";
   return card(`Today's AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · runs for ${dLong(LIVE.health.date)}`, badge, `
-    <div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+    <div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+      ${aiCompanyField(t)}
       <div class="field"><label for="ai-model">LLM model (connected on this server)</label><select id="ai-model" data-bind="ai-model" ${j ? "disabled" : ""}>${groups}</select></div>
-      <div class="field"><span class="lbl">Options</span><div class="checks"><label><input type="checkbox" id="ai-force" data-bind="ai-force" ${X.ai.force ? "checked" : ""}> Run again even if stored today</label></div></div>
+    </div>
+    <div class="formgrid" style="grid-template-columns:minmax(0,1fr);margin-top:6px"><div class="field"><div class="checks"><label><input type="checkbox" id="ai-force" data-bind="ai-force" ${X.ai.force ? "checked" : ""}> Run again even if stored today</label></div></div>
     </div>${tokenRow()}
     <div class="runbar">${main}
       <p class="note">${how} Runs are stored by company, date and model, so asking again today opens the stored result at once.${holdNote}${mem}</p></div>
@@ -433,6 +436,6 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => {
   if (e.target.id === "add-market") X.add.market = e.target.value;
 });
-document.addEventListener("input", e => { if (e.target.id === "ai-any") X.ai.any = e.target.value; });
-document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "ai-any") { e.preventDefault(); aiAny(); } });
+document.addEventListener("change", e => { if (e.target.id === "ai-co") aiPickCompany(); });
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "ai-co") { e.preventDefault(); aiPickCompany(); } });
 document.addEventListener("keydown", e => { if (e.key === "Escape") hideAddBox(); });

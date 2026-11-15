@@ -169,3 +169,4 @@ table.dense tr.tot td { font-weight: 700; border-top: 1px solid var(--border); b
 .ring0 { width: 96px; height: 96px; border-radius: 50%; border: 2px dashed var(--border); display: flex; align-items: center; justify-content: center; font: 600 22px var(--font-mono); color: var(--faint); }
 table.stktable th:nth-child(-n+3), table.stktable td:nth-child(-n+3) { text-align: left; }
 table.stktable th:last-child, table.stktable td:last-child { text-align: right; padding-right: 0; }
+#ai-co { width: 100%; }
