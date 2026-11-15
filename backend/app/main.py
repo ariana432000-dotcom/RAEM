@@ -25,7 +25,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import analysis, companies, forecast, health, market, refresh, runs, stocks
+from app.api.routes import analysis, companies, forecast, health, market, refresh, runs, stocks, stocks_list
 from app.db import runs as db
 from app.workers import jobs
 
@@ -46,5 +46,5 @@ if origins:
                        allow_private_network=True)
 
 # stocks first: it holds "/" and the fixed paths; runs has the "{run_id}" paths, and /api/runs/latest is declared before them
-for _r in (stocks, health, market, companies, forecast, analysis, refresh, runs):
+for _r in (stocks, health, market, stocks_list, companies, forecast, analysis, refresh, runs):
     app.include_router(_r.router)

@@ -71,6 +71,20 @@ async function loadMarket(refresh) {
   }
   if (S.page === "dash") render();
 }
+async function loadStocks(refresh) {
+  if (!LIVE.ok) return;
+  X.stk.lstate = "loading";
+  try { X.stk.list = await api("stocks" + (refresh ? "?refresh=true" : "")); X.stk.lstate = "ok"; }
+  catch (e) { X.stk.lstate = "err"; X.stk.lerr = e.message; }
+  if (S.page === "stocks") render();
+}
+async function loadStock(code, refresh) {
+  if (!LIVE.ok) return;
+  X.stk.dstate[code] = "loading";
+  try { X.stk.det[code] = await api("stocks/" + encodeURIComponent(code) + (refresh ? "?refresh=true" : "")); X.stk.dstate[code] = "ok"; }
+  catch (e) { X.stk.dstate[code] = "err"; X.stk.derr[code] = e.message; }
+  if (S.page === "stock" && X.stk.code === code) render();
+}
 async function pollRun(id, key, onDone) {
   LIVE.busy[key] = { id, status: "queued", step: "", log: [], t0: Date.now() };
   for (;;) {

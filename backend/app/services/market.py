@@ -6,7 +6,8 @@ Every part is fail-soft: a part that cannot be fetched or parsed comes back as n
 "not available" for it, the other parts still load.
 
 Market cap is not in the archive, so it is not reported. Sector breadth needs a code -> sector map in
-`backend/data/dse_sectors.json` ({"ABBANK": "Bank", ...}); without that file the sector table is empty.
+`backend/data/dse_sectors.json` ({"ABBANK": "Bank", ...}) plus the sectors learned when a stock's page is opened
+(storage/dse_sectors_learned.json, or all at once with tools/build_dse_sectors.py); without any the sector table is empty.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ from app.core import config
 CACHE_TTL = 900            # seconds a fetched overview is reused; the exchange publishes once a day
 LOOKBACK_DAYS = 10         # weekends and holidays: walk back to the latest day that has rows
 SECTORS_FILE = config.DATA / "dse_sectors.json"
+LEARNED_SECTORS_FILE = config.STORAGE / "dse_sectors_learned.json"   # filled by company pages that were opened (services/stocks.py)
 CACHE_FILE = config.STORAGE / "market_cache.json"
 INDEX_NAMES = ("DSEX", "DSES", "DS30")
 
@@ -114,10 +116,14 @@ def parse_indices(html: str) -> list[dict]:
 
 
 def _sectors() -> dict:
-    try:
-        return {k.upper(): v for k, v in json.loads(SECTORS_FILE.read_text(encoding="utf-8")).items()}
-    except (OSError, ValueError):
-        return {}
+    """Code -> sector: the committed backend/data/dse_sectors.json, then the ones learned at run time (storage/dse_sectors_learned.json)."""
+    out: dict = {}
+    for f in (SECTORS_FILE, LEARNED_SECTORS_FILE):
+        try:
+            out.update({k.upper(): v for k, v in json.loads(f.read_text(encoding="utf-8")).items() if v})
+        except (OSError, ValueError):
+            pass
+    return out
 
 
 def _archive_rows(today: date) -> tuple[date | None, list[dict]]:

@@ -1,5 +1,5 @@
 /* ---------- extra pages ---------- */
-const NAVS = [["dash", "Home", "dash"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["inv", "Return Calculator", "pulse"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
+const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["inv", "Return Calculator", "pulse"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
 Object.assign(ICONS, {
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
@@ -651,15 +651,15 @@ function renderHelp() {
 /* ----- router ----- */
 function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; }
 function renderExtra() {
-  return ({ ai: renderAI, watch: renderWatch, inv: renderInv, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp })[S.page]();
+  return ({ ai: renderAI, watch: renderWatch, inv: renderInv, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock })[S.page]();
 }
-function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); markRows(); }
+function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
 
 /* ---------- top nav ---------- */
-const NAV_MAIN = [["dash", "Market"], ["tk", "Forecast"], ["inv", "Calculator"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
+const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["inv", "Calculator"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
 const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg>';
 function renderNav() {
-  const cur = id => (S.page === id ? ' aria-current="page"' : "");
+  const cur = id => (S.page === id || (id === "stocks" && S.page === "stock") ? ' aria-current="page"' : "");
   const more = NAVS.filter(([id]) => !NAV_MAIN.some(m => m[0] === id));
   const moreOn = more.some(([id]) => S.page === id);
   $("#nav").innerHTML = NAV_MAIN.map(([id, l]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${l}</button>`).join("") +
@@ -704,7 +704,7 @@ function mktSectors(s) {
 function mktTop(s) {
   const key = X.mkt.sort, rows = (s.stocks || s.top).slice().sort((p, q) => (q[key] || 0) - (p[key] || 0)).slice(0, 20);
   return `<div class="scroll"><table class="dense top"><thead><tr><th>#</th><th>Code</th><th>LTP</th><th>Close</th><th>Change</th><th>Trade</th><th>Value (mn)</th><th>Volume</th></tr></thead><tbody>${rows.map((r, i) =>
-    `<tr${DATA[r.code] ? ` class="click" data-t="${esc(r.code)}"` : ""}><td class="flat">${i + 1}</td><td class="t"><span class="tkr">${esc(r.code)}</span></td><td>${fmtN(r.ltp, 1)}</td><td>${fmtN(r.close, 1)}</td><td class="${cls(r.change_pct)}">${fmtPct(r.change_pct)}</td><td>${fmtN(r.trade)}</td><td>${fmtN(r.value_mn, 2)}</td><td>${fmtN(r.volume)}</td></tr>`).join("")}</tbody></table></div>`;
+    `<tr class="click" data-stk="${esc(r.code)}"><td class="flat">${i + 1}</td><td class="t"><span class="tkr">${esc(r.code)}</span></td><td>${fmtN(r.ltp, 1)}</td><td>${fmtN(r.close, 1)}</td><td class="${cls(r.change_pct)}">${fmtPct(r.change_pct)}</td><td>${fmtN(r.trade)}</td><td>${fmtN(r.value_mn, 2)}</td><td>${fmtN(r.volume)}</td></tr>`).join("")}</tbody></table></div>`;
 }
 function mktNews(d) {
   const items = d.news || [], n = X.mkt.newsN;
@@ -732,3 +732,140 @@ function renderDash() {
   ${dse.length && DATA[dse[0]].daily.data_end_date < DATA[dse[0]].forecast.last_date ? `<section class="card warn"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><span class="badge hold">Data note</span><p style="font-size:13px;color:var(--muted);flex:1 1 300px">The second-opinion daily models for ${dse.map(esc).join(", ")} use prices up to ${dLong(DATA[dse[0]].daily.data_end_date)}, because daily.py reads only the data snapshot. The 7-day forecasts and the recommendation use prices up to ${dLong(DATA[dse[0]].forecast.last_date)}.</p></div></section>` : ""}`;
 }
 
+
+/* ---------- stocks: the DSE list and one company's analysis page ---------- */
+X.stk = { list: null, lstate: "idle", lerr: "", q: "", sector: "", n: 100, code: "", det: {}, dstate: {}, derr: {}, range: 126 };
+const cr = mn => mn == null ? null : mn / 10;   // BDT millions to crore
+const taka = (v, d = 2) => v == null ? "–" : "৳" + fmtN(v, d);
+const takaCr = mn => mn == null ? "–" : "৳" + fmtN(cr(mn), 2) + " Cr";
+function ensureStocks() { if (LIVE.ok && !X.stk.list && X.stk.lstate !== "loading" && X.stk.lstate !== "err") loadStocks(false); }
+function ensureStock(code) { if (LIVE.ok && code && !X.stk.det[code] && X.stk.dstate[code] !== "loading" && X.stk.dstate[code] !== "err") loadStock(code, false); }
+function openStock(code) {
+  if (S.running) return;
+  X.stk.code = String(code).toUpperCase(); S.more = false; S.page = "stock"; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0;
+}
+function resolveStock(v) {
+  v = String(v || "").trim(); if (!v) return null;
+  const L = X.stk.list ? X.stk.list.stocks : [], up = v.toUpperCase(), low = v.toLowerCase();
+  const hit = L.find(r => r.code === up) || L.find(r => (r.name || "").toLowerCase().includes(low)) || L.find(r => r.code.startsWith(up));
+  return hit ? hit.code : (/^[A-Z0-9._&-]{1,20}$/.test(up) ? up : null);
+}
+const crumb = (...parts) => `<nav class="crumb" aria-label="Breadcrumb">${parts.map((p, i) => (i ? "<span>/</span>" : "") + (Array.isArray(p) ? `<button type="button" class="link" data-page="${p[0]}">${p[1]}</button>` : `<b>${esc(p)}</b>`)).join("")}</nav>`;
+const needServer = what => card("", "", "", emptyState("db", `${what} needs the server`, "Run the app's server to load live DSE data (python -m uvicorn app.main:app --app-dir backend)."), "dashed");
+
+function renderStocks() {
+  const x = X.stk, L = x.list;
+  const sub = L ? `${fmtN(L.count)} actively traded companies on the Dhaka Stock Exchange · Prices as of ${L.date ? dLong(L.date) : "–"}${L.stale ? " (exchange not reachable, last saved copy)" : ""}` : "Every company traded on the Dhaka Stock Exchange, with its latest price and change.";
+  const head = `${crumb(["dash", "Market"], "DSE Stocks")}<div class="pagehead"><div><h1>All DSE Listed Companies</h1><p class="sub">${esc(sub)}</p></div></div>`;
+  if (!LIVE.ok) return head + needServer("The stock list");
+  if (!L) return head + card("", "", "", emptyState("db", x.lstate === "err" ? "The stock list could not be loaded" : "Loading the stock list…", x.lstate === "err" ? esc(x.lerr) : "Fetching the latest trading day from the exchange.", x.lstate === "err" ? `<button type="button" class="btn secondary sm" data-act="stk-reload">Try again</button>` : ""), "dashed");
+  const q = x.q.trim().toLowerCase();
+  const rows = L.stocks.filter(r => (!x.sector || r.sector === x.sector) && (!q || r.code.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q)));
+  const chips = L.sectors.length ? `<div class="field"><label>Browse by sector</label><div class="pills">${L.sectors.map(s => `<button type="button" class="pillbtn" data-act="stk-sector" data-v="${esc(s.sector)}" aria-pressed="${x.sector === s.sector}">${esc(s.sector)} <span class="sub">${s.count}</span></button>`).join("")}</div></div>` : "";
+  const note = L.sectors_known < L.count ? `<p class="sub">Sector is known for ${fmtN(L.sectors_known)} of ${fmtN(L.count)} companies. It is added when you open a stock, or all at once with <span class="mono">python backend/tools/build_dse_sectors.py</span>.</p>` : "";
+  const body = rows.slice(0, x.n).map(r => `<tr class="click" data-stk="${esc(r.code)}"><td class="t"><span class="tkr">${esc(r.code)}</span></td><td class="t nm">${esc(r.name || "–")}</td><td class="t">${r.sector ? `<span class="badge">${esc(r.sector)}</span>` : `<span class="sub">–</span>`}</td><td>${fmtN(r.close || r.ltp, 2)}</td><td class="${cls(r.change_pct)}">${fmtPct(r.change_pct)}</td><td class="t"><button type="button" class="btn secondary sm" data-stk="${esc(r.code)}">Analyze →</button></td></tr>`).join("");
+  return `${head}<div class="field stkq"><input class="inp" id="stk-q" data-bind="stk-q" placeholder="Search symbol or company…" value="${esc(x.q)}" aria-label="Search symbol or company" autocomplete="off" spellcheck="false"></div>${chips}${note}
+    <p class="sub" style="margin:12px 0">${fmtN(rows.length)} results</p>
+    ${card("", "", "", rows.length ? `<div class="scroll"><table class="dense stktable"><thead><tr><th>Symbol</th><th>Company</th><th>Sector</th><th>LTP ${L.date ? `<span class="sub">${esc(L.date)}</span>` : ""}</th><th>Change</th><th>Analysis</th></tr></thead><tbody>${body}</tbody></table></div>
+      ${rows.length > x.n ? `<p style="margin-top:14px"><button type="button" class="btn secondary sm" data-act="stk-more">Show more (${rows.length - x.n})</button></p>` : ""}` : emptyState("search", "No company matches", "Try another symbol or company name, or clear the sector filter."))}`;
+}
+
+function stockSummary(d) {
+  const nm = esc(d.name || d.code), p = [];
+  p.push(`${nm} (${esc(d.code)}) is ${d.category ? `a Category ${esc(d.category)} company` : "a company"} listed on the Dhaka Stock Exchange${d.sector ? ` in the ${esc(d.sector)} sector` : ""}.`);
+  if (d.last_close != null) p.push(`The share last closed at ${taka(d.last_close)} on ${dLong(d.as_of)}${d.change_pct != null ? `, ${d.change_pct >= 0 ? "up" : "down"} ${Math.abs(d.change_pct).toFixed(2)}% from the previous session` : ""}.`);
+  if (d.week52_low != null) p.push(`Over the past 52 weeks it has traded between ${taka(d.week52_low)} and ${taka(d.week52_high)}.`);
+  if (d.paid_up_mn != null) p.push(`Paid-up capital stands at ${takaCr(d.paid_up_mn)}${d.market_cap_mn != null ? `, with a market capitalisation of approximately ${takaCr(d.market_cap_mn)}` : ""}.`);
+  const sh = d.shareholding || [];
+  if (sh.length) p.push(`Shareholding is split ${sh.map(s => `${s.label.toLowerCase()} ${s.pct.toFixed(2)}%`).join(", ")}.`);
+  if (d.dividend) p.push(`The last declared cash dividend was ${d.dividend.pct}% for ${d.dividend.year}.`);
+  const ae = (d.annual_eps || []).slice(-1)[0];
+  if (ae) p.push(`Audited annual EPS for ${ae.year} was ${taka(ae.eps)}.`);
+  return p.join(" ").replace(/\s+/g, " ");
+}
+function stockStats(d) {
+  const t = (k, v, c) => `<div class="card statx"><p class="k">${k}</p><p class="v mono ${c || ""}">${v}</p></div>`;
+  const chg = d.change == null ? "–" : `${d.change >= 0 ? "+" : "−"}${fmtN(Math.abs(d.change), 2)} <span>(${fmtPct(d.change_pct)})</span>`;
+  return `<div class="statsx">${t("Last close", taka(d.last_close))}${t("Change", chg, cls(d.change))}${t("Day high", taka(d.day_high))}${t("Day low", taka(d.day_low))}${t("52W high", taka(d.week52_high))}${t("52W low", taka(d.week52_low))}${t("Volume", fmtN(d.volume))}${t("Market cap", takaCr(d.market_cap_mn))}</div>`;
+}
+function stockRaem(d) {
+  const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null;
+  let left, right;
+  if (o) {
+    left = `${ring(o.sig, Math.max(o.pGain || 0, o.pFall || 0), o.sig, 96)}`;
+    right = `<p class="sigline">RAEM signal: ${sigBadge(o.sig)}</p><p class="sub">Expected 7-day move <b class="mono ${cls(o.m)}">${fmtPct(o.m * 100)}</b> from the reviewed forecast. ${esc(o.why ? o.why.charAt(0).toUpperCase() + o.why.slice(1) + "." : "")}</p>
+      <div class="cta"><button type="button" class="btn primary sm" data-t="${esc(code)}">Open full forecast</button><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis</button></div>`;
+  } else {
+    left = `<div class="ring0" aria-hidden="true">–</div>`;
+    right = `<p class="sigline">No RAEM analysis for ${esc(code)} yet</p><p class="sub">Adding the company fetches its prices and runs the seven-day forecast with the models; the signal and the AI analysis then appear here.${busy ? " Adding it now…" : ""}</p>
+      <div class="cta"><button type="button" class="btn primary sm" data-add="${esc(code)}" data-market="dse" data-name="${esc(d.name || "")}"${busy ? " disabled" : ""}>${busy ? "Adding…" : "Run RAEM analysis"}</button><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis only</button></div>`;
+  }
+  return card("RAEM analysis", "Seven-day model forecast and the BUY, HOLD or SELL signal.", "", `<div class="raemrow"><div>${left}</div><div>${right}</div></div>`);
+}
+const HOLD_COL = { "Sponsor/Director": "var(--c7)", Institute: "var(--buy)", Public: "var(--faint)", Govt: "var(--hold)", Foreign: "var(--c3)" };
+function donut(sh) {
+  const R = 52, C = 2 * Math.PI * R, tot = sh.reduce((q, s) => q + s.pct, 0) || 1; let off = 0;
+  const top = sh.slice().sort((a, b) => b.pct - a.pct)[0];
+  const arcs = sh.map(s => { const len = s.pct / tot * C, a = `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${HOLD_COL[s.label] || "var(--faint)"}" stroke-width="16" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)"/>`; off += len; return a; }).join("");
+  return `<svg viewBox="0 0 140 140" class="donut" role="img" aria-label="Shareholding pattern">${arcs}<text x="70" y="68" text-anchor="middle" class="dn">${top.pct.toFixed(1)}%</text><text x="70" y="84" text-anchor="middle" class="dl">${esc(top.label)}</text></svg>`;
+}
+function epsBars(rows) {
+  const W = 360, H = 170, padB = 22, padT = 22, hi = Math.max(...rows.map(r => r.eps), 0), lo = Math.min(...rows.map(r => r.eps), 0), span = hi - lo || 1;
+  const y = v => padT + (hi - v) * (H - padT - padB) / span, bw = Math.min(38, (W - 20) / rows.length - 14), step = (W - 20) / rows.length;
+  return `<svg viewBox="0 0 ${W} ${H}" class="epsbars" role="img" aria-label="Annual EPS">${rows.map((r, i) => {
+    const prev = i ? rows[i - 1].eps : null, col = prev == null ? "var(--faint)" : r.eps >= prev ? "var(--buy)" : "var(--sell)", x = 10 + step * i + (step - bw) / 2, y0 = y(Math.max(r.eps, 0)), h = Math.max(2, Math.abs(y(r.eps) - y(0)));
+    return `<rect x="${x.toFixed(1)}" y="${y0.toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="3" fill="${col}"/><text x="${(x + bw / 2).toFixed(1)}" y="${(y0 - 5).toFixed(1)}" text-anchor="middle" class="ev">${r.eps.toFixed(2)}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="ex">${r.year}</text>`;
+  }).join("")}</svg>`;
+}
+function stockFundamentals(d) {
+  const sh = d.shareholding || [], ae = d.annual_eps || [], qe = d.quarterly_eps || [];
+  const tile = (k, v) => `<div class="card statx"><p class="k">${k}</p><p class="v mono">${v}</p></div>`;
+  const tiles = `<div class="fundtiles">${tile("Category", esc(d.category || "–"))}${tile("Paid-up capital", takaCr(d.paid_up_mn))}${tile("Cash dividend", d.dividend ? `${d.dividend.pct}% (${d.dividend.year})` : "–")}${tile("Outstanding shares", fmtN(d.shares_out))}</div>`;
+  const hold = sh.length ? `<div class="subcard"><p class="k">Shareholding pattern</p><div class="holdrow">${donut(sh)}<ul class="legend2">${sh.map(s => `<li><i style="background:${HOLD_COL[s.label] || "var(--faint)"}"></i><span>${esc(s.label)}</span><b class="mono">${s.pct.toFixed(2)}%</b></li>`).join("")}</ul></div></div>` : `<div class="subcard"><p class="k">Shareholding pattern</p><p class="sub">Not available from the company page.</p></div>`;
+  const eps = ae.length ? `<div class="subcard"><p class="k">Annual EPS trend</p>${epsBars(ae)}</div>` : `<div class="subcard"><p class="k">Annual EPS trend</p><p class="sub">Not available from the company page.</p></div>`;
+  const q = `<div class="subcard"><p class="k">Quarterly EPS</p>${qe.length ? `<div class="qeps">${qe.map(r => `<div><b class="mono ${r.eps < 0 ? "down" : ""}">${r.eps < 0 ? "−" : ""}${Math.abs(r.eps).toFixed(2)}</b><span>${esc(r.period)}</span></div>`).join("")}</div>` : `<p class="sub">No quarterly EPS disclosure found in the exchange's recent notices.</p>`}</div>`;
+  return card("Company fundamentals", "", "", `${tiles}<div class="fundgrid">${hold}${eps}</div>${q}<p class="src">Fundamental data sourced from dsebd.org${d.as_of ? `, last updated ${esc(d.as_of)}` : ""}.</p>`);
+}
+function renderStock() {
+  const x = X.stk, code = x.code, d = x.det[code];
+  const bc = crumb(["dash", "Market"], ["stocks", "DSE Stocks"], code);
+  if (!LIVE.ok) return bc + needServer("The stock analysis");
+  if (!d) return bc + card("", "", "", emptyState("chart", x.dstate[code] === "err" ? `${esc(code)} could not be loaded` : `Loading ${esc(code)}…`, x.dstate[code] === "err" ? esc(x.derr[code] || "") : "Fetching the company page and its price history.", x.dstate[code] === "err" ? `<button type="button" class="btn secondary sm" data-act="stk-reload" data-v="${esc(code)}">Try again</button>` : ""), "dashed");
+  if (!d.ok) return bc + card("", "", "", emptyState("alert", `No price data for ${esc(code)}`, `The exchange returned no daily prices for this code. ${esc((d.errors || []).join(" · "))}`, `<button type="button" class="btn secondary sm" data-page="stocks">Back to the list</button>`), "dashed");
+  return `${bc}
+  <div class="pagehead"><div><h1>${esc(d.name || code)} <span class="stkcode">(${esc(code)})</span></h1><p class="sub">Dhaka Stock Exchange${d.sector ? ` · ${esc(d.sector)}` : ""}${d.category ? ` · Category ${esc(d.category)}` : ""} · As of ${dLong(d.as_of)}</p></div></div>
+  <form class="stkjump" id="stk-jump" autocomplete="off"><input class="inp" id="stk-jump-q" placeholder="Search another DSE stock, e.g. IPDC, Renata, Robi" aria-label="Search another DSE stock" spellcheck="false"><button type="submit" class="btn secondary sm">Search</button></form>
+  <section class="mksec">${card("", "", "", `<p class="stksum">${stockSummary(d)}</p>`)}</section>
+  <section class="mksec"><div class="sec-h"><div><h2>${esc(code)} key statistics</h2></div></div>${stockStats(d)}</section>
+  <section class="mksec">${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${[[63, "3M"], [126, "6M"], [252, "1Y"]].map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div>`)}</section>
+  <section class="mksec">${stockRaem(d)}</section>
+  <section class="mksec">${stockFundamentals(d)}</section>
+  ${d.errors && d.errors.length ? `<p class="sub">Some parts could not be fetched: ${esc(d.errors.join(" · "))}</p>` : ""}`;
+}
+function drawStockChart() {
+  const h = $("#stk-chart"); if (!h) return;
+  const d = X.stk.det[X.stk.code]; if (!d || !d.candles || !d.candles.length) return;
+  const cs = d.candles.slice(-X.stk.range), n = cs.length;
+  const W = Math.max(320, h.clientWidth || 700), H = 380, padL = 8, padR = 56, padT = 10, volH = 70, axisH = 22, gap = 12, priceH = H - padT - volH - gap - axisH;
+  const lo0 = Math.min(...cs.map(c => c[3])), hi0 = Math.max(...cs.map(c => c[2])), pad = (hi0 - lo0) * 0.06 || 0.05, lo = lo0 - pad, hi = hi0 + pad;
+  const y = v => padT + (hi - v) * priceH / (hi - lo), vmax = Math.max(...cs.map(c => c[5])) || 1, step = (W - padL - padR) / n, cw = Math.max(1, Math.min(10, step * 0.7)), x = i => padL + step * (i + 0.5);
+  const volTop = padT + priceH + gap, last = cs[n - 1];
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(d.code)} candlestick chart with volume">`;
+  niceTicks(lo, hi, 5).filter(v => v >= lo && v <= hi).forEach(v => { s += `<line x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--border-soft)"/><text class="ax" x="${W - padR + 6}" y="${(y(v) + 3).toFixed(1)}">${fmtN(v, 2)}</text>`; });
+  cs.forEach((c, i) => {
+    const up = c[4] >= c[1], col = up ? "var(--buy)" : "var(--sell)", top = y(Math.max(c[1], c[4])), bot = y(Math.min(c[1], c[4]));
+    s += `<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${y(c[2]).toFixed(1)}" y2="${y(c[3]).toFixed(1)}" stroke="${col}"/><rect x="${(x(i) - cw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${cw.toFixed(1)}" height="${Math.max(1, bot - top).toFixed(1)}" fill="${col}"/>`;
+    s += `<rect x="${(x(i) - cw / 2).toFixed(1)}" y="${(volTop + volH - c[5] / vmax * volH).toFixed(1)}" width="${cw.toFixed(1)}" height="${(c[5] / vmax * volH).toFixed(1)}" fill="${col}" opacity="0.45"/>`;
+  });
+  s += `<line x1="${padL}" x2="${W - padR}" y1="${y(last[4]).toFixed(1)}" y2="${y(last[4]).toFixed(1)}" stroke="${last[4] >= last[1] ? "var(--buy)" : "var(--sell)"}" stroke-dasharray="2 3"/><rect x="${W - padR + 2}" y="${(y(last[4]) - 9).toFixed(1)}" width="${padR - 4}" height="18" rx="3" fill="${last[4] >= last[1] ? "var(--buy)" : "var(--sell)"}"/><text x="${W - padR / 2}" y="${(y(last[4]) + 4).toFixed(1)}" text-anchor="middle" style="font:600 11px var(--font-mono);fill:var(--on-accent)">${fmtN(last[4], 2)}</text>`;
+  [0, 0.25, 0.5, 0.75, 1].forEach((f, k) => { const i = Math.min(n - 1, Math.round(f * (n - 1))); s += `<text class="ax" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}">${dShort(cs[i][0])}</text>`; });
+  s += `<line id="stk-cross" x1="0" x2="0" y1="${padT}" y2="${volTop + volH}" stroke="var(--faint)" stroke-dasharray="3 3" opacity="0"/><rect id="stk-hit" x="${padL}" y="${padT}" width="${W - padL - padR}" height="${H - padT}" fill="transparent"/></svg>`;
+  h.innerHTML = s;
+  const out = $("#stk-ohlc"), show = i => { const c = cs[i], p = i ? cs[i - 1][4] : null, ch = p ? (c[4] / p - 1) * 100 : null;
+    out.innerHTML = `<b>${esc(d.code)}</b> <span class="sub">${esc(c[0])}</span> &nbsp; O <span>${fmtN(c[1], 2)}</span> H <span>${fmtN(c[2], 2)}</span> L <span>${fmtN(c[3], 2)}</span> C <span>${fmtN(c[4], 2)}</span> V <span>${fmtN(c[5])}</span> <span class="${cls(ch)}">${fmtPct(ch)}</span>`; };
+  show(n - 1);
+  const svg = h.querySelector("svg"), cross = $("#stk-cross");
+  svg.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width, i = Math.max(0, Math.min(n - 1, Math.floor((px - padL) / step)));
+    cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", "1"); show(i); });
+  svg.addEventListener("pointerleave", () => { cross.setAttribute("opacity", "0"); show(n - 1); });
+}
