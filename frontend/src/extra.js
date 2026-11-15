@@ -30,7 +30,7 @@ const X = {
   mem: { tab: "episodes", q: "", t: "" },
   wlMsg: "",
 };
-const settings = Object.assign({ theme: "system", win: 120, unit: "price", view: "Agent" }, lsGet("raem:set", {}));
+const settings = Object.assign({ theme: "dark", win: 120, unit: "price", view: "Agent" }, lsGet("raem:set", {}));
 const saveSettings = () => lsSet("raem:set", settings);
 function applySettings(initial) {
   if (settings.theme === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = settings.theme;
@@ -653,10 +653,10 @@ function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app"
 function renderExtra() {
   return ({ ai: renderAI, watch: renderWatch, inv: renderInv, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp })[S.page]();
 }
-function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); if (S.page === "dash") drawHome(); markRows(); }
+function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); markRows(); }
 
 /* ---------- top nav ---------- */
-const NAV_MAIN = [["dash", "Home"], ["tk", "Forecast"], ["inv", "Calculator"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
+const NAV_MAIN = [["dash", "Market"], ["tk", "Forecast"], ["inv", "Calculator"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
 const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg>';
 function renderNav() {
   const cur = id => (S.page === id ? ' aria-current="page"' : "");
@@ -665,64 +665,70 @@ function renderNav() {
   $("#nav").innerHTML = NAV_MAIN.map(([id, l]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${l}</button>`).join("") +
     `<span class="morewrap"><button type="button" class="nl" data-act="more" aria-haspopup="true" aria-expanded="${!!S.more}"${moreOn ? ' aria-current="true"' : ""}>More ${CHEV}</button>` +
     (S.more ? `<div class="pop">${more.map(([id, l, i]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${ic(i)}${l}</button>`).join("")}</div>` : "") + `</span>`;
-  $("#sheetnav").innerHTML = NAVS.map(([id, l, i]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${ic(i)}${id === "dash" ? "Home" : l}</button>`).join("") +
+  $("#sheetnav").innerHTML = NAVS.map(([id, l, i]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${ic(i)}${id === "dash" ? "Market" : l}</button>`).join("") +
     `<div class="navh">Forecast by stock</div>` +
     ORDER.map(t => { const sig = S.ran[t] ? (outlook(t) || {}).sig || "" : ""; return `<button type="button" class="nl" data-t="${esc(t)}"${S.page === "tk" && S.t === t ? ' aria-current="page"' : ""}><span class="sym">${esc(t)}</span><span class="nm">${esc(DATA[t].meta.name)}</span><span class="dot ${sig}" role="img" aria-label="${sig ? "signal " + sig : "not run"}"></span></button>`; }).join("");
 }
 
 /* ---------- home ---------- */
-X.home = { t: ORDER[0] };
-function renderDash() {
-  const ht = X.home.t, hd = DATA[ht], hf = hd.forecast, hp = fcPath(ht), hr = hp ? hp[6] / hf.last_price - 1 : null;
-  const graded = ORDER.reduce((q, t) => q + Math.max(0, ...((DATA[t].hitrate.per_model || []).map(r => r.graded_calls || 0))), 0);
-  const cards = ORDER.map(t => {
-    const d = DATA[t], f = d.forecast, p = fcPath(t), r = p ? p[6] / f.last_price - 1 : null, cl = d.history.slice(-60).map(h => h[1]), age = daysBetween(f.last_date, ASOF);
-    return `<button type="button" class="tcard" data-t="${esc(t)}"><div class="top"><span class="tkr">${esc(t)}</span><span class="chip ${r == null ? "flat" : r > 0.0005 ? "up" : r < -0.0005 ? "down" : "flat"}">${r == null ? "–" : fmtPct(r * 100)} in 7d</span></div>
-      <div><div class="nm">${esc(d.meta.name)}</div><div class="px mono">${fmtP(f.last_price)} <span class="sub">${esc(d.meta.currency)}</span></div></div>${spark(cl, 220, 38)}
-      <div class="sub" style="${age > 5 ? "color:var(--hold)" : ""}">price as of ${dShort(f.last_date)}${age > 5 ? ` (${age} days old)` : ""}</div>
-      ${(b => b ? `<div class="sub ailine">AI ${ratingBadge(b.rating)} ${b.stale ? "too old to count" : `→ <b class="${cls(b.adj)}">${fmtPct(b.adj * 100)}</b> with AI`}</div>` : "")(aiBlend(t))}</button>`;
-  }).join("");
-  const feats = [["inv", "pulse", "Return Calculator", "Put in 100 and see what each company's forecast, model and AI analysis say you would have in a week."], ["bt", "chart", "Backtest", "How each model's past calls would have done against buy and hold."], ["ai", "line", "AI Analysis", "Read what the LLM analyst panel decided, stage by stage."], ["news", "news", "News and fundamentals", "News sentiment, P/E, EPS and 52-week ranges per company."], ["mem", "brain", "Memory", "Past predictions graded against what really happened."]];
-  const rows = ORDER.map(t => {
-    const d = DATA[t], f = d.forecast, ran = S.ran[t], cl = d.history.slice(-30).map(h => h[1]);
-    const ch = (cl[cl.length - 1] / cl[0] - 1) * 100, p = fcPath(t), ens = p ? (p[6] / f.last_price - 1) * 100 : null, age = daysBetween(f.last_date, ASOF);
-    return `<tr class="click" data-t="${esc(t)}"><td><span class="tkr">${esc(t)}</span><div class="sub">${esc(d.meta.name)}</div></td><td>${fmtP(f.last_price)} <span class="sub">${esc(d.meta.currency)}</span></td><td>${spark(cl)}</td><td class="${cls(ch)}">${fmtPct(ch)}</td><td style="${age > 5 ? "color:var(--hold)" : ""}">${dShort(f.last_date)}</td><td>${ran ? sigBadge((outlook(t) || {}).sig) : `<span class="badge">not run</span>`}</td><td class="${cls(ens)}">${fmtPct(ens)}</td><td>${(b => b && !b.stale ? `${ratingBadge(b.rating)} <span class="${cls(b.adj)}">${fmtPct(b.adj * 100)}</span>` : b ? `${ratingBadge(b.rating)} <span class="sub">old</span>` : "–")(aiBlend(t))}</td></tr>`;
-  }).join("");
-  const act = S.log.length ? `<ul class="actlist">${S.log.slice(0, 8).map(e => `<li>${ic("pulse")}<div><p><span class="tk">${esc(e.t)}</span> <span style="color:var(--muted)">${esc(e.msg)}</span></p><p class="tm">${esc(e.ts)}</p></div></li>`).join("")}</ul>` : emptyState("pulse", "No activity yet", "Open a stock and press Run forecast to see pipeline events here.");
-  const dse = ORDER.filter(t => DATA[t].meta.source === "dse");
-  return `<section class="hero">
-    <div><span class="eyebrow"><span class="dotc"></span>Data as of ${dLong(ASOF)}</span>
-      <h1>Seven-day stock forecasts, <em>clearly explained</em>.</h1>
-      <p class="lead">See what six forecasting models expect for ${ORDER.length} stocks across ${new Set(ORDER.map(t => DATA[t].meta.currency)).size} markets, the daily BUY, HOLD or SELL signal, and a graded record of how past calls turned out. Search any other company in the box above to add it.</p>
-      <div class="cta"><button type="button" class="btn primary" id="runall">Show all signals</button><button type="button" class="btn secondary" data-page="help">How it works</button></div>
-      <div class="herostats"><div><b>${ORDER.length}</b><span>stocks</span></div><div><b>6</b><span>models and 3 blends</span></div><div><b>${graded.toLocaleString()}</b><span>past calls graded</span></div></div></div>
-    <div class="card herochart"><div class="field" style="margin-bottom:14px">${pillTabs(ORDER.map(t => [t, t]), ht, "data-home")}</div>
-      <div class="hc-top"><div><div class="sub">${esc(hd.meta.name)}</div><div class="hc-px mono">${fmtP(hf.last_price)} <span class="sub">${esc(hd.meta.currency)}</span></div></div>
-        <span class="chip ${hr == null ? "flat" : hr > 0.0005 ? "up" : hr < -0.0005 ? "down" : "flat"}">${hr == null ? "–" : fmtPct(hr * 100)} expected in 7 days</span></div>
-      <div class="chartbox" id="homechart"></div><div class="legend" id="homechart-l"></div>
-      <p class="src">Ensemble forecast with the reviewer's 10–90% range.${(b => b && !b.stale ? ` With the latest AI rating (${esc(b.rating)}): ${fmtPct(b.adj * 100)}.` : "")(aiBlend(ht))} <button type="button" class="link" data-t="${esc(ht)}">Open ${esc(ht)}</button></p></div>
-  </section>
-  <section><div class="sec-h"><div><h2>How it works</h2><p>Four steps from a stock to the evidence behind its forecast.</p></div><button type="button" class="link" data-page="help">Read the glossary</button></div><ol class="steps4">${[["Pick a stock", "Choose one of the eight cards below."], ["Run the forecast", "See the 7-day path and the daily signal."], ["Read the summary", "A plain-language box says what to expect."], ["Check the evidence", "Track record and backtest show past accuracy."]].map(([h, p], i) => `<li><span class="num">${i + 1}</span><div><h3>${h}</h3><p>${p}</p></div></li>`).join("")}</ol></section>
-  <section><div class="sec-h"><div><h2>Pick a stock</h2><p>Each card shows the reviewed forecast's 7-day call. Open one for the full forecast.</p></div></div><div class="tgrid">${cards}</div></section>
-  <section><div class="sec-h"><div><h2>Everything in one place</h2><p>Beyond the forecast, you can test ideas and read the evidence behind them.</p></div></div>
-    <div class="feats">${feats.map(([pg, i, t, d]) => `<button type="button" class="feat" data-page="${pg}"><span class="fi">${ic(i)}</span><h3>${t}</h3><p>${d}</p></button>`).join("")}</div></section>
-  <section><div class="sec-h"><div><h2>All stocks at a glance</h2><p>Click a row to open it.</p></div></div>
-    <div class="dashgrid">${card("Watchlist", "Last close, 30-day move, the recommendation and the reviewed forecast's call.", "", `<div class="scroll"><table><thead><tr><th>Stock</th><th>Last close</th><th>30 days</th><th>30d change</th><th>Price data to</th><th>Signal</th><th>Forecast 7d</th><th>With AI ${hint(GLOSS.aiadj)}</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: data/ and daily_data/ price files; signals from predictor_lib; Ensemble from forecast_lib; With AI = the Ensemble tilted by the latest AI analysis.</p>`)}
-    ${card("Session activity", "Every run in this browser session.", "", act)}</div></section>
-  ${dse.length && DATA[dse[0]].daily.data_end_date < DATA[dse[0]].forecast.last_date ? `<section class="card warn"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><span class="badge hold">Data note</span><p style="font-size:13px;color:var(--muted);flex:1 1 300px">The second-opinion daily models for ${dse.map(esc).join(", ")} use prices up to ${dLong(DATA[dse[0]].daily.data_end_date)}, because daily.py reads only the data snapshot. The 7-day forecasts and the recommendation use prices up to ${dLong(DATA[dse[0]].forecast.last_date)}.</p></div></section>` : ""}`;
+X.mkt = { data: null, state: "idle", err: "", sort: "value_mn", newsN: 10 };
+const fmtN = (v, d = 0) => v == null ? "–" : v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const arrow = v => v > 0.0005 ? "▲" : v < -0.0005 ? "▼" : "■";
+const MKT_SORTS = [["value_mn", "Value"], ["volume", "Volume"], ["trade", "Trade"]];
+function mktHead() {
+  const m = X.mkt, d = m.data, live = LIVE.ok;
+  const sub = !live ? "Live market data comes from the server; this copy has the saved forecasts only."
+    : m.state === "loading" && !d ? "Loading the exchange's latest day…"
+    : d && d.ok ? `Trading day ${dLong(d.date)} · fetched ${esc(d.fetched_at.replace("T", " ").slice(0, 16))}${d.stale ? " · exchange not reachable, showing the last saved copy" : ""}`
+    : "Market data not available right now.";
+  return `<div class="pagehead"><div><h1>DSE Market Overview</h1><p class="sub">${sub}</p></div>
+    ${live ? `<button type="button" class="btn secondary sm" data-act="mkt-refresh"${m.state === "loading" ? " disabled" : ""}>${m.state === "loading" ? "Refreshing…" : "Refresh"}</button>` : ""}</div>`;
 }
-function drawHome() {
-  const h = $("#homechart"); if (!h) return;
-  const t = X.home.t, d = DATA[t], f = d.forecast, path = fcPath(t), band = fcBand(t);
-  const hist = d.history.slice(-90), n = hist.length, labels = [...hist.map(r => r[0]), ...(path ? f.dates : [])], N = labels.length;
-  const series = [{ name: "Close", v: [...hist.map(r => r[1]), ...Array(N - n).fill(null)], color: "var(--accent)", w: 2.4 }];
-  if (path) series.push({ name: "Ensemble", v: [...Array(n - 1).fill(null), hist[n - 1][1], ...path], color: "var(--text)", w: 2.8 });
-  const opts = { label: `${t} price and Ensemble forecast`, fmt: v => fmtP(v) };
-  if (path && band) {
-    const lo = [...Array(n).fill(null), ...band.map(b => b[0])], hi = [...Array(n).fill(null), ...band.map(b => b[1])];
-    opts.band = { lo, hi }; series.push({ name: "Low 10%", v: lo, color: "var(--sell)", noline: true }, { name: "High 90%", v: hi, color: "var(--buy)", noline: true });
-  }
-  lineChart(h, labels, series, opts);
-  $("#homechart-l").innerHTML = series.filter(s => !s.noline).map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("") + (opts.band ? `<span><i style="background:var(--text);opacity:.25;height:8px"></i>10–90% range</span>` : "");
+function mktIndices(d) {
+  return `<div class="idxgrid">${["DSEX", "DSES", "DS30"].map(n => {
+    const i = d && (d.indices || []).find(x => x.name === n);
+    return i ? `<div class="card idx"><p class="k">${n}</p><p class="v mono">${fmtN(i.value, 2)}</p><p class="chg mono ${cls(i.change)}">${arrow(i.change)} ${fmtN(Math.abs(i.change), 2)} <span>(${fmtPct(i.change_pct)})</span></p></div>`
+      : `<div class="card idx"><p class="k">${n}</p><p class="v mono">–</p><p class="chg flat">not available</p></div>`;
+  }).join("")}</div>`;
+}
+function mktSummary(s) {
+  return `<div class="stats">${statCard("Total trade", fmtN(s.total_trade), `${fmtN(s.traded_issues)} issues traded`, "", "pulse")}${statCard("Total volume", fmtN(s.total_volume), "shares", "", "chart")}${statCard("Value (mn)", fmtN(s.value_mn, 2), "BDT", "", "wallet")}
+    <div class="card stat"><div style="min-width:0"><p class="k">Advanced / declined</p><p class="v breadth"><span class="up">▲ ${s.advanced}</span> <span class="down">▼ ${s.declined}</span> <span class="flat">■ ${s.unchanged}</span></p><p class="h">against the previous close</p></div><div class="ico">${ic("check")}</div></div></div>`;
+}
+function mktSectors(s) {
+  if (!s.sectors.length) return emptyState("db", "Sector breadth needs the sector list", "Add backend/data/dse_sectors.json (trading code to sector) and it fills in on the next refresh.");
+  const tot = k => s.sectors.reduce((q, x) => q + x[k], 0);
+  return `<div class="scroll"><table class="dense"><thead><tr><th>Sector</th><th>Advanced</th><th>Declined</th><th>Unchanged</th><th>Total</th></tr></thead><tbody>${s.sectors.map(x => `<tr><td class="t">${esc(x.sector)}</td><td class="up">${x.advanced}</td><td class="down">${x.declined}</td><td class="flat">${x.unchanged}</td><td>${x.total}</td></tr>`).join("")}
+    <tr class="tot"><td class="t">All sectors</td><td class="up">${tot("advanced")}</td><td class="down">${tot("declined")}</td><td class="flat">${tot("unchanged")}</td><td>${tot("total")}</td></tr></tbody></table></div>`;
+}
+function mktTop(s) {
+  const key = X.mkt.sort, rows = (s.stocks || s.top).slice().sort((p, q) => (q[key] || 0) - (p[key] || 0)).slice(0, 20);
+  return `<div class="scroll"><table class="dense top"><thead><tr><th>#</th><th>Code</th><th>LTP</th><th>Close</th><th>Change</th><th>Trade</th><th>Value (mn)</th><th>Volume</th></tr></thead><tbody>${rows.map((r, i) =>
+    `<tr${DATA[r.code] ? ` class="click" data-t="${esc(r.code)}"` : ""}><td class="flat">${i + 1}</td><td class="t"><span class="tkr">${esc(r.code)}</span></td><td>${fmtN(r.ltp, 1)}</td><td>${fmtN(r.close, 1)}</td><td class="${cls(r.change_pct)}">${fmtPct(r.change_pct)}</td><td>${fmtN(r.trade)}</td><td>${fmtN(r.value_mn, 2)}</td><td>${fmtN(r.volume)}</td></tr>`).join("")}</tbody></table></div>`;
+}
+function mktNews(d) {
+  const items = d.news || [], n = X.mkt.newsN;
+  if (!items.length) return emptyState("news", "No notices fetched", "The exchange's news feed did not answer; Refresh tries again.");
+  return `<ul class="newsfeed">${items.slice(0, n).map(i => `<li><div class="nh">${i.code ? `<span class="tkr">${esc(i.code)}</span>` : ""}<span class="sub">${esc(i.date)}</span></div><h4>${esc(i.headline)}</h4>${i.text ? `<p>${esc(i.text)}</p>` : ""}</li>`).join("")}</ul>
+    ${items.length > n ? `<button type="button" class="btn secondary sm" data-act="mkt-news-more">Show more (${items.length - n})</button>` : ""}`;
+}
+function renderDash() {
+  const m = X.mkt, d = m.data, s = d && d.summary;
+  const rows = ORDER.map(t => {
+    const dd = DATA[t], f = dd.forecast, ran = S.ran[t], cl = dd.history.slice(-30).map(h => h[1]);
+    const ch = (cl[cl.length - 1] / cl[0] - 1) * 100, p = fcPath(t), ens = p ? (p[6] / f.last_price - 1) * 100 : null, age = daysBetween(f.last_date, ASOF);
+    return `<tr class="click" data-t="${esc(t)}"><td><span class="tkr">${esc(t)}</span><div class="sub">${esc(dd.meta.name)}</div></td><td>${fmtP(f.last_price)} <span class="sub">${esc(dd.meta.currency)}</span></td><td>${spark(cl)}</td><td class="${cls(ch)}">${fmtPct(ch)}</td><td style="${age > 5 ? "color:var(--hold)" : ""}">${dShort(f.last_date)}</td><td>${ran ? sigBadge((outlook(t) || {}).sig) : `<span class="badge">not run</span>`}</td><td class="${cls(ens)}">${fmtPct(ens)}</td><td>${(b => b && !b.stale ? `${ratingBadge(b.rating)} <span class="${cls(b.adj)}">${fmtPct(b.adj * 100)}</span>` : b ? `${ratingBadge(b.rating)} <span class="sub">old</span>` : "–")(aiBlend(t))}</td></tr>`;
+  }).join("");
+  const dse = ORDER.filter(t => DATA[t].meta.source === "dse");
+  const none = LIVE.ok ? (m.state === "loading" ? "Loading…" : "The exchange did not answer. Refresh tries again.") : "Run the app's server to see the live market here (python -m uvicorn app.main:app --app-dir backend).";
+  return `${mktHead()}
+  ${mktIndices(d)}
+  <section class="mksec"><div class="sec-h"><div><h2>Market summary</h2><p>The latest trading day on the Dhaka Stock Exchange.</p></div></div>${s ? mktSummary(s) : card("", "", "", emptyState("db", "No market summary yet", none), "dashed")}</section>
+  <section class="mksec mk2"><div>${card("Sector breadth", "Advanced, declined and unchanged issues per sector.", "", s ? mktSectors(s) : emptyState("db", "No data yet", none))}</div>
+    <div>${card("Top 20 shares", "Ranked by the column you pick.", `<div class="pills">${MKT_SORTS.map(([k, l]) => `<button type="button" class="pillbtn" data-mkt="${k}" aria-pressed="${m.sort === k}">${l}</button>`).join("")}</div>`, s ? mktTop(s) : emptyState("db", "No data yet", none))}</div></section>
+  <section class="mksec"><div class="sec-h"><div><h2>RAEM forecast signals</h2><p>Seven-day model forecasts for the stocks on this site. Click a row for the full forecast.</p></div><button type="button" class="btn primary sm" id="runall">Show all signals</button></div>
+    ${card("Watchlist", "Last close, 30-day move, the recommendation and the reviewed forecast's call.", "", `<div class="scroll"><table><thead><tr><th>Stock</th><th>Last close</th><th>30 days</th><th>30d change</th><th>Price data to</th><th>Signal</th><th>Forecast 7d</th><th>With AI ${hint(GLOSS.aiadj)}</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: data/ and daily_data/ price files; signals from predictor_lib; Ensemble from forecast_lib; With AI = the Ensemble tilted by the latest AI analysis.</p>`)}</section>
+  <section class="mksec">${card("DSE news", "Latest notices from the exchange.", "", d ? mktNews(d) : emptyState("news", "No news yet", none))}</section>
+  ${dse.length && DATA[dse[0]].daily.data_end_date < DATA[dse[0]].forecast.last_date ? `<section class="card warn"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><span class="badge hold">Data note</span><p style="font-size:13px;color:var(--muted);flex:1 1 300px">The second-opinion daily models for ${dse.map(esc).join(", ")} use prices up to ${dLong(DATA[dse[0]].daily.data_end_date)}, because daily.py reads only the data snapshot. The 7-day forecasts and the recommendation use prices up to ${dLong(DATA[dse[0]].forecast.last_date)}.</p></div></section>` : ""}`;
 }
 

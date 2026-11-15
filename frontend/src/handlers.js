@@ -1,5 +1,5 @@
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-inv-t],[data-inv-src],[data-inv-h],[data-home]");
+  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-inv-t],[data-inv-src],[data-inv-h],[data-mkt]");
   if (!el || el.disabled) return;
   const d = el.dataset, a = d.act, v = d.v;
   if (d.ai) { if (X.ai.running) return; X.ai.t = d.ai; }
@@ -15,7 +15,9 @@ document.addEventListener("click", e => {
   else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); }
   else if (d.ds) { X.ds.t = d.ds; X.ds.page = 0; }
   else if (d.news) X.news.t = d.news;
-  else if (d.home) X.home.t = d.home;
+  else if (d.mkt) X.mkt.sort = d.mkt;
+  else if (a === "mkt-refresh") { loadMarket(true); return; }
+  else if (a === "mkt-news-more") X.mkt.newsN += 20;
   else if (d.invT) X.inv.t = d.invT;
   else if (d.invSrc) X.inv.src = d.invSrc;
   else if (d.invH) X.inv.h = d.invH === "7" ? 7 : 5;
@@ -33,7 +35,7 @@ document.addEventListener("click", e => {
   else if (a === "ds-clear") { X.ds.from = ""; X.ds.to = ""; X.ds.page = 0; }
   else if (a === "ds-prev") X.ds.page = Math.max(0, X.ds.page - 1);
   else if (a === "ds-next") X.ds.page++;
-  else if (a === "set-reset") { Object.assign(settings, { theme: "system", win: 120, unit: "price", view: "Agent" }); lsDel("raem:set"); applySettings(true); }
+  else if (a === "set-reset") { Object.assign(settings, { theme: "dark", win: 120, unit: "price", view: "Agent" }); lsDel("raem:set"); applySettings(true); }
   else return;
   render();
 });
