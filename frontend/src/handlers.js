@@ -1,5 +1,5 @@
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-inv-t],[data-inv-src],[data-inv-h],[data-mkt]");
+  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-inv-t],[data-inv-src],[data-inv-h],[data-mkt],[data-stk]");
   if (!el || el.disabled) return;
   const d = el.dataset, a = d.act, v = d.v;
   if (d.ai) { if (X.ai.running) return; X.ai.t = d.ai; }
@@ -16,6 +16,12 @@ document.addEventListener("click", e => {
   else if (d.ds) { X.ds.t = d.ds; X.ds.page = 0; }
   else if (d.news) X.news.t = d.news;
   else if (d.mkt) X.mkt.sort = d.mkt;
+  else if (d.stk) { openStock(d.stk); return; }
+  else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
+  else if (a === "stk-more") X.stk.n += 100;
+  else if (a === "stk-range") X.stk.range = +v;
+  else if (a === "stk-reload") { if (v) { delete X.stk.dstate[v]; delete X.stk.det[v]; } else { X.stk.lstate = "idle"; } }
+  else if (a === "stk-ai") { X.ai.extra = X.ai.extra || []; if (!DATA[v] && !X.ai.extra.includes(v)) X.ai.extra.push(v); X.ai.t = v; goPage("ai"); return; }
   else if (a === "mkt-refresh") { loadMarket(true); return; }
   else if (a === "mkt-news-more") X.mkt.newsN += 20;
   else if (d.invT) X.inv.t = d.invT;
@@ -58,6 +64,7 @@ document.addEventListener("input", e => {
   const b = e.target.dataset.bind;
   if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
   else if (b === "inv-amt") { X.inv.amt = e.target.value; render(); const i = $("#inv-a"); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (err) { /* number inputs have no caret */ } } }
+  else if (b === "stk-q") { X.stk.q = e.target.value; X.stk.n = 100; render(); const i = $("#stk-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
   else if (b === "mem-q") { X.mem.q = e.target.value; render(); const i = $("#mem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 });
 document.addEventListener("submit", e => {
@@ -87,3 +94,9 @@ document.addEventListener("keydown", e => {
 $("#skip").addEventListener("click", e => { e.preventDefault(); $("#main").focus(); });
 function markRows() { document.querySelectorAll("tr.click").forEach(r => { r.tabIndex = 0; }); }
 document.addEventListener("click", e => { if (S.more && !e.target.closest(".morewrap")) { S.more = false; renderNav(); } });
+document.addEventListener("submit", e => {
+  if (e.target.id !== "stk-jump") return;
+  e.preventDefault();
+  const c = resolveStock(($("#stk-jump-q") || {}).value);
+  if (c) openStock(c);
+});
