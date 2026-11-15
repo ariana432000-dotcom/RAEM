@@ -37,6 +37,7 @@ async function liveInit() {
     LIVE.health = h;
     LIVE.models = await api("models");
     LIVE.ok = true;
+    loadMarket(false);  // the Home page's DSE overview; the page shows "loading" until it arrives
     try {  // companies added from the search box earlier: bring their saved forecast into the page (the page file may predate them)
       const cos = await api("companies");
       await Promise.all(cos.filter(c => c.ready && !DATA[c.ticker]).map(c => loadCompany(c.ticker).catch(() => null)));
@@ -56,6 +57,19 @@ async function liveInit() {
     LIVE.ok = false;  // static copy (artifact, static host): saved results only
     if (LIVE.models) console.error("live mode off:", e);  // the server answered, so this is a page bug
   }
+}
+async function loadMarket(refresh) {
+  if (!LIVE.ok) return;
+  X.mkt.state = "loading";
+  if (S.page === "dash") render();
+  try {
+    X.mkt.data = await api("market" + (refresh ? "?refresh=true" : ""));
+    X.mkt.state = "ok";
+  } catch (e) {
+    X.mkt.state = "err";
+    X.mkt.err = e.message;
+  }
+  if (S.page === "dash") render();
 }
 async function pollRun(id, key, onDone) {
   LIVE.busy[key] = { id, status: "queued", step: "", log: [], t0: Date.now() };

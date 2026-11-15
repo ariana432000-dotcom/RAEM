@@ -4,7 +4,7 @@ Rules for turning Figma designs into code, and code into Figma, for the **RAEM F
 
 ## What this UI is
 
-A single self-contained HTML page (published as a claude.ai Artifact) that replays results exported from the project's Python code: daily BUY/HOLD/SELL signals, 7-day forecasts from 14 models, backtest, memory, LLM analyst sessions and more. It has **no framework, no bundler and no backend**. Everything is one `<style>` block, plain JavaScript that builds HTML strings, and inline SVG. Its look is a soft-glass website: a sticky glass top nav, a hero on Home, and translucent cards over a pastel gradient field (light) or a deep navy one (dark). It began as a hand re-implementation of the AInvest terminal in the `any_with_dse-main` demo (Next.js + Tailwind) and was restyled on 2026-10-20 at the user's request; the Tailwind map in section 2 still describes that demo's vocabulary.
+A single self-contained HTML page (published as a claude.ai Artifact) that replays results exported from the project's Python code: daily BUY/HOLD/SELL signals, 7-day forecasts from 14 models, backtest, memory, LLM analyst sessions and more. It has **no framework, no bundler and no backend**. Everything is one `<style>` block, plain JavaScript that builds HTML strings, and inline SVG. Its look (restyled on 2026-11-15 to follow assetick.com's layout) is a flat dark market dashboard: a solid top nav, a near-black page (`#030712`) and flat 12px-radius cards with a 1px border, no blur and no gradient field; a light theme with white cards stays available. Home is a DSE market overview (index cards, day summary, sector breadth, top 20 shares, news) with the RAEM signals watchlist below it. It began as a hand re-implementation of the AInvest terminal in the `any_with_dse-main` demo (Next.js + Tailwind) and was restyled on 2026-10-20 at the user's request; the Tailwind map in section 2 still describes that demo's vocabulary.
 
 Because it is not a React/Tailwind project, **do not paste Figma MCP's React + Tailwind output into it**. Treat that output as a visual reference and rewrite it with the tokens and helpers below.
 
@@ -22,34 +22,33 @@ All tokens are CSS custom properties at the top of `src/template2.html`, in one 
 
 Rules:
 - Every token is first defined on bare `:root` (light). The media block and the `[data-theme="dark"]` block only **redefine** tokens, and they must stay identical to each other.
-- `body` keeps `background: var(--bg)`. The gradient field is a fixed `.bgfx` layer built from `--g1` to `--g4` over `--bg`.
-- Panels are translucent (`--panel` has alpha) so they pick up the field behind them. Anything that must stay readable over charts or content (tooltips, the "More" menu, the mobile sheet, chart dot outlines) uses the opaque `--solid`.
+- `body` keeps `background: var(--bg)`. There is no gradient field and no `backdrop-filter` anywhere.
+- Panels are flat and opaque (`--panel`). Overlays that sit above content (tooltips, the "More" menu, the mobile sheet, chart dot outlines) use `--solid`.
 - No colour literals in components. The only literals allowed are inside the token blocks.
-- Theme state: `data-theme` on `<html>` is `dark`, `light` or absent (system). `settings.theme` in `src/extra.js` keeps it in `localStorage` (`raem:set`).
+- Theme state: `data-theme` on `<html>` is `dark`, `light` or absent (system). `settings.theme` in `src/extra.js` keeps it in `localStorage` (`raem:set`); the default is now `dark` (a saved choice, including "system", still wins).
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `--bg` | `#eef0fb` | `#0a0e1f` | page background under the gradient field |
-| `--g1` to `--g4` | `#c9d3ff #e5d3ff #c8f1e6 #ffe0cf` | `#1a1f55 #2a1a55 #0d2f3d #12245a` | the four soft glows of the field |
-| `--panel` / `--panel-hover` | `#ffffffb8` / `#ffffffe6` | `#ffffff0f` / `#ffffff1c` | glass cards, nav, hover |
-| `--bg-raised` | `#ffffffa6` | `#ffffff12` | inputs, pills, inset areas |
-| `--solid` | `#ffffff` | `#171c33` | opaque surfaces (tooltip, menu, sheet) |
-| `--border` / `--border-soft` | `#505aa029` / `#505aa01a` | `#ffffff22` / `#ffffff14` | card and divider lines |
-| `--ctl` | `#7d88b0` | `#7480ad` | borders of inputs, selects, secondary buttons (3:1 needed) |
-| `--text` / `--muted` / `--faint` | `#141a33` / `#4d5880` / `#5c6689` | `#eef0ff` / `#b0b8da` / `#a0a9cf` | text levels |
-| `--accent`, `--accent2`, `--accent-strong`, `--accent-soft` | `#4350f0`, `#8a4ff0`, `#2f3ac4`, `#4350f01a` | `#8b97ff`, `#c08bff`, `#aab3ff`, `#8b97ff26` | actions (gradient from accent to accent2) and selected state; use `--accent-strong` for accent-coloured **text** |
-| `--on-accent` | `#ffffff` | `#0a0e1f` | text on accent or signal fills |
-| `--buy`, `--sell`, `--hold` (+ `-soft`) | `#0a6f43`, `#c4254f`, `#8a5304` | `#3ddc97`, `#ff8aa0`, `#fbbf24` | **signal colours only** (BUY, SELL, HOLD, up, down, status) |
+| `--bg` | `#f4f6fa` | `#030712` | page background |
+| `--panel` / `--panel-hover` | `#ffffff` / `#f6f8fc` | `#0b1220` / `#111a2e` | flat cards, nav, hover |
+| `--bg-raised` | `#eef1f7` | `#131c31` | inputs, pills, inset areas |
+| `--solid` | `#ffffff` | `#0f1729` | overlays (tooltip, menu, sheet) |
+| `--border` / `--border-soft` | `#dbe1ec` / `#e8ecf4` | `#1f2a40` / `#172033` | card and divider lines |
+| `--ctl` | `#7b879f` | `#6b7a99` | borders of inputs, selects, secondary buttons (3:1 needed) |
+| `--text` / `--muted` / `--faint` | `#0f172a` / `#475569` / `#566274` | `#f1f5f9` / `#a3aec2` / `#95a1b8` | text levels |
+| `--accent`, `--accent2`, `--accent-strong`, `--accent-soft` | `#2563eb`, `#1d4ed8`, `#1d4ed8`, `#2563eb1a` | `#3b82f6`, `#60a5fa`, `#7db3ff`, `#3b82f626` | actions (gradient from accent to accent2) and selected state; use `--accent-strong` for accent-coloured **text** |
+| `--on-accent` | `#ffffff` | `#03101f` | text on accent or signal fills |
+| `--buy`, `--sell`, `--hold` (+ `-soft`) | `#0a6f43`, `#c4254f`, `#8a5304` | `#34d399`, `#f87171`, `#fbbf24` | **signal colours only** (BUY, SELL, HOLD, up, down, status) |
 | `--c1` to `--c8` | 8 chart hues | 8 lighter hues | model overlay lines, in selection order |
-| `--base-line` | `#b2badb` | `#3b4468` | de-emphasised chart lines |
-| `--shadow` | soft indigo | black | card elevation |
+| `--base-line` | `#b4bdcf` | `#334155` | de-emphasised chart lines |
+| `--shadow` | none | none | cards are flat (kept as a token for overlays) |
 | `--font-sans`, `--font-mono` | Manrope, JetBrains Mono (Google Fonts) with system fallbacks | same | see typography |
 
-Contrast was checked on 2026-10-20 for text, accent and signal colours against the translucent panel over the lightest and darkest parts of the field (4.5:1 for text, 3:1 for control borders). Re-check after changing any token, and add new colours to **all three blocks**.
+Contrast was checked on 2026-11-15 (WCAG ratios computed for every text, accent and signal colour on `--panel`, `--bg` and `--bg-raised`, both themes): all at least 4.5:1 for text (lowest: light `--sell` on `--bg-raised` 4.98), control borders `--ctl` at least 3.2:1, `--on-accent` on the accent fill at least 5.1:1. Re-check after changing any token, and add new colours to **all three blocks**.
 
 Typography: Manrope (500 to 800) for text and JetBrains Mono for every figure, ticker and date (`font-variant-numeric: tabular-nums`), loaded from Google Fonts, the only allowed font host, each with a system fallback stack. Headings are weight 800 with tight tracking; the hero title is `clamp(36px, 5.2vw, 62px)` with a gradient on the key phrase. Sizes in use: 11, 12, 13, 14 (body), 16, 18, 24 (stat value), 28 to 40 (page title), up to 62 (hero). Uppercase labels use `letter-spacing: 0.06–0.1em`.
 
-Spacing: 4/6/8/10/12/14/16/20/24px steps; card padding 24px; gaps 12px (stat row), 16 to 28px (stacks). Radius: 22px cards, 12px selects and inputs, 999px buttons, tabs, pills, badges and the search field. There is no token transformation step (no Style Dictionary, no Figma variable sync). Values are hand-copied.
+Spacing: 4/6/8/10/12/14/16/20/24px steps; card padding 20px; gaps 12px (stat row), 16 to 28px (stacks). Radius: 12px cards, 12px selects and inputs, 999px buttons, tabs, pills, badges and the search field. There is no token transformation step (no Style Dictionary, no Figma variable sync). Values are hand-copied.
 
 ### Component library
 
@@ -57,8 +56,8 @@ No component files. Components are **helper functions that return HTML strings**
 
 | Component | Helper / class | Notes |
 |---|---|---|
-| Card | `card(title, sub, action, body, extra)` / `.card` (`.warn`, `.dashed`) | glass: translucent, blur, 22px radius, soft shadow; header is `.ch` |
-| Hero, stock card, feature card | `.hero`, `.tcard`, `.feat` (built in `renderDash()`) | Home only; cards lift 3px on hover |
+| Card | `card(title, sub, action, body, extra)` / `.card` (`.warn`, `.dashed`) | flat: opaque panel, 1px border, 12px radius; header is `.ch` |
+| Market overview | `mktHead()`, `mktIndices()`, `mktSummary()`, `mktSectors()`, `mktTop()`, `mktNews()` / `.pagehead`, `.idx`, `table.dense`, `.newsfeed` (built in `renderDash()`) | Home only; data from `GET /api/market` (see below) |
 | Top nav | `renderNav()` / `.topnav`, `.nl`, `.pop` | main links, a "More" popover, search, theme toggle; below 860px a full-screen `.sheet` menu |
 | Stat card | `statCard(label, value, hint, tone, icon)` / `.stat` | tones `buy sell hold accent`; value is mono |
 | Badge | `.badge` (`buy sell hold accent`) | pill, 12px |
@@ -140,7 +139,7 @@ Edit only `template2.html`, `extra.css`, `extra.js`, `handlers.js`. Never edit t
 
 Return Calculator notes: `renderInv()` answers "if I put in N, what do I have in 7 days" per company. Day-7 value comes from the chosen forecast (`invFc()`: Ensemble, Fusion, Fusion Top 3, Reviewed agent, or the daily model's expected return), with the reviewer's 10–90% band as the range. The saved record grades each LLM session (`sessOutcome()`): rating at the run date against the close 7 calendar days later; BUY goes long, SELL short, HOLD makes no trade. The "Past record" column comes from `EXTRA.backtest` (Ensemble day-7 calls followed vs buy and hold). Money is proportional, so the amount only scales results; the basis switch only changes the label (USD or the company's currency).
 
-Layout: `.app` is a column of the sticky `.topnav` and the scrolling `#scroller`, which holds `<main class="content">` (max 1180px) and the footer. Home is `renderDash()` in `extra.js`: a hero with a featured-stock chart (`drawHome()`), a stock-card grid, a feature grid linking to the other pages, and the watchlist table. Ticker pages show a pill row to switch stock, and the options card collapses after a run.
+Layout: `.app` is a column of the sticky `.topnav` and the scrolling `#scroller`, which holds `<main class="content">` (max 1180px) and the footer. Home is `renderDash()` in `extra.js`: the "DSE Market Overview" header with Refresh, three index cards (DSEX, DSES, DS30), the market summary stats, sector breadth beside the Top 20 shares (ranked by Value, Volume or Trade), the RAEM forecast-signals watchlist, and the DSE news feed. The market state is `X.mkt`; `loadMarket()` in `live.js` fills it from `GET /api/market` once the server answers, so a static copy (no server) shows an empty-state card in place of the market parts and still shows the watchlist. Ticker pages show a pill row to switch stock, and the options card collapses after a run.
 
 Help for non-experts: `GLOSS` in `extra.js` holds every plain-language definition. `hint(GLOSS.key)` puts a focusable "?" with that text next to a heading, `plainSummary()` writes the "In plain words" box above a ticker's result tabs, and the Help page (`renderHelp()`) lists the same glossary. Add new jargon to `GLOSS` first, then reuse it; do not write a second explanation of the same term.
 
@@ -167,6 +166,8 @@ The exports read the engine's state (`backend/engine/forecast_log/`, `backend/en
 The published page is **not** updated by building. After `build.py`, publish `frontend/dist/index.html` with the Artifact tool and the existing artifact URL so the link stays the same; leave out its first six lines (the skeleton `build.py` adds), because the viewer adds its own.
 
 ## Live runs (backend)
+
+- **Market overview (`GET /api/market`)**: `app/services/market.py` reads old.dsebd.org through `engine/dse_archive._get`: the day-end archive for "All Instrument" (walks back from today over Sun to Thu until a day has rows) gives the day totals, advanced / declined / unchanged (price against yesterday's close), the top shares and every traded issue; the front page text gives the DSEX / DSES / DS30 lines (`parse_indices`, a regex over the page text, so an index it cannot find is left out); bdshare `get_all_news` gives the notices. Each part is fail-soft; the result is cached 15 minutes in memory and in `storage/market_cache.json`, and a failed refresh returns the last good copy with `stale: true`. Sector breadth needs `backend/data/dse_sectors.json` (`{"ABBANK": "Bank", ...}`); without it the sector table shows an empty state. Market cap is not in the archive and is not shown. The parsers are tested on fixtures (`tests/test_market.py`); the live page structure of old.dsebd.org was not reachable when this was written, so check a real response after deploying.
 
 - Three kinds of user runs (plus `refresh`), all queued in `app/workers/jobs.py` and stored in `app/db/runs.py` (SQLite, table `runs`):
   - `forecast`: `app/pipeline/export_ticker.py <T> --models a,b --out file`, on the engine's CSV price files. The key is the sorted model list. A run with exactly `config.DEFAULT_MODELS` also rewrites `backend/data/tickers/<T>.json` and rebuilds the page.
