@@ -516,14 +516,14 @@ function renderTicker() {
     ${statCard("Last close", fmtP(f.last_price), esc(d.meta.currency), "", "chart")}
     ${statCard("Price data to", dShort(f.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy", "clock")}
     ${statCard("Daily rows", f.n_rows, "price history used", "", "db")}
-    ${ran ? statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain") : statCard("Models fitted", "–", "no forecast shown yet", "", "brain")}
+    ${ran ? statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain") : statCard("Models fitted", "–", "open the saved forecast to see", "", "brain")}
   </div>
   ${live && LIVE.fc[S.t] ? "" : savedForecastNote(d)}
   ${form}
   <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
   ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}
   ${card(ran ? "7-day price path" : "Price history", ran ? `Day 1 to day 7 after ${dLong(f.last_date)}. Hover or tap the chart for values.` : `Last ${S.win} trading days.`, "", `<div class="chartwrap" id="chart"></div><div class="legend" id="legend"></div><p class="src">Source: data/ and daily_data/ price files${ran ? "; forecast_lib.forecast_ticker()" : ""}.</p>`)}
-  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "Forecast not shown yet", "Press Run forecast to show the 7-day paths, the daily signal, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
+  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "Saved forecast not opened yet", "Press Run forecast to open the saved 7-day paths, the daily signal, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
 }
 
 /* ---------- result panels ---------- */
