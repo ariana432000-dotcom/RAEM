@@ -16,11 +16,15 @@ import re
 import sys
 import threading
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone
 
 from app.core import config
 
 CACHE_TTL = 900            # seconds a fetched overview is reused; the exchange publishes once a day
+PROVISIONAL_TTL = 300      # shorter while today's archive may still be filling in
+DHAKA = timezone(timedelta(hours=6))   # Bangladesh has no daylight saving
+ARCHIVE_FINAL_AFTER = dtime(15, 30)    # the DSE closes at 14:30; the day-end archive is complete some time after that
+SCOPE = "DSE day-end archive, all instruments"
 LOOKBACK_DAYS = 10         # weekends and holidays: walk back to the latest day that has rows
 SECTORS_FILE = config.DATA / "dse_sectors.json"
 LEARNED_SECTORS_FILE = config.STORAGE / "dse_sectors_learned.json"   # filled by company pages that were opened (services/stocks.py)
@@ -170,12 +174,16 @@ def _news(limit: int = 40) -> list[dict]:
 
 def build(today: date | None = None) -> dict:
     """Fetch every part, each one fail-soft."""
-    today = today or date.today()
-    out = {"ok": False, "date": None, "fetched_at": datetime.now().isoformat(timespec="seconds"), "indices": [], "summary": None, "errors": []}
+    now = datetime.now(DHAKA)
+    today = today or now.date()   # Dhaka's date: a server running in UTC is still on yesterday until 06:00 Dhaka time
+    out = {"ok": False, "date": None, "fetched_at": now.replace(tzinfo=None).isoformat(timespec="seconds"), "scope": SCOPE, "provisional": False,
+           "indices": [], "summary": None, "errors": []}
     try:
         day, rows = _archive_rows(today)
         if rows:
             out["date"] = day.isoformat()
+            # today's archive read before it is final holds only part of the day's trades
+            out["provisional"] = day == now.date() and now.time() < ARCHIVE_FINAL_AFTER
             out["summary"] = summarise(rows, _sectors())
             out["ok"] = True
         else:
@@ -193,7 +201,8 @@ def build(today: date | None = None) -> dict:
 def overview(refresh: bool = False) -> dict:
     """The cached overview. A failed fetch keeps the last good copy (memory, then storage/market_cache.json) with `stale` set."""
     with _lock:
-        fresh = _mem["data"] is not None and time.time() - _mem["at"] < CACHE_TTL
+        ttl = PROVISIONAL_TTL if (_mem["data"] or {}).get("provisional") else CACHE_TTL
+        fresh = _mem["data"] is not None and time.time() - _mem["at"] < ttl
         if fresh and not refresh:
             return _mem["data"]
         data = build()

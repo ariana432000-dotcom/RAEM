@@ -334,6 +334,19 @@ const tone = sig => ({ BUY: "buy", SELL: "sell", HOLD: "hold" }[sig] || "");
 const dShort = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const dLong = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+/* "Today" for every age label: the live server's date when connected, else the viewer's own date. Ages are never measured against
+   ASOF (the export stamp), which can be older than the prices themselves and would make old prices look current. */
+const refDate = () => {
+  try { if (LIVE && LIVE.ok && LIVE.health && LIVE.health.date) return LIVE.health.date; } catch (e) { /* LIVE not ready */ }
+  const n = new Date(), p = v => String(v).padStart(2, "0");
+  return n.getFullYear() + "-" + p(n.getMonth() + 1) + "-" + p(n.getDate());
+};
+/* What a saved forecast is: when it was made, which prices it started from and which days it covers. */
+function savedForecastNote(d) {
+  const f = d.forecast, made = ((d.run_info || {}).generated_at || "").slice(0, 10), end = f.dates && f.dates[f.dates.length - 1];
+  const past = end && end < refDate();
+  return `<div class="card ${past ? "warn" : ""}" style="margin-top:12px;padding:12px;font-size:12px;color:var(--muted)"><b>${past ? "Historical forecast" : "Saved forecast"}</b>${made ? ` · created ${dLong(made)}` : ""} · prices to ${dLong(f.last_date)}${f.dates && f.dates.length ? ` · covers ${dLong(f.dates[0])} to ${dLong(end)}` : ""}${past ? `. Its target dates are already past. ${LIVE && LIVE.ok ? "Run the forecast again for current prices." : "This copy only replays saved results and cannot fetch current prices."}` : "."}</div>`;
+}
 const defaultOverlays = d => new Set((d.forecast.top_models || []).filter(m => d.forecast.paths[m]).slice(0, 3));
 S.overlays = defaultOverlays(D());
 
@@ -471,7 +484,7 @@ function progressCard() {
     <ol class="events">${p.events.map(e => `<li><span class="mono">${esc(e.ts)}</span><span>${esc(e.name)}</span></li>`).join("")}</ol></section>`;
 }
 function renderTicker() {
-  const d = D(), f = d.forecast, ran = !!S.ran[S.t], age = daysBetween(f.last_date, ASOF);
+  const d = D(), f = d.forecast, ran = !!S.ran[S.t], age = daysBetween(f.last_date, refDate());
   const venue = d.meta.source === "dse" ? "Dhaka Stock Exchange" : ({ "2222.SR": "Tadawul", "0300.HK": "HKEX" }[S.t] || "US market");
   const chips = BASE.filter(m => f.paths[m]).map(m => {
     const on = S.overlays.has(m), k = overlayList().indexOf(m);
@@ -501,15 +514,16 @@ function renderTicker() {
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
   <div class="stats">
     ${statCard("Last close", fmtP(f.last_price), esc(d.meta.currency), "", "chart")}
-    ${statCard("Price data to", dShort(f.last_date), age > 5 ? `${age} days before export` : "up to date", age > 5 ? "hold" : "buy", "clock")}
+    ${statCard("Price data to", dShort(f.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy", "clock")}
     ${statCard("Daily rows", f.n_rows, "price history used", "", "db")}
-    ${statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain")}
+    ${ran ? statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain") : statCard("Models fitted", "–", "no forecast shown yet", "", "brain")}
   </div>
+  ${live && LIVE.fc[S.t] ? "" : savedForecastNote(d)}
   ${form}
   <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
   ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}
   ${card(ran ? "7-day price path" : "Price history", ran ? `Day 1 to day 7 after ${dLong(f.last_date)}. Hover or tap the chart for values.` : `Last ${S.win} trading days.`, "", `<div class="chartwrap" id="chart"></div><div class="legend" id="legend"></div><p class="src">Source: data/ and daily_data/ price files${ran ? "; forecast_lib.forecast_ticker()" : ""}.</p>`)}
-  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "No forecast yet", "Press Run forecast to add the 7-day paths, the daily signal, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
+  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "Forecast not shown yet", "Press Run forecast to show the 7-day paths, the daily signal, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
 }
 
 /* ---------- result panels ---------- */
@@ -519,7 +533,7 @@ function signalPanel(d) {
   const sw = pos(-thr), bw = 100 - pos(thr), hold = pos(thr) - pos(-thr);
   const rows = DAILY_MODELS.map(([key, nm]) => ({ key, nm, ret: k[key + "_pred_return"], acc: k[key + "_direction_acc"] })).filter(x => x.ret != null);
   const rmax = Math.max(...rows.map(x => Math.abs(x.ret)), 0.001), win = (k.winner_model || "").toLowerCase();
-  const stale = daysBetween(k.data_end_date, ASOF) > 5, o = outlook(S.t), last = d.forecast.last_price;
+  const stale = daysBetween(k.data_end_date, refDate()) > 5, o = outlook(S.t), last = d.forecast.last_price;
   const pcm = to => `${to >= last ? "+" : ""}${((to / last - 1) * 100).toFixed(1)}%`;
   // the recommendation follows the main (reviewed) forecast, its tested range and the trading costs
   const odds = o.sig === "BUY" ? o.pGain : o.sig === "SELL" ? o.pFall : Math.max(o.pGain || 0, o.pFall || 0);
@@ -542,7 +556,7 @@ function signalPanel(d) {
     <div class="rows" style="margin-top:14px">${rows.map(x => `<div class="row"><span>${x.nm}${x.key === win ? " ★" : ""}</span>
       <div class="dv"><b class="${x.ret >= 0 ? "pos" : "neg"}" style="${x.ret >= 0 ? `left:50%;width:${Math.min(50, x.ret / rmax * 50)}%` : `right:50%;width:${Math.min(50, -x.ret / rmax * 50)}%`}"></b></div>
       <span class="val"><span class="${cls(x.ret)}">${fmtPct(x.ret * 100)}</span> · ${(x.acc * 100).toFixed(0)}% dir</span></div>`).join("")}</div>
-    ${stale ? `<div class="card warn" style="margin-top:12px;padding:12px;font-size:12px;color:var(--muted)">These models used prices up to ${dLong(k.data_end_date)} (${daysBetween(k.data_end_date, ASOF)} days before export); daily.py reads only the data snapshot.</div>` : ""}
+    ${stale ? `<div class="card warn" style="margin-top:12px;padding:12px;font-size:12px;color:var(--muted)">These models used prices up to ${dLong(k.data_end_date)} (${daysBetween(k.data_end_date, refDate())} days old); daily.py reads only the data snapshot.</div>` : ""}
     <p class="src">Source: predictor_lib.run_pipeline() and decide_signal(), as in daily.py.</p>`);
   return `<div class="two">${rec}${models}</div>`;
 }
