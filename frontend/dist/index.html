@@ -685,7 +685,6 @@ function renderTicker() {
     ${statCard("Daily rows", f.n_rows, "price history used", "", "db")}
     ${statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain")}
   </div>
-  ${investCard(d)}
   ${form}
   <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
   ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}
@@ -1360,7 +1359,6 @@ const GLOSS = {
   views: ["Which forecast", "Reviewed forecast (the main one): the three models with the smallest past error, averaged, after an automatic review that can shrink or clip the forecast; it comes with a 10–90% range. Ensemble: the average of the two models with the smallest past error. Fusion: a learned blend of all models. Fusion Top 3: the three most accurate models, weighted by accuracy. Best single model: the one model that called direction best in testing."],
   rec: ["Recommendation", "From the reviewed forecast and its 10–90% range, which comes from the stock's own past forecast errors. BUY when the odds of a gain after trading costs are at least 60%, SELL when the odds of a fall are at least 60%, otherwise HOLD. Always HOLD when the forecast's tested error was not at least 2% below that of 'no change', or the prices are old."],
   daily: ["Daily models (second opinion)", "An older, separate set of five models. Each bar is one model's predicted 7-day return; 'dir' is how often that model called up or down correctly on past data it had not seen. The one with the best direction record gives this panel's own signal, which does not set the recommendation."],
-  invest: ["If you invest 100 tk", "Buys at the last close and sells after 7 trading days, with assumed trading costs on both sides. 'Most likely' is the reviewed forecast. The chance of a profit and the bad and good cases come from the 10–90% range of the stock's own past forecast errors. 'Forecast skill' compares the forecast's past error with simply assuming no change; 'Past 2 years' is how often holding this stock for any 7 trading days made money, the base rate a forecast should beat."],
   fc: ["7-day forecast", "The 10–90% range means that in past tests the real price ended inside it about 8 times out of 10. 'Always-UP' is how often simply guessing 'up' was right, a baseline a useful model should beat."],
   models: ["Error vs naive", "Compares a model's average error with simply predicting 'no change'. Below 1.00 means the model beat that simple guess. Direction hit is how often it got up or down right on data it had not seen."],
   agent: ["Reviewer", "A rule-based check, not an AI. It flags old data, replaces weak models, shrinks the forecast toward 'no change' when past accuracy was poor, and limits unusually large moves."],
@@ -1393,54 +1391,6 @@ function plainSummary(d) {
     <p class="lead2" style="margin-top:6px">After 5 trading days: <b>${fmtPct((p[4] / last - 1) * 100)}</b> (about ${fmtP(p[4])} ${esc(cur)})${band ? `, usually between ${fmtP(band[4][0])} and ${fmtP(band[4][1])}` : ""}.${band ? ` As a profit or loss on the amount invested, that is about ${fmtPct((p[4] / last - 1) * 100)} with a range of ${fmtPct((band[4][0] / last - 1) * 100)} to ${fmtPct((band[4][1] / last - 1) * 100)}, ` : " "}before costs.</p>
     ${(b => b && !b.stale ? `<p class="lead2" style="margin-top:6px">The latest AI analysis rated it ${ratingBadge(b.rating)} on ${dShort(b.date)}; with that view the forecast becomes <b>${fmtPct(b.adj * 100)}</b> (about ${fmtP(b.price)} ${esc(cur)}; ${aiWhy(b)}).</p>` : "")(aiBlend(t))}
     ${age > 5 ? `<p class="sub" style="margin-top:6px;color:var(--hold)">These prices are from ${dLong(f.last_date)}, ${age} days before the export.</p>` : ""}</div></section>`;
-}
-/* ----- "If you invest 100 tk": what the forecast says that money could become (Forecast page, every company) ----- */
-const INVEST_TK = 100;
-const tkMoney = v => Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " tk";
-const tkSigned = v => Math.abs(v) < 0.005 ? "0.00 tk" : (v > 0 ? "+" : "−") + tkMoney(v);
-function buy100(o) {
-  // what 100 tk buys after the buying cost: whole shares on the DSE (the market lot is one share), a fraction abroad
-  const fx = EXTRA.fx || {}, cur = o.d.meta.currency, perTk = cur === "BDT" ? 1 : fx.BDT && fx[cur] ? fx[cur] / fx.BDT : null;
-  const pxTk = perTk ? o.last / perTk : null, dse = o.d.meta.source === "dse";
-  const whole = pxTk ? Math.floor(INVEST_TK / (pxTk * (1 + o.side))) : 0, frac = pxTk ? INVEST_TK / (pxTk * (1 + o.side)) : null;
-  const shares = dse && whole >= 1 ? whole : frac, cash = shares != null ? INVEST_TK - shares * pxTk * (1 + o.side) : 0;
-  // the 100 tk after a 7-day return r and the selling cost
-  const value = r => shares != null ? cash + shares * pxTk * (1 + r) * (1 - o.side) : INVEST_TK * (1 + r) * (1 - o.side) / (1 + o.side);
-  return { pxTk, shares, cash, value, whole: dse && whole >= 1, tooDear: dse && whole < 1, cur, perTk };
-}
-function investCard(d) {
-  const t = S.t, o = outlook(t);
-  if (!o) return "";
-  const f = o.f, last = o.last, p = o.p, b = buy100(o), pnl = r => b.value(r) - INVEST_TK, cur = d.meta.currency;
-  const mid = pnl(o.m), bad = o.lo != null ? pnl(o.lo) : null, good = o.hi != null ? pnl(o.hi) : null, costTk = INVEST_TK - b.value(0);
-  const head = { BUY: "Worth buying for 7 days", SELL: "Better not to hold it for 7 days", HOLD: "Wait: no clear edge" }[o.sig];
-  const lead = `${sigBadge(o.sig)} <b>${head}.</b> The ${o.name.toLowerCase()} expects ${esc(d.meta.name)} to <b>${moveWord(o.m)}</b> (${fmtPct(o.m * 100)}) over 7 trading days, so 100 tk would most likely be worth about <b>${tkMoney(b.value(o.m))}</b> after trading costs (<span class="${cls(mid)}">${tkSigned(mid)}</span>). It is ${o.sig} because ${o.why}.`;
-  const tickNote = o.subTick ? `<p class="lead2" style="margin-top:6px">Prices of ${esc(t)} move in steps of ${fmtP(o.tick)} ${esc(cur)}, and the forecast change (${fmtP(Math.abs(p[6] - last))} ${esc(cur)}) is less than half a step, so the most likely price in 7 days is still ${fmtP(last)} ${esc(cur)}: you would then lose only the trading costs.</p>` : "";
-  const kv = (k, v, s, c = "") => `<div class="kv"><p class="k">${k}</p><p class="v ${c}" style="font-size:15px">${v}</p><p class="s">${s}</p></div>`;
-  const buys = b.whole ? `${b.shares} share${b.shares > 1 ? "s" : ""}` : b.shares != null ? `${b.shares.toFixed(b.shares < 0.01 ? 5 : 3)} of a share` : "–";
-  const buysSub = b.whole ? `at ${fmtP(last)} tk, ${tkMoney(b.cash)} left as cash` : b.tooDear ? `one share costs ${tkMoney(b.pxTk)}; a fraction is assumed` : b.pxTk ? `one share ≈ ${tkMoney(b.pxTk)} (${esc(cur)} at the saved rate)` : "no exchange rate saved";
-  const days = p.slice(0, 7).map((v, i) => `<div class="kv"><p class="k">Day ${i + 1}</p><p class="v ${cls(pnl(v / last - 1))}" style="font-size:15px">${tkSigned(pnl(v / last - 1))}</p><p class="s">${tkMoney(b.value(v / last - 1))}</p></div>`).join("");
-  const models = [o.name, ...BASE.filter(m => f.paths[m] && f.paths[m].length > 6)].map(m => ({ m, r: (m === o.name ? p : f.paths[m])[6] / last - 1 }))
-    .sort((a, b) => b.r - a.r);
-  const rows = models.map(x => `<tr><td class="t">${esc(x.m)}${x.m === o.name ? ' <span class="sub">(main forecast)</span>' : ""}</td><td>${tkMoney(b.value(x.r))}</td><td class="${cls(pnl(x.r))}">${tkSigned(pnl(x.r))}</td><td class="${cls(x.r)}">${fmtPct(x.r * 100)}</td></tr>`).join("");
-  const live = o.live, skill = o.skill;
-  return card(`If you invest 100 tk ${hint(GLOSS.invest)}`, `What ${esc(d.meta.name)}'s forecast means for 100 tk bought at the last close (${dLong(f.last_date)}) and sold 7 trading days later, after trading costs.`, "",
-    `<p class="lead2">${lead}</p>${tickNote}
-    <div class="kvs" style="margin-top:14px">
-      ${kv("Most likely", tkMoney(b.value(o.m)), `${tkSigned(mid)} after costs`, cls(mid))}
-      ${kv("Chance of a profit", o.pGain == null ? "–" : pc(o.pGain), "after costs, from past forecast errors", o.pGain == null ? "" : o.pGain >= 0.5 ? "up" : "down")}
-      ${kv("Bad case (1 in 10)", bad == null ? "–" : tkSigned(bad), bad == null ? "no tested range" : `${tkMoney(b.value(o.lo))}: 1 time in 10 it ends lower`, "down")}
-      ${kv("Good case (1 in 10)", good == null ? "–" : tkSigned(good), good == null ? "no tested range" : `${tkMoney(b.value(o.hi))}: 1 time in 10 it ends higher`, "up")}
-    </div>
-    <div class="kvs" style="margin-top:10px">
-      ${kv("Trading costs", tkMoney(costTk), `buy and sell, ${(o.side * 100).toFixed(1)}% each (assumed)`)}
-      ${kv("100 tk buys", buys, buysSub)}
-      ${kv("Forecast skill", skill == null ? "–" : skill >= MIN_SKILL ? `${pc(skill)} better` : "none", skill == null ? "not tested" : `error vs “no change” in testing: ${o.err.toFixed(2)}×${skill >= MIN_SKILL ? "" : " (at most 0.98× counts)"}`, skill == null ? "" : skill >= MIN_SKILL ? "up" : "down")}
-      ${kv("Past 2 years, hold 7 days", o.base ? pc(o.base.win) : "–", o.base ? `of ${o.base.n} holds made a profit after costs; median ${fmtPct(o.base.med * 100)}` : "too little history")}
-    </div>
-    <p class="l" style="margin:6px 0 8px">Day by day (most likely, if sold that day, after costs)</p><div class="kvs" style="grid-template-columns:repeat(auto-fit,minmax(88px,1fr))">${days}</div>
-    <div class="scroll"><table><thead><tr><th>Forecast</th><th>100 tk after 7 days</th><th>Profit / loss</th><th>Price move</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="src">Odds come from a curve fitted to the forecast (the middle) and its 10–90% range, which is built from this stock's own out-of-sample forecast errors. BUY or SELL needs ${pc(MIN_ODDS)} odds and a forecast whose tested error was at least ${pc(MIN_SKILL)} below “no change”; otherwise HOLD. ${live ? `Live record of the Ensemble: direction right ${live["direction_hit_%"]}% of ${live.direction_calls} calls${live.p_value_day7 != null ? ` (p = ${(+live.p_value_day7).toFixed(2)}${live.p_value_day7 >= 0.05 ? ", not yet distinguishable from luck" : ""})` : ""}. ` : ""}Costs are assumed (DSE brokers charge about 0.3–0.5% a trade, online brokers abroad about 0.1%); tax is not counted${cur !== "BDT" ? `, nor the cost of buying ${esc(cur)} with taka` : ""}. An estimate, not a promise, and not investment advice.${o.age > 5 ? ` <span style="color:var(--hold)">These prices are from ${dLong(f.last_date)}, ${o.age} days before the export; press Run to bring them up to date.</span>` : ""}</p>`);
 }
 function renderHelp() {
   const steps = [["Pick a stock", "Use the cards on Home, the Forecast menu or the search box."], ["Run the forecast", "Press Run forecast to see the 7-day path, the daily signal and every model's numbers."], ["Read the plain summary", "The 'In plain words' box says what the models expect and how sure they are."], ["Check the evidence", "Track record, Backtest and Memory show how past calls really did."]];
