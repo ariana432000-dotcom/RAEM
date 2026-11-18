@@ -526,7 +526,7 @@ function renderInv() {
       ${statCard("Amount in", x.basis === "usd" ? "$" + A : A + " each", x.basis === "usd" ? "converted at saved FX" : "own currency", "", "db")}
     </div>
     ${card(`Company by company ${hint(GLOSS.votes)}${hint(GLOSS.past)}`, `Value of ${A} after ${H} days using ${esc(srcNote)}. Click a row to open that ticker.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Price as of</th><th>Value in ${H} days</th><th>Profit / loss</th><th>Return</th><th>10–90% range (profit / loss)</th><th>Daily model</th><th>AI analysis</th><th>Votes</th><th>Past record</th></tr></thead><tbody>${table}</tbody></table></div>
-      <p class="src">Votes show forecast, daily model and LLM rating in that order (↑ up, ↓ down, – flat or hold). "Past record" is what the amount would be if you had followed the Ensemble's saved day-7 calls since the log began, then (smaller) what buying and holding on the same dates would give. Forecasts start from each company's own last close, so DSE companies start from Oct 4. The range comes from the reviewer's past forecast errors on a small test set, so a result outside it is possible. Costs and tax are not included. Research output, not investment advice.</p>`)}
+      <p class="src">Votes show forecast, daily model and LLM rating in that order (↑ up, ↓ down, – flat or hold). "Past record" is what the amount would be if you had followed the Ensemble's saved day-7 calls since the log began, then (smaller) what buying and holding on the same dates would give. Forecasts start from each company's own last close, shown in the "Price as of" column (dates highlighted in amber are more than 5 days old). The range comes from the reviewer's past forecast errors on a small test set, so a result outside it is possible. Costs and tax are not included. Research output, not investment advice.</p>`)}
     <div class="two">
       ${card("Expected gain per company", `On ${A}. Bar = expected return, line = 10–90% range.`, "", `<div class="rows">${bars}</div>`)}
       ${card(`Growth of ${A} over 7 days`, "Each company's forecast path, day by day.", "", `<div class="chartbox" id="invgrow"></div><div class="legend" id="invgrow-l"></div>`)}
@@ -647,10 +647,10 @@ function mktIndices(d) {
       : `<div class="card idx"><p class="k">${n}</p><p class="v mono">–</p><p class="chg flat">not available</p></div>`;
   }).join("")}</div>`;
 }
-function mktSummary(s) {
+function mktSummary(s, d) {
   return `<div class="stats">${statCard("Total trade", fmtN(s.total_trade), `${fmtN(s.traded_issues)} issues traded`, "", "pulse")}${statCard("Total volume", fmtN(s.total_volume), "shares", "", "chart")}${statCard("Value (mn)", fmtN(s.value_mn, 2), "BDT", "", "wallet")}
     <div class="card stat"><div style="min-width:0"><p class="k">Advanced / declined</p><p class="v breadth"><span class="up">▲ ${s.advanced}</span> <span class="down">▼ ${s.declined}</span> <span class="flat">■ ${s.unchanged}</span></p><p class="h">against the previous close</p></div><div class="ico">${ic("check")}</div></div></div>
-    <p class="src">Totals add up every issue traded in the exchange's day-end archive at the time shown above. The exchange's own notices can show different totals, because they may be taken at another time or cover other boards or block trades.</p>`;
+    <p class="src">These totals add up every issue traded in the exchange's day-end archive${d && d.date ? ` for ${dLong(d.date)}` : ""}${d && d.fetched_at ? `, fetched ${esc(d.fetched_at.replace("T", " ").slice(0, 16))} (Dhaka time)` : ""}${d && d.provisional ? ", which may not be final yet" : ""}. The exchange's own notices can show a different turnover, because each is a snapshot taken at its own time and may cover other boards or block trades. Compare the notice's time before comparing the figures.</p>`;
 }
 function mktSectors(s) {
   if (!s.sectors.length) return emptyState("db", "Sector breadth needs the sector list", "Add backend/data/dse_sectors.json (trading code to sector) and it fills in on the next refresh.");
@@ -686,7 +686,7 @@ function renderDash() {
   const none = LIVE.ok ? (m.state === "loading" ? "Loading…" : "The exchange did not answer. Refresh tries again.") : "Run the app's server to see the live market here (python -m uvicorn app.main:app --app-dir backend).";
   return `${mktHead()}
   ${mktIndices(d)}
-  <section class="mksec"><div class="sec-h"><div><h2>Market summary</h2><p>The latest trading day on the Dhaka Stock Exchange.</p></div></div>${s ? mktSummary(s) : card("", "", "", emptyState("db", "No market summary yet", none), "dashed")}</section>
+  <section class="mksec"><div class="sec-h"><div><h2>Market summary</h2><p>The latest trading day on the Dhaka Stock Exchange.</p></div></div>${s ? mktSummary(s, d) : card("", "", "", emptyState("db", "No market summary yet", none), "dashed")}</section>
   <section class="mksec mk2"><div>${card("Sector breadth", "Advanced, declined and unchanged issues per sector.", "", s ? mktSectors(s) : emptyState("db", "No data yet", none))}</div>
     <div>${card("Top 20 shares", "Ranked by the column you pick.", `<div class="pills">${MKT_SORTS.map(([k, l]) => `<button type="button" class="pillbtn" data-mkt="${k}" aria-pressed="${m.sort === k}">${l}</button>`).join("")}</div>`, s ? mktTop(s) : emptyState("db", "No data yet", none))}</div></section>
   <section class="mksec"><div class="sec-h"><div><h2>RAEM forecast signals</h2><p>Seven-day model forecasts for the stocks on this site. Click a row for the full forecast.</p></div><button type="button" class="btn primary sm" id="runall">Show all signals</button></div>
