@@ -505,7 +505,6 @@ function renderTicker() {
     ${statCard("Daily rows", f.n_rows, "price history used", "", "db")}
     ${statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain")}
   </div>
-  ${investCard(d)}
   ${form}
   <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
   ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}
