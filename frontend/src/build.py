@@ -20,7 +20,7 @@ extra = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "extra.
 shown = {"N-BEATS", "LASSO", "Ridge", "RandomForest", "Theta", "Ensemble", "Fusion", "Fusion-Top3"}
 extra["backtest"] = {t: {m: r for m, r in v.items() if m in shown} for t, v in extra["backtest"].items()}
 # "Data as of" date: written by export_extra.py on each refresh; the newest price date is the fallback for older exports
-asof = extra.get("asof") or max(d["forecast"]["last_date"] for d in data.values())
+asof = max(extra.get("asof") or "", max(d["forecast"]["last_date"] for d in data.values()))   # never older than the prices themselves
 assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof), asof
 assert out.count('/*__ASOF__*/"2026-10-20"') == 1
 out = out.replace('/*__ASOF__*/"2026-10-20"', json.dumps(asof))

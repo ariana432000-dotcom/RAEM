@@ -105,7 +105,7 @@ function aiFiveDay(t) {
   const useAI = b && !b.stale && b.path, path = useAI ? b.path : fcPath(t);
   if (!path) return "";
   // Dhaka stocks are shown in taka on a 10,000 Tk stake; the others use the Return calculator's amount and currency
-  const tk = cur === "BDT", A = tk ? 10000 : (invAmt() || 100), k = 4, r = path[k] / last - 1, age = daysBetween(f.last_date, ASOF);
+  const tk = cur === "BDT", A = tk ? 10000 : (invAmt() || 100), k = 4, r = path[k] / last - 1, age = daysBetween(f.last_date, refDate());
   const lo = band ? band[k][0] / last - 1 : null, hi = band ? band[k][1] / last - 1 : null;
   const money2 = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : invSigned(t, v);
   const pl = x => money2(A * x), stake = tk ? `${A.toLocaleString("en-US")} Tk` : invShow(t, A);
@@ -114,7 +114,7 @@ function aiFiveDay(t) {
     ${band ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
       <div><p class="l" style="margin:0">Likely worst (10%)</p><p class="v ${cls(lo)}">${pl(lo)}</p><p class="vs ${cls(lo)}">${fmtPct(lo * 100)} · price ${fmtP(band[k][0])} ${esc(cur)}</p></div>
       <div><p class="l" style="margin:0">Likely best (90%)</p><p class="v ${cls(hi)}">${pl(hi)}</p><p class="vs ${cls(hi)}">${fmtPct(hi * 100)} · price ${fmtP(band[k][1])} ${esc(cur)}</p></div></div>` : ""}
-    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days before export, so the real start price may differ)` : ""}. The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. ${tk ? "" : "Change the amount on the Return calculator page. "}Not investment advice.</p></div>`;
+    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days old, so the real start price may differ)` : ""}. The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. ${tk ? "" : "Change the amount on the Return calculator page. "}Not investment advice.</p></div>`;
 }
 function aiDecisionCard(t, L) {
   const sig = aiSignal(L), d = DATA[t], seen = +(L.summary || {}).market_latest_close || null, cur = d ? d.meta.currency : "", entry = d ? d.forecast.last_price : seen;
@@ -230,7 +230,7 @@ function outlook(t) {
   const side = d.meta.source === "dse" ? COST_SIDE.dse : COST_SIDE.other, cost = 2 * side;
   const pGain = cdf ? 1 - cdf(cost) : null, pFall = cdf ? cdf(0) : null;
   const err = pl && pl.holdout_mae_vs_naive != null ? pl.holdout_mae_vs_naive : ((f.scoreboard || []).find(r => r.model === "Ensemble") || {}).mae_vs_naive;
-  const skill = err == null ? null : 1 - err, age = daysBetween(f.last_date, ASOF);
+  const skill = err == null ? null : 1 - err, age = daysBetween(f.last_date, refDate());
   let sig = "HOLD", why;
   if (pGain == null || skill == null) why = "there is no tested error range for this forecast, so its odds are unknown";
   else if (age > 10) why = `the prices end on ${dLong(f.last_date)}, ${age} days ago; run the forecast again first`;
@@ -491,7 +491,7 @@ function renderInv() {
     const llm = EXTRA.ai[t] ? EXTRA.ai[t].latest : null, bt = (EXTRA.backtest[t] || {}).Ensemble;
     return { t, fc, ret, val: A * (1 + ret), lo: fc.lo == null ? null : A * fc.lo / fc.last, hi: fc.hi == null ? null : A * fc.hi / fc.last, dly, dRet, dVal: A * (1 + dRet), llm,
       votes: [vote3(ret), dly.final_signal === "BUY" ? 1 : dly.final_signal === "SELL" ? -1 : 0, llm ? ratingVote(llm.rating) : 0], bt,
-      age: daysBetween(DATA[t].forecast.last_date, ASOF) };
+      age: daysBetween(DATA[t].forecast.last_date, refDate()) };
   });
   rows.sort((a, b) => b.ret - a.ret);
   const mx = Math.max(...rows.flatMap(r => [Math.abs(r.ret), r.lo == null ? 0 : Math.abs(r.lo / A - 1), r.hi == null ? 0 : Math.abs(r.hi / A - 1)]), 0.001) * 1.1, pos = v => Math.max(1, Math.min(99, 50 + v / mx * 50));
@@ -589,19 +589,19 @@ function moveWord(r) {
 function plainSummary(d) {
   const t = S.t, f = d.forecast, last = f.last_price, p = fcPath(t), band = fcBand(t), cur = d.meta.currency, o = outlook(t);
   if (!p) return "";
-  const r = p[6] / last - 1, conf = d.agent && d.agent.plan ? d.agent.plan.confidence : null, age = daysBetween(f.last_date, ASOF);
+  const r = p[6] / last - 1, conf = d.agent && d.agent.plan ? d.agent.plan.confidence : null, age = daysBetween(f.last_date, refDate());
   return `<section class="card summary"><span class="fi">${ic("check")}</span><div><p class="l">In plain words</p>
     <p class="lead2">Over the next 7 trading days the ${o.name.toLowerCase()} expects ${esc(d.meta.name)} to <b>${moveWord(r)}</b> (${fmtPct(r * 100)}, to about ${fmtP(p[6])} ${esc(cur)}). The recommendation is ${sigBadge(o.sig)}: ${o.why}.${conf ? ` Confidence is <b>${esc(conf.toLowerCase())}</b>.` : ""}${band ? ` In past tests the price usually ended between ${fmtP(band[6][0])} and ${fmtP(band[6][1])} ${esc(cur)}.` : ""}</p>
     <p class="lead2" style="margin-top:6px">After 5 trading days: <b>${fmtPct((p[4] / last - 1) * 100)}</b> (about ${fmtP(p[4])} ${esc(cur)})${band ? `, usually between ${fmtP(band[4][0])} and ${fmtP(band[4][1])}` : ""}.${band ? ` As a profit or loss on the amount invested, that is about ${fmtPct((p[4] / last - 1) * 100)} with a range of ${fmtPct((band[4][0] / last - 1) * 100)} to ${fmtPct((band[4][1] / last - 1) * 100)}, ` : " "}before costs.</p>
     ${(b => b && !b.stale ? `<p class="lead2" style="margin-top:6px">The latest AI analysis rated it ${ratingBadge(b.rating)} on ${dShort(b.date)}; with that view the forecast becomes <b>${fmtPct(b.adj * 100)}</b> (about ${fmtP(b.price)} ${esc(cur)}; ${aiWhy(b)}).</p>` : "")(aiBlend(t))}
-    ${age > 5 ? `<p class="sub" style="margin-top:6px;color:var(--hold)">These prices are from ${dLong(f.last_date)}, ${age} days before the export.</p>` : ""}</div></section>`;
+    ${age > 5 ? `<p class="sub" style="margin-top:6px;color:var(--hold)">These prices are from ${dLong(f.last_date)}, ${age} days old.</p>` : ""}</div></section>`;
 }
 function renderHelp() {
   const steps = [["Pick a stock", "Use the cards on Home, the Forecast menu or the search box."], ["Run the forecast", "Press Run forecast to see the 7-day path, the daily signal and every model's numbers."], ["Read the plain summary", "The 'In plain words' box says what the models expect and how sure they are."], ["Check the evidence", "Track record, Backtest and Memory show how past calls really did."]];
   return `<div class="page-h"><h1>Help and glossary</h1><p>How to use this site, and what each term means, in plain language.</p></div>
     ${card("How to use this site", "", "", `<ol class="steps4">${steps.map(([h, p], i) => `<li><span class="num">${i + 1}</span><div><h3>${h}</h3><p>${p}</p></div></li>`).join("")}</ol>`)}
     ${card("Glossary", "Hover or focus the ? next to a heading anywhere on the site to see the same text.", "", `<dl class="gloss">${Object.values(GLOSS).map(([h, p]) => `<div><dt>${esc(h)}</dt><dd>${esc(p)}</dd></div>`).join("")}</dl>`)}
-    ${card("About the data", "", "", `<ul class="plain"><li>All numbers were exported from the project's Python code on ${dLong(ASOF)}. This site replays them; it does not train models or fetch live prices.</li><li>US, Saudi and Hong Kong prices run to mid-October. The four Dhaka Stock Exchange stocks stop at ${dLong(DATA.ABBANK ? DATA.ABBANK.forecast.last_date : ASOF)}, so their forecasts start from older prices.</li><li>The watchlist and your settings are saved only in this browser.</li><li>This is a research tool. Nothing here is investment advice.</li></ul>`)}`;
+    ${card("About the data", "", "", `<ul class="plain"><li>All numbers were exported from the project's Python code on ${dLong(ASOF)}. This site replays them; it does not train models or fetch live prices.</li><li>Saved prices end between ${dLong(ORDER.map(t => DATA[t].forecast.last_date).sort()[0])} and ${dLong(ORDER.map(t => DATA[t].forecast.last_date).sort().slice(-1)[0])}, so every saved forecast starts from those closes, not from today's prices.</li><li>The watchlist and your settings are saved only in this browser.</li><li>This is a research tool. Nothing here is investment advice.</li></ul>`)}`;
 }
 
 /* ----- router ----- */
@@ -635,7 +635,7 @@ function mktHead() {
   const m = X.mkt, d = m.data, live = LIVE.ok;
   const sub = !live ? "Live market data comes from the server; this copy has the saved forecasts only."
     : m.state === "loading" && !d ? "Loading the exchange's latest day…"
-    : d && d.ok ? `Trading day ${dLong(d.date)} · fetched ${esc(d.fetched_at.replace("T", " ").slice(0, 16))}${d.stale ? " · exchange not reachable, showing the last saved copy" : ""}`
+    : d && d.ok ? `Trading day ${dLong(d.date)} · fetched ${esc(d.fetched_at.replace("T", " ").slice(0, 16))} (Dhaka time) · ${esc(d.scope || "DSE day-end archive, all instruments")}${d.provisional ? " · provisional: the day-end archive may not be final yet, so totals can still change" : ""}${d.stale ? " · exchange not reachable, showing the last saved copy" : ""}`
     : "Market data not available right now.";
   return `<div class="pagehead"><div><h1>DSE Market Overview</h1><p class="sub">${sub}</p></div>
     ${live ? `<button type="button" class="btn secondary sm" data-act="mkt-refresh"${m.state === "loading" ? " disabled" : ""}>${m.state === "loading" ? "Refreshing…" : "Refresh"}</button>` : ""}</div>`;
@@ -649,13 +649,20 @@ function mktIndices(d) {
 }
 function mktSummary(s) {
   return `<div class="stats">${statCard("Total trade", fmtN(s.total_trade), `${fmtN(s.traded_issues)} issues traded`, "", "pulse")}${statCard("Total volume", fmtN(s.total_volume), "shares", "", "chart")}${statCard("Value (mn)", fmtN(s.value_mn, 2), "BDT", "", "wallet")}
-    <div class="card stat"><div style="min-width:0"><p class="k">Advanced / declined</p><p class="v breadth"><span class="up">▲ ${s.advanced}</span> <span class="down">▼ ${s.declined}</span> <span class="flat">■ ${s.unchanged}</span></p><p class="h">against the previous close</p></div><div class="ico">${ic("check")}</div></div></div>`;
+    <div class="card stat"><div style="min-width:0"><p class="k">Advanced / declined</p><p class="v breadth"><span class="up">▲ ${s.advanced}</span> <span class="down">▼ ${s.declined}</span> <span class="flat">■ ${s.unchanged}</span></p><p class="h">against the previous close</p></div><div class="ico">${ic("check")}</div></div></div>
+    <p class="src">Totals add up every issue traded in the exchange's day-end archive at the time shown above. The exchange's own notices can show different totals, because they may be taken at another time or cover other boards or block trades.</p>`;
 }
 function mktSectors(s) {
   if (!s.sectors.length) return emptyState("db", "Sector breadth needs the sector list", "Add backend/data/dse_sectors.json (trading code to sector) and it fills in on the next refresh.");
   const tot = k => s.sectors.reduce((q, x) => q + x[k], 0);
+  // Only issues whose sector is known are in s.sectors. The rest are shown as "Unclassified" so the last row adds up to the
+  // advanced / declined / unchanged counts of the market summary instead of looking like the whole market.
+  const all = s.advanced + s.declined + s.unchanged, known = tot("total"), un = { advanced: s.advanced - tot("advanced"), declined: s.declined - tot("declined"), unchanged: s.unchanged - tot("unchanged") };
+  const unTotal = all - known;
   return `<div class="scroll"><table class="dense"><thead><tr><th>Sector</th><th>Advanced</th><th>Declined</th><th>Unchanged</th><th>Total</th></tr></thead><tbody>${s.sectors.map(x => `<tr><td class="t">${esc(x.sector)}</td><td class="up">${x.advanced}</td><td class="down">${x.declined}</td><td class="flat">${x.unchanged}</td><td>${x.total}</td></tr>`).join("")}
-    <tr class="tot"><td class="t">All sectors</td><td class="up">${tot("advanced")}</td><td class="down">${tot("declined")}</td><td class="flat">${tot("unchanged")}</td><td>${tot("total")}</td></tr></tbody></table></div>`;
+    ${unTotal > 0 ? `<tr><td class="t">Unclassified (sector not known yet)</td><td class="up">${un.advanced}</td><td class="down">${un.declined}</td><td class="flat">${un.unchanged}</td><td>${unTotal}</td></tr>` : ""}
+    <tr class="tot"><td class="t">All traded issues</td><td class="up">${s.advanced}</td><td class="down">${s.declined}</td><td class="flat">${s.unchanged}</td><td>${all}</td></tr></tbody></table></div>
+    <p class="src">${fmtN(known)} of ${fmtN(all)} issues have a sector${unTotal > 0 ? "; the rest are listed as Unclassified. Run backend/tools/build_dse_sectors.py to fill in the sector list" : ""}.${all < s.traded_issues ? ` ${fmtN(s.traded_issues - all)} traded issues are left out of the counts because the archive has no previous close for them.` : ""}</p>`;
 }
 function mktTop(s) {
   const key = X.mkt.sort, rows = (s.stocks || s.top).slice().sort((p, q) => (q[key] || 0) - (p[key] || 0)).slice(0, 20);
@@ -672,7 +679,7 @@ function renderDash() {
   const m = X.mkt, d = m.data, s = d && d.summary;
   const rows = ORDER.map(t => {
     const dd = DATA[t], f = dd.forecast, ran = S.ran[t], cl = dd.history.slice(-30).map(h => h[1]);
-    const ch = (cl[cl.length - 1] / cl[0] - 1) * 100, p = fcPath(t), ens = p ? (p[6] / f.last_price - 1) * 100 : null, age = daysBetween(f.last_date, ASOF);
+    const ch = (cl[cl.length - 1] / cl[0] - 1) * 100, p = fcPath(t), ens = p ? (p[6] / f.last_price - 1) * 100 : null, age = daysBetween(f.last_date, refDate());
     return `<tr class="click" data-t="${esc(t)}"><td><span class="tkr">${esc(t)}</span><div class="sub">${esc(dd.meta.name)}</div></td><td>${fmtP(f.last_price)} <span class="sub">${esc(dd.meta.currency)}</span></td><td>${spark(cl)}</td><td class="${cls(ch)}">${fmtPct(ch)}</td><td style="${age > 5 ? "color:var(--hold)" : ""}">${dShort(f.last_date)}</td><td>${ran ? sigBadge((outlook(t) || {}).sig) : `<span class="badge">not run</span>`}</td><td class="${cls(ens)}">${fmtPct(ens)}</td><td>${(b => b && !b.stale ? `${ratingBadge(b.rating)} <span class="${cls(b.adj)}">${fmtPct(b.adj * 100)}</span>` : b ? `${ratingBadge(b.rating)} <span class="sub">old</span>` : "–")(aiBlend(t))}</td></tr>`;
   }).join("");
   const dse = ORDER.filter(t => DATA[t].meta.source === "dse");
