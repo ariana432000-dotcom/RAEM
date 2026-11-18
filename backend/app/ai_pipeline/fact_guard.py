@@ -215,7 +215,7 @@ def _g_decision(output_text: str):
 
 _G_EVENT = re.compile(r"\b(?:announced?|approved?|declared?|launched?|acquir\w+|signed|merger|merged|partnership|collaborat\w+|joined hands|"
                       r"dividend (?:cut|hike|declaration)|record date|AGM|rights? issue|authori[sz]ed representatives?|regulator\w*|"
-                      r"central bank|bangladesh bank|NPL|non-performing|bad loans?|penalt\w+|fined?|investigation|downgrad\w+|upgrad\w+|"
+                      r"central bank|bangladesh bank|NPL|non-performing|bad loans?|penalt\w+|fined|investigation|downgrad\w+|upgrad\w+|"
                       r"lawsuit|restructur\w+|capital injection|bailout|bankruptcy|insolven\w+|scandal|fraud|sanction\w*)\b", re.I)
 
 
@@ -224,6 +224,106 @@ def _g_vocab_overlap(sentence: str, prompt_lower: str) -> float:
     if not words:
         return 1.0
     return sum(1 for w in words if w in prompt_lower) / len(words)
+
+
+
+# ── v10 additions: numbers bound to their LABEL, and direction claims checked against the code-computed facts ──────────────
+# Why: number grounding (1) asks only "does this number appear ANYWHERE in the prompt?".  So (a) a real number under the wrong
+# label (P/E = the EPS value) passes, (b) integers under 3 digits ('RSI of 41') are never looked at, and (c) every sentence that
+# contains recommend/target/score/rank/... is exempt.  The checks below bind RSI / MACD / 50-day SMA / P/E / EPS to the value the
+# data gave for THAT label, in every phrasing, and ignore sector/forward/other-period figures.  Switch: RAEM_GUARD_LABELS=0.
+_GL_PROMPT = {
+    "RSI":  [r"\brsi\s*[=:]\s*(-?\d+(?:\.\d+)?)", r"\bRSI (\d+(?:\.\d+)?) = "],
+    "MACD": [r"\bmacd\s*[=:]\s*(-?\d+(?:\.\d+)?)", r"\bMACD ([+-]?\d+(?:\.\d+)?) is "],
+    "50-day SMA": [r"close_50_sma\s*[=:]\s*(-?\d+(?:\.\d+)?)", r"50-day SMA (\d+(?:\.\d+)?)"],
+    "P/E":  [r"\bP/E(?:\s+Ratio)?\s*(?:\([^)]*\))?\s*[=:]\s*(-?\d+(?:\.\d+)?)"],
+    "EPS":  [r"\bEPS\s*(?:\([^)]*\))?\s*[=:]\s*(-?\d+(?:\.\d+)?)"],
+}
+_GL_OUT = {"RSI": r"RSI", "MACD": r"MACD",
+           "50-day SMA": r"50[- ]?day\s+SMA|50[- ]?day\s+(?:simple\s+)?moving\s+average|close_50_sma",
+           "P/E": r"P/E(?:\s+Ratio)?|price[- ]to[- ]earnings(?:\s+ratio)?", "EPS": r"EPS\s*\(TTM\)|EPS"}
+_GL_BENCH = re.compile(r"\b(?:sector|industry|peer|peers|average|avg|median|historical|historic|forward|target|estimated|expected|consensus|market|benchmark|"
+                       r"prior|previous|projected|implied)\b[\s\-’']*(?:\w+[\s\-]+)?$", re.I)
+_GL_PERIODS = {"5", "7", "9", "10", "12", "14", "20", "21", "26", "30", "50", "100", "200"}
+
+
+def _gl_prompt_values(prompt_text: str) -> dict:
+    out = {}
+    for lab, pats in _GL_PROMPT.items():
+        vals = []
+        for pat in pats:
+            for m in re.finditer(pat, prompt_text, re.I if pat.startswith(r"\b") else 0):
+                try:
+                    vals.append(Decimal(m.group(1).lstrip("+")))
+                except InvalidOperation:
+                    pass
+        if vals:
+            out[lab] = vals
+    return out
+
+
+def _gl_claims(sentence: str, lab: str):
+    """[(value Decimal, decimals shown)] cited right after the label in this sentence (any phrasing, benchmarks/periods skipped)."""
+    res = []
+    pat = (rf"(?<![A-Za-z_])(?:{_GL_OUT[lab]})(?![A-Za-z])\s*(?:ratio\s*)?(?:\([^)]*\)\s*)?"
+           rf"(?:[:=]|\b(?:of|at|is|was|stands\s+at|reads|near|around)\b)?\s*\(?\s*\$?(-?\d+(?:\.\d+)?)")
+    for m in re.finditer(pat, sentence, re.I):
+        pre, num = sentence[max(0, m.start() - 30):m.start()], m.group(1)
+        if _GL_BENCH.search(pre):
+            continue
+        if lab == "50-day SMA" and re.fullmatch(r"SMA", m.group(0)[:3], re.I):
+            continue
+        if re.match(r"\s*[- ]?(day|period|d\b)", sentence[m.end(1): m.end(1) + 8].lower()):
+            continue
+        if "." not in num and num.lstrip("-") in _GL_PERIODS and sentence[m.start(1) - 1: m.start(1)] == "(":
+            continue
+        try:
+            res.append((Decimal(num), len(num.split(".")[1]) if "." in num else 0))
+        except InvalidOperation:
+            pass
+    return res
+
+
+def _gl_ok(val: Decimal, shown_dec: int, truths) -> bool:
+    tol = Decimal(1).scaleb(-shown_dec) + Decimal("1e-9")        # a figure may be rounded OR truncated to the decimals it shows
+    return any(abs(val - t) <= tol for t in truths)
+
+
+def _gl_checks(prompt_text: str, segs: list) -> list:
+    issues = []
+    truth = _gl_prompt_values(prompt_text)
+    for seg in segs:
+        s = seg[2]
+        for lab, tv in truth.items():
+            for val, d in _gl_claims(s, lab):
+                if not _gl_ok(val, d, tv):
+                    issues.append(_g_issue(f"{lab} is {', '.join(f'{x.normalize():f}' for x in tv[:2])} in your data, but you wrote {val}. Use the data value. Sentence: \"{s.strip()[:90]}\"", [seg]))
+                    break
+    return issues
+
+
+def _gl_direction_checks(prompt_text: str, segs: list) -> list:
+    """SMA above/below and MACD positive/negative wording vs the facts the pipeline computed in code (trend_fact_list)."""
+    issues = []
+    ms = re.search(r"last close ([\d.]+) is (BELOW|ABOVE) the 50-day SMA ([\d.]+)", prompt_text)
+    mm = re.search(r"MACD ([+-]?\d+(?:\.\d+)?) is (negative|positive)", prompt_text)
+    for seg in segs:
+        s = seg[2]
+        if ms:
+            m = re.search(r"\b(above|over|below|under|beneath)\s+(?:its\s+|the\s+|their\s+)?(?:50[- ]?day\s+)?(?:SMA|simple\s+moving\s+average|moving\s+average)", s, re.I)
+            if m and not _G_LOCAL_NEG.search(s[max(0, m.start() - 30):m.start()]):
+                says_above = m.group(1).lower() in ("above", "over")
+                if says_above != (ms.group(2) == "ABOVE"):
+                    issues.append(_g_issue(f"Price {ms.group(1)} is {ms.group(2)} the 50-day SMA {ms.group(3)}, but you wrote it is {m.group(1).lower()} it. Sentence: \"{s.strip()[:90]}\"", [seg]))
+        if mm and re.search(r"\bMACD\b", s):
+            for pat in (r"MACD\b[^.;,]{0,50}?\b(positive|negative)\b", r"\b(positive|negative)\b[^.;]{0,35}?\bMACD\b"):
+                m = re.search(pat, s, re.I)
+                if m and not re.search(r"news|sentiment|headline|\bbut\b|\bwhile\b|however", m.group(0), re.I) \
+                        and not _G_LOCAL_NEG.search(s[max(0, m.start(1) - 30):m.start(1)]):
+                    if m.group(1).lower() != mm.group(2):
+                        issues.append(_g_issue(f"MACD is {mm.group(2)} in your data, but you wrote {m.group(1).lower()}. Sentence: \"{s.strip()[:90]}\"", [seg]))
+                        break
+    return issues
 
 
 # ── the checks ───────────────────────────────────────────────────
@@ -274,7 +374,7 @@ def guard_check(prompt_text: str, output_text: str, decision=None) -> list:
                 issues.append(_g_issue(f"Price {px} is ABOVE the 50-day SMA {sma}, so the SMA is SUPPORT, not resistance. Sentence: \"{s.strip()[:90]}\"", [seg],
                                        sub=(r"\bresistance\b", "support")))
 
-    for lab in set(re.findall(r"^\s*[-*]?\s*([A-Za-z][A-Za-z0-9 /&()\-\.]{2,40}?):\s*(?:N/A|data not available|None)\b", prompt_text, re.M)):
+    for lab in set(re.findall(r"^\s*[-*]?\s*(?:\[[FNW]\d+\]\s*)?([A-Za-z][A-Za-z0-9 /&()\-\.]{2,40}?):\s*(?:N/A|data not available|None)\b", prompt_text, re.M)):
         base = re.sub(r"\s*\(.*?\)\s*", " ", lab).strip()
         if len(base) < 4:
             continue
@@ -314,6 +414,10 @@ def guard_check(prompt_text: str, output_text: str, decision=None) -> list:
             elif 30 < rsi < 70 and re.search(r"\b(oversold|overbought)\b", s, re.I) and not re.search(r"\b(30|70)\b|near|approach|close to|toward", s, re.I):
                 issues.append(_g_issue(f"RSI is {rsi:g}: that is in the NEUTRAL zone (30-70), not oversold/overbought. Sentence: \"{s.strip()[:90]}\"", [seg],
                                        sub=(r"\b(?:oversold|overbought)\b", "neutral")))
+
+    if config.flag("RAEM_GUARD_LABELS", True):                         # v10: label-bound numbers + direction claims
+        issues += _gl_checks(prompt_text, segs)
+        issues += _gl_direction_checks(prompt_text, segs)
 
     # (2b) v9 -- relations computed in code (FACT SHEET) must not be flipped by the model
     if config.flag("RAEM_GUARD_RELATIONS", True):
