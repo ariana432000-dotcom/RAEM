@@ -809,7 +809,7 @@ function resultsHtml() {
 }
 
 /* ---------- extra pages ---------- */
-const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["inv", "Return Calculator", "pulse"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
+const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
 Object.assign(ICONS, {
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
@@ -906,25 +906,25 @@ function mdField(text, label) {  // the text after "**Label**:" up to the next "
   return m ? m[1].trim() : "";
 }
 const aiSignal = L => L.signal || SIGNAL_OF[String(L.rating || "").toUpperCase()] || "";
-/* "If I buy now, what could the next 5 trading days bring?" on the Decision card. Uses the amount and currency set on the
-   Return calculator page (default $100), the AI-adjusted path when the AI analysis is fresh, else the Ensemble. */
+/* "If I buy now, what could the next 5 trading days bring?" on the Decision card. Uses a fixed stake (100 USD, or 10,000 Tk for
+   Dhaka stocks) and the AI-adjusted path when the AI analysis is fresh, else the Ensemble. */
 function aiFiveDay(t) {
   const d = DATA[t];
   if (!d) return "";   // a company that is not on the site has no forecast yet
   const f = d.forecast, last = f.last_price, cur = d.meta.currency, b = aiBlend(t), band = fcBand(t);
   const useAI = b && !b.stale && b.path, path = useAI ? b.path : fcPath(t);
   if (!path) return "";
-  // Dhaka stocks are shown in taka on a 10,000 Tk stake; the others use the Return calculator's amount and currency
-  const tk = cur === "BDT", A = tk ? 10000 : (invAmt() || 100), k = 4, r = path[k] / last - 1, age = daysBetween(f.last_date, refDate());
+  // Dhaka stocks are shown in taka on a 10,000 Tk stake; the others on a 100 USD stake
+  const tk = cur === "BDT", A = tk ? 10000 : STAKE, k = 4, r = path[k] / last - 1, age = daysBetween(f.last_date, refDate());
   const lo = band ? band[k][0] / last - 1 : null, hi = band ? band[k][1] / last - 1 : null;
-  const money2 = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : invSigned(t, v);
-  const pl = x => money2(A * x), stake = tk ? `${A.toLocaleString("en-US")} Tk` : invShow(t, A);
+  const money2 = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : stakeSigned(v);
+  const pl = x => money2(A * x), stake = tk ? `${A.toLocaleString("en-US")} Tk` : stakeShow(A);
   return `<div class="sect"><p class="l">If you buy now: next 5 trading days (to ${dShort(f.dates[k])})</p>
     <p class="v ${cls(r)}">${pl(r)} <span class="vs">${fmtPct(r * 100)} on ${stake}</span></p>
     ${band ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
       <div><p class="l" style="margin:0">Likely worst (10%)</p><p class="v ${cls(lo)}">${pl(lo)}</p><p class="vs ${cls(lo)}">${fmtPct(lo * 100)} · price ${fmtP(band[k][0])} ${esc(cur)}</p></div>
       <div><p class="l" style="margin:0">Likely best (90%)</p><p class="v ${cls(hi)}">${pl(hi)}</p><p class="vs ${cls(hi)}">${fmtPct(hi * 100)} · price ${fmtP(band[k][1])} ${esc(cur)}</p></div></div>` : ""}
-    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days old, so the real start price may differ)` : ""}. The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. ${tk ? "" : "Change the amount on the Return calculator page. "}Not investment advice.</p></div>`;
+    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days old, so the real start price may differ)` : ""}. The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. Not investment advice.</p></div>`;
 }
 function aiDecisionCard(t, L) {
   const sig = aiSignal(L), d = DATA[t], seen = +(L.summary || {}).market_latest_close || null, cur = d ? d.meta.currency : "", entry = d ? d.forecast.last_price : seen;
@@ -1219,25 +1219,10 @@ function renderSet() {
     ${card("Where the numbers come from", `Exported ${dLong(ASOF)} from the project's Python code. This page never recomputes them.`, "", `<div class="scroll"><table><thead><tr><th>Folder</th><th>Holds</th><th>Refresh with</th></tr></thead><tbody>${folders.map(f => `<tr><td class="t"><span class="mono">${esc(f[0])}</span></td><td class="t">${esc(f[1])}</td><td class="t">${esc(f[2])}</td></tr>`).join("")}</tbody></table></div>`)}`;
 }
 
-/* ----- return calculator: "if I put in 100" per company ----- */
-X.inv = { amt: 100, basis: "usd", src: "Ensemble", t: AI_T[0], h: 5 };  // h = days ahead the calculator shows (5 or 7)
-const INV_SRC = [["Ensemble", "Ensemble"], ["AI", "AI-adjusted"], ["Fusion", "Fusion"], ["Fusion-Top3", "Fusion Top 3"], ["Agent", "Reviewed agent"], ["Daily", "Daily 5-model signal"]];
-function invFc(t, src) {
-  const d = DATA[t], f = d.forecast, last = f.last_price, band = fcBand(t);
-  let path;
-  if (src === "AI") path = (aiBlend(t) || {}).path || f.paths.Ensemble;
-  else if (src === "Agent" && d.agent && d.agent.plan && d.agent.plan.path_ret) path = d.agent.plan.path_ret.map(r => last * (1 + r));
-  else if (src === "Daily") { const r = d.daily.final_expected_return; path = Array.from({ length: 7 }, (_, i) => last * (1 + r * (i + 1) / 7)); }
-  else path = f.paths[src] || f.paths.Ensemble;
-  const hb = band && src !== "Daily", k = (X.inv.h === 7 ? 7 : 5) - 1;  // day-5 or day-7 point of the 7-day path and of its error band
-  return { last, path, end: path[k], lo: hb ? band[k][0] : null, hi: hb ? band[k][1] : null };
-}
-const invAmt = () => Math.max(0, +X.inv.amt || 0);
-const invShow = (t, v) => X.inv.basis === "usd" ? "$" + v.toFixed(2) : v.toFixed(2) + " " + DATA[t].meta.currency;
-const invSigned = (t, v) => (v >= 0 ? "+" : "−") + invShow(t, Math.abs(v));
-const vote3 = v => v > 0.0005 ? 1 : v < -0.0005 ? -1 : 0;
-const ratingVote = r => ({ buy: 1, overweight: 1, sell: -1, underweight: -1 }[String(r || "").toLowerCase()] || 0);
-const voteTxt = v => v > 0 ? '<span class="up">↑</span>' : v < 0 ? '<span class="down">↓</span>' : '<span class="flat">–</span>';
+/* ----- fixed stake shown on the AI Decision card: 100 (USD), or 10,000 Tk for Dhaka stocks ----- */
+const STAKE = 100;
+const stakeShow = v => "$" + v.toFixed(2);
+const stakeSigned = v => (v >= 0 ? "+" : "−") + stakeShow(Math.abs(v));
 function sessOutcome(t, s) {
   const rows = rowsOf(t), lastDate = rows[rows.length - 1][0], e = closeOn(t, s.date);
   const rating = String(s.rating || (s.signal && s.signal !== "nan" ? s.signal : "")).toUpperCase();
@@ -1294,77 +1279,6 @@ function aiEffectCard(t) {
         <div class="kv"><p class="k">AI view</p><p class="v ${cls(b.view)}">${fmtPct(b.view * 100)}</p><p class="s">${esc(b.rating)} × typical 7-day move</p></div>
         <div class="kv"><p class="k">AI-adjusted 7 days</p><p class="v ${cls(b.adj)}">${fmtPct(b.adj * 100)}</p><p class="s">${fmtP(b.price)} ${esc(cur)} · ${aiWhy(b)}</p></div></div>`);
 }
-function renderInv() {
-  const A = invAmt(), x = X.inv, H = x.h === 7 ? 7 : 5;
-  const rows = ORDER.map(t => {
-    const fc = invFc(t, x.src), ret = fc.end / fc.last - 1, dly = DATA[t].daily, dRet = dly.final_expected_return;
-    const llm = EXTRA.ai[t] ? EXTRA.ai[t].latest : null, bt = (EXTRA.backtest[t] || {}).Ensemble;
-    return { t, fc, ret, val: A * (1 + ret), lo: fc.lo == null ? null : A * fc.lo / fc.last, hi: fc.hi == null ? null : A * fc.hi / fc.last, dly, dRet, dVal: A * (1 + dRet), llm,
-      votes: [vote3(ret), dly.final_signal === "BUY" ? 1 : dly.final_signal === "SELL" ? -1 : 0, llm ? ratingVote(llm.rating) : 0], bt,
-      age: daysBetween(DATA[t].forecast.last_date, refDate()) };
-  });
-  rows.sort((a, b) => b.ret - a.ret);
-  const mx = Math.max(...rows.flatMap(r => [Math.abs(r.ret), r.lo == null ? 0 : Math.abs(r.lo / A - 1), r.hi == null ? 0 : Math.abs(r.hi / A - 1)]), 0.001) * 1.1, pos = v => Math.max(1, Math.min(99, 50 + v / mx * 50));
-  const srcNote = x.src === "Daily" ? "the daily 5-model signal's expected 7-day return, spread evenly over the 7 days" : x.src === "Agent" ? "the reviewed agent path" : x.src === "AI" ? "the Ensemble path tilted by each company's latest AI rating (the Ensemble alone where there is no recent rating)" : `the ${x.src} path from forecast_lib`;
-  const tk = x.t, trk = invTrack(tk), bt = EXTRA.backtest[tk] || {};
-  const best = rows[0], worst = rows[rows.length - 1];
-  const table = rows.map(r => `<tr class="click" data-t="${esc(r.t)}"><td><span class="tkr">${esc(r.t)}</span><div class="sub">${esc(DATA[r.t].meta.name)}</div></td>
-    <td class="${r.age > 5 ? "" : ""}" style="${r.age > 5 ? "color:var(--hold)" : ""}">${dShort(DATA[r.t].forecast.last_date)}</td>
-    <td>${invShow(r.t, r.val)}</td><td class="${cls(r.ret)}">${invSigned(r.t, r.val - A)}</td><td class="${cls(r.ret)}">${fmtPct(r.ret * 100)}</td>
-    <td>${r.lo == null ? "–" : `${invSigned(r.t, r.lo - A)} to ${invSigned(r.t, r.hi - A)}`}</td>
-    <td>${sigBadge(r.dly.final_signal)} <span class="sub">${invShow(r.t, r.dVal)}</span></td>
-    <td>${r.llm ? `${ratingBadge(r.llm.rating)} <span class="sub">${dShort(r.llm.date)}</span>` : '<span class="sub">no session</span>'}</td>
-    <td class="votes" title="forecast / daily model / LLM rating">${r.votes.map(voteTxt).join(" ")}</td>
-    <td>${r.bt ? `${invShow(r.t, A * r.bt.equity[r.bt.equity.length - 1])} <span class="sub">vs ${invShow(r.t, A * r.bt.buyhold_eq[r.bt.buyhold_eq.length - 1])}</span>` : "–"}</td></tr>`).join("");
-  const bars = rows.map(r => `<div class="row wide"><span class="mono">${esc(r.t)}</span><div class="dv"><b class="${r.ret >= 0 ? "pos" : "neg"}" style="${r.ret >= 0 ? `left:50%;width:${pos(r.ret) - 50}%` : `right:50%;width:${50 - pos(r.ret)}%`}"></b>${r.lo == null ? "" : `<u style="left:${pos(r.lo / A - 1)}%;width:${pos(r.hi / A - 1) - pos(r.lo / A - 1)}%"></u>`}</div><span class="val"><span class="${cls(r.ret)}">${invSigned(r.t, r.val - A)}</span> · ${fmtPct(r.ret * 100)}</span></div>`).join("");
-  const sessRows = trk ? trk.list.slice().reverse().slice(0, 14).map(({ s, o }) => {
-    const f = followFactor(o.rating, o.r || 0), tone = o.pending ? "" : o.rating === "HOLD" ? "hold" : f > 1 ? "buy" : "sell";
-    return `<tr><td class="t">${dShort(s.date)}</td><td>${ratingBadge(o.rating[0] + o.rating.slice(1).toLowerCase())}</td><td>${fmtP(o.entry)}</td><td>${o.pending ? "–" : fmtP(o.exit)}</td><td class="${o.pending ? "flat" : cls(o.r)}">${o.pending ? "pending" : fmtPct(o.r * 100)}</td>
-      <td>${o.pending ? "–" : invShow(tk, A * f)}</td><td>${o.pending ? "–" : invShow(tk, A * (1 + o.r))}</td><td><span class="badge ${tone}">${o.pending ? "pending" : o.rating === "HOLD" ? "no trade" : f > 1 ? "right" : "wrong"}</span></td></tr>`;
-  }).join("") : "";
-  const btRows = Object.entries(bt).map(([m, r]) => `<tr><td class="t">${esc(m)}</td><td>${r.n}</td><td>${invShow(tk, A * r.equity[r.equity.length - 1])}</td><td>${invShow(tk, A * r.buyhold_eq[r.buyhold_eq.length - 1])}</td><td class="${cls(r.strategy_pct)}">${fmtPct(r.strategy_pct, 1)}</td></tr>`).join("");
-  return `<div class="page-h"><h1>Return Calculator</h1><p>If you put in ${A} today, what each company's forecast, daily model, AI analysis and past record say you would have in ${H} days.</p></div>
-    ${card("Your investment", "Change the amount, the money basis or the forecast used.", "", `<div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
-      <div class="field"><label for="inv-a">Amount per company</label><input class="inp w-sm" id="inv-a" data-bind="inv-amt" type="number" min="1" step="any" value="${esc(x.amt)}"></div>
-      <div class="field"><label for="inv-b">Amount is in</label><select id="inv-b" data-bind="inv-basis"><option value="usd" ${x.basis === "usd" ? "selected" : ""}>US dollars (converted to each currency)</option><option value="local" ${x.basis === "local" ? "selected" : ""}>Each company's own currency</option></select></div></div>
-      <div class="field" style="margin-top:16px"><span class="lbl">Days ahead</span>${pillTabs([["5", "5 days"], ["7", "7 days"]], String(H), "data-inv-h")}</div>
-      <div class="field" style="margin-top:16px"><span class="lbl">Forecast used</span>${pillTabs(INV_SRC.map(([id, l]) => [id, l]), x.src, "data-inv-src")}</div>`)}
-    <div class="stats">
-      ${statCard("Best expected", esc(best.t), `${fmtPct(best.ret * 100)} · ${invSigned(best.t, best.val - A)}`, best.ret > 0 ? "buy" : "sell", "line")}
-      ${statCard("Worst expected", esc(worst.t), `${fmtPct(worst.ret * 100)} · ${invSigned(worst.t, worst.val - A)}`, worst.ret > 0 ? "buy" : "sell", "chart")}
-      ${statCard("All 8 together", invAmt() ? fmtPct(rows.reduce((q, r) => q + r.ret, 0) / rows.length * 100) : "–", `average ${H}-day return`, "accent", "wallet")}
-      ${statCard("Amount in", x.basis === "usd" ? "$" + A : A + " each", x.basis === "usd" ? "converted at saved FX" : "own currency", "", "db")}
-    </div>
-    ${card(`Company by company ${hint(GLOSS.votes)}${hint(GLOSS.past)}`, `Value of ${A} after ${H} days using ${esc(srcNote)}. Click a row to open that ticker.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Price as of</th><th>Value in ${H} days</th><th>Profit / loss</th><th>Return</th><th>10–90% range (profit / loss)</th><th>Daily model</th><th>AI analysis</th><th>Votes</th><th>Past record</th></tr></thead><tbody>${table}</tbody></table></div>
-      <p class="src">Votes show forecast, daily model and LLM rating in that order (↑ up, ↓ down, – flat or hold). "Past record" is what the amount would be if you had followed the Ensemble's saved day-7 calls since the log began, then (smaller) what buying and holding on the same dates would give. Forecasts start from each company's own last close, shown in the "Price as of" column (dates highlighted in amber are more than 5 days old). The range comes from the reviewer's past forecast errors on a small test set, so a result outside it is possible. Costs and tax are not included. Research output, not investment advice.</p>`)}
-    <div class="two">
-      ${card("Expected gain per company", `On ${A}. Bar = expected return, line = 10–90% range.`, "", `<div class="rows">${bars}</div>`)}
-      ${card(`Growth of ${A} over 7 days`, "Each company's forecast path, day by day.", "", `<div class="chartbox" id="invgrow"></div><div class="legend" id="invgrow-l"></div>`)}
-    </div>
-    ${card("AI-analysis record by company", "What the AI analysis said in past runs, and what 100 would have done if you followed it for 7 days.", "", `<div class="field"><span class="lbl">Company</span>${pillTabs(ORDER.map(t => [t, t, !EXTRA.ai[t]]), tk, "data-inv-t")}</div>
-      ${!trk ? `<p class="sub" style="margin-top:14px">No AI session for ${esc(tk)}.</p>` : `
-      <div class="stats" style="margin-top:16px">
-        ${statCard("AI runs", trk.list.length, `${trk.done.length} graded, ${trk.list.length - trk.done.length} pending`, "", "brain")}
-        ${statCard("Direction right", trk.trades.length ? `${trk.hits}/${trk.trades.length}` : "–", trk.trades.length ? `${(trk.hits / trk.trades.length * 100).toFixed(0)}% of BUY/SELL calls` : "no BUY/SELL calls yet", trk.trades.length && trk.hits / trk.trades.length > 0.5 ? "buy" : "hold", "check")}
-        ${statCard(`${A} following BUY/SELL`, trk.avgFollow == null ? "–" : invShow(tk, A * (1 + trk.avgFollow)), trk.avgFollow == null ? "no trades" : `${fmtPct(trk.avgFollow * 100)} average per call`, trk.avgFollow > 0 ? "buy" : trk.avgFollow < 0 ? "sell" : "", "wallet")}
-        ${statCard(`${A} on HOLD days`, trk.avgHold == null ? "–" : invShow(tk, A * (1 + trk.avgHold)), trk.avgHold == null ? "" : `if you had held instead: ${fmtPct(trk.avgHold * 100)} average`, "", "clock")}
-      </div>
-      <div class="scroll"><table><thead><tr><th>Run date</th><th>Rating</th><th>Entry</th><th>Close +7d</th><th>Move</th><th>${A} following it</th><th>${A} if held</th><th>Result</th></tr></thead><tbody>${sessRows}</tbody></table></div>
-      <p class="src">Source: trading_log_*.json (rating) with the saved closes. BUY goes long, SELL goes short, HOLD makes no trade. Calls are one run each and overlap in time, so the average per call is not a compounded return.</p>`}`)}
-    ${Object.keys(bt).length ? card(`Forecast record for ${esc(tk)}`, `Value of ${A} if you followed each model's saved day-7 calls, from the first graded call to the last.`, "", `<div class="chartbox" id="invbt"></div><div class="legend" id="invbt-l"></div>
-      <div class="scroll" style="margin-top:14px"><table><thead><tr><th>Model</th><th>Trades</th><th>${A} followed</th><th>${A} buy and hold</th><th>Strategy return</th></tr></thead><tbody>${btRows}</tbody></table></div><p class="src">Source: forecast_log graded rows. Same method as the Backtest page: long when the model predicted up, short when down, no costs.</p>`) : ""}`;
-}
-function drawInv() {
-  const A = invAmt(), g = $("#invgrow"); if (!g) return;
-  const days = ["d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7"];
-  const ser = ORDER.map((t, i) => { const fc = invFc(t, X.inv.src); return { name: t, v: [A, ...fc.path.map(p => A * p / fc.last)], color: `var(${COLORS[i % 8]})`, w: 2 }; });
-  lineChart(g, days, ser, { label: "Growth of the invested amount", base: A, fmt: v => v.toFixed(2), lab: s => s === "d0" ? "now" : "day " + s.slice(1) });
-  $("#invgrow-l").innerHTML = ser.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("");
-  const b = $("#invbt"), bt = EXTRA.backtest[X.inv.t] || {}, e = bt.Ensemble; if (!b || !e) return;
-  const n = e.equity.length;
-  lineChart(b, e.dates, [{ name: "Ensemble followed", v: e.equity.map(v => A * v), color: "var(--accent)", w: 2.4 }, { name: "Buy and hold", v: e.buyhold_eq.map(v => A * v), color: "var(--faint)", dash: true, w: 1.6 }], { label: "Followed versus buy and hold", base: A, fmt: v => v.toFixed(0) });
-  $("#invbt-l").innerHTML = `<span><i style="background:var(--accent)"></i>Ensemble followed</span><span><i style="background:var(--faint)"></i>Buy and hold</span>`;
-}
 
 
 /* ----- help: glossary, hints, plain-language summary ----- */
@@ -1417,12 +1331,12 @@ function renderHelp() {
 /* ----- router ----- */
 function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; }
 function renderExtra() {
-  return ({ ai: renderAI, watch: renderWatch, inv: renderInv, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock })[S.page]();
+  return ({ ai: renderAI, watch: renderWatch, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock })[S.page]();
 }
-function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
+function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
 
 /* ---------- top nav ---------- */
-const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["inv", "Calculator"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
+const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
 const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg>';
 function renderNav() {
   const cur = id => (S.page === id || (id === "stocks" && S.page === "stock") ? ' aria-current="page"' : "");
@@ -2152,7 +2066,7 @@ $("#search").addEventListener("submit", e => {
 });
 $("#q").addEventListener("input", () => { $("#miss").hidden = true; if (typeof hideAddBox === "function") hideAddBox(); });
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-inv-t],[data-inv-src],[data-inv-h],[data-mkt],[data-stk]");
+  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-mkt],[data-stk]");
   if (!el || el.disabled) return;
   const d = el.dataset, a = d.act, v = d.v;
   if (d.ai) { if (X.ai.running) return; X.ai.t = d.ai; }
@@ -2176,9 +2090,6 @@ document.addEventListener("click", e => {
   else if (a === "stk-ai") { X.ai.extra = X.ai.extra || []; if (!DATA[v] && !X.ai.extra.includes(v)) X.ai.extra.push(v); X.ai.t = v; goPage("ai"); return; }
   else if (a === "mkt-refresh") { loadMarket(true); return; }
   else if (a === "mkt-news-more") X.mkt.newsN += 20;
-  else if (d.invT) X.inv.t = d.invT;
-  else if (d.invSrc) X.inv.src = d.invSrc;
-  else if (d.invH) X.inv.h = d.invH === "7" ? 7 : 5;
   else if (d.mem) X.mem.tab = d.mem;
   else if (d.setTheme) { settings.theme = d.setTheme; saveSettings(); applySettings(false); }
   else if (d.setView) { settings.view = d.setView; S.view = d.setView; saveSettings(); }
@@ -2205,8 +2116,6 @@ document.addEventListener("change", e => {
   else if (b === "ai-model") X.ai.model = v;
   else if (b === "ai-force") X.ai.force = e.target.checked;
   else if (b === "set-token") return;  // saved on input; a re-render here would swallow the click that caused the blur
-  else if (b === "inv-basis") X.inv.basis = v;
-  else if (b === "inv-amt") X.inv.amt = v;
   else if (b === "set-win") { settings.win = +v; S.win = +v; saveSettings(); }
   else if (b === "set-unit") { settings.unit = v; S.unit = v; saveSettings(); }
   else return;
@@ -2215,7 +2124,6 @@ document.addEventListener("change", e => {
 document.addEventListener("input", e => {
   const b = e.target.dataset.bind;
   if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
-  else if (b === "inv-amt") { X.inv.amt = e.target.value; render(); const i = $("#inv-a"); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (err) { /* number inputs have no caret */ } } }
   else if (b === "stk-q") { X.stk.q = e.target.value; X.stk.n = 100; render(); const i = $("#stk-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
   else if (b === "mem-q") { X.mem.q = e.target.value; render(); const i = $("#mem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 });

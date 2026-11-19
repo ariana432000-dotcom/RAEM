@@ -1,5 +1,5 @@
 document.addEventListener("click", e => {
-  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-inv-t],[data-inv-src],[data-inv-h],[data-mkt],[data-stk]");
+  const el = e.target.closest("[data-act],[data-ai],[data-stage],[data-bt],[data-ds],[data-news],[data-mem],[data-set-theme],[data-set-view],[data-mkt],[data-stk]");
   if (!el || el.disabled) return;
   const d = el.dataset, a = d.act, v = d.v;
   if (d.ai) { if (X.ai.running) return; X.ai.t = d.ai; }
@@ -23,9 +23,6 @@ document.addEventListener("click", e => {
   else if (a === "stk-ai") { X.ai.extra = X.ai.extra || []; if (!DATA[v] && !X.ai.extra.includes(v)) X.ai.extra.push(v); X.ai.t = v; goPage("ai"); return; }
   else if (a === "mkt-refresh") { loadMarket(true); return; }
   else if (a === "mkt-news-more") X.mkt.newsN += 20;
-  else if (d.invT) X.inv.t = d.invT;
-  else if (d.invSrc) X.inv.src = d.invSrc;
-  else if (d.invH) X.inv.h = d.invH === "7" ? 7 : 5;
   else if (d.mem) X.mem.tab = d.mem;
   else if (d.setTheme) { settings.theme = d.setTheme; saveSettings(); applySettings(false); }
   else if (d.setView) { settings.view = d.setView; S.view = d.setView; saveSettings(); }
@@ -52,8 +49,6 @@ document.addEventListener("change", e => {
   else if (b === "ai-model") X.ai.model = v;
   else if (b === "ai-force") X.ai.force = e.target.checked;
   else if (b === "set-token") return;  // saved on input; a re-render here would swallow the click that caused the blur
-  else if (b === "inv-basis") X.inv.basis = v;
-  else if (b === "inv-amt") X.inv.amt = v;
   else if (b === "set-win") { settings.win = +v; S.win = +v; saveSettings(); }
   else if (b === "set-unit") { settings.unit = v; S.unit = v; saveSettings(); }
   else return;
@@ -62,7 +57,6 @@ document.addEventListener("change", e => {
 document.addEventListener("input", e => {
   const b = e.target.dataset.bind;
   if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
-  else if (b === "inv-amt") { X.inv.amt = e.target.value; render(); const i = $("#inv-a"); if (i) { i.focus(); try { i.setSelectionRange(i.value.length, i.value.length); } catch (err) { /* number inputs have no caret */ } } }
   else if (b === "stk-q") { X.stk.q = e.target.value; X.stk.n = 100; render(); const i = $("#stk-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
   else if (b === "mem-q") { X.mem.q = e.target.value; render(); const i = $("#mem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
 });
