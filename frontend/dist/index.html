@@ -521,6 +521,8 @@ const refDate = () => {
   const n = new Date(), p = v => String(v).padStart(2, "0");
   return n.getFullYear() + "-" + p(n.getMonth() + 1) + "-" + p(n.getDate());
 };
+/* The day this company's saved forecast was made (its own run, not the site-wide export date ASOF), else its last price date. */
+const savedOn = d => ((d.run_info || {}).generated_at || "").slice(0, 10) || d.forecast.last_date;
 /* What a saved forecast is: when it was made, which prices it started from and which days it covers. */
 function savedForecastNote(d) {
   const f = d.forecast, made = ((d.run_info || {}).generated_at || "").slice(0, 10), end = f.dates && f.dates[f.dates.length - 1];
@@ -688,7 +690,7 @@ function renderTicker() {
     </div>
     ${live ? tokenRow() : ""}
     <div class="runbar"><button type="button" class="btn primary" id="run" ${S.running || fcBusy ? "disabled" : ""}>${S.running || fcBusy ? "Running…" : live ? `Run ${nSel} models` : ran ? "Run again" : "Run forecast"}</button>
-      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three models with the lowest holdout error; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(ASOF)}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(ASOF)} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
+      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three models with the lowest holdout error; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(savedOn(d))}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(savedOn(d))} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
@@ -919,12 +921,14 @@ function aiFiveDay(t) {
   const lo = band ? band[k][0] / last - 1 : null, hi = band ? band[k][1] / last - 1 : null;
   const money2 = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : stakeSigned(v);
   const pl = x => money2(A * x), stake = tk ? `${A.toLocaleString("en-US")} Tk` : stakeShow(A);
-  return `<div class="sect"><p class="l">If you buy now: next 5 trading days (to ${dShort(f.dates[k])})</p>
+  // once the 5th forecast day is past, this is what the saved forecast expected then, not what buying today would bring
+  const past = f.dates[k] < refDate();
+  return `<div class="sect"><p class="l">${past ? `Historical forecast: 5 trading days from the ${dShort(f.last_date)} close (to ${dShort(f.dates[k])}, already past)` : `If you buy now: next 5 trading days (to ${dShort(f.dates[k])})`}</p>
     <p class="v ${cls(r)}">${pl(r)} <span class="vs">${fmtPct(r * 100)} on ${stake}</span></p>
     ${band ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
       <div><p class="l" style="margin:0">Likely worst (10%)</p><p class="v ${cls(lo)}">${pl(lo)}</p><p class="vs ${cls(lo)}">${fmtPct(lo * 100)} · price ${fmtP(band[k][0])} ${esc(cur)}</p></div>
       <div><p class="l" style="margin:0">Likely best (90%)</p><p class="v ${cls(hi)}">${pl(hi)}</p><p class="vs ${cls(hi)}">${fmtPct(hi * 100)} · price ${fmtP(band[k][1])} ${esc(cur)}</p></div></div>` : ""}
-    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days old, so the real start price may differ)` : ""}. The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. Not investment advice.</p></div>`;
+    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days old, so the real start price may differ)` : ""}.${past ? " Its dates are already past, so it does not say what buying today would bring; run the forecast again for current prices." : ""} The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. Not investment advice.</p></div>`;
 }
 function aiDecisionCard(t, L) {
   const sig = aiSignal(L), d = DATA[t], seen = +(L.summary || {}).market_latest_close || null, cur = d ? d.meta.currency : "", entry = d ? d.forecast.last_price : seen;
@@ -973,7 +977,17 @@ function aiResults(t, a, top, tail = "") {
     ${aiDebateCard(L)}${aiRiskCard(L)}
     ${card("Final decision text", `${esc(t)} · ${dLong(L.date)}`, ratingBadge(L.rating), `<div class="pre">${md(L.final_decision)}</div>`)}
     ${card("Analyst pipeline", "Each stage's saved output for this session.", "", `${pillTabs(stages.map(s => [s, s]), X.ai.stage, "data-stage")}<div class="scrollbox" style="margin-top:16px"><p class="sub" style="margin-bottom:8px">${esc(X.ai.stage)} · ${esc(st.time || "")}</p><div class="pre">${md(st.text)}</div></div><p class="src">Source: notebooks/trading_log_*.json (step outputs, shortened).</p>`)}
-    ${card("Session history", `${a.sessions.length} saved sessions for ${esc(t)}.`, "", `<div class="scroll"><table><thead><tr><th>Date</th><th>Started</th><th>Signal</th><th>Rating</th></tr></thead><tbody>${a.sessions.slice().reverse().slice(0, 15).map(s => `<tr><td class="t">${dShort(s.date)}</td><td>${esc((s.start || "").slice(11, 16))}</td><td>${s.signal && s.signal !== "nan" ? esc(s.signal) : "–"}</td><td>${ratingBadge(s.rating)}</td></tr>`).join("")}</tbody></table></div>`)}` + tail;
+    ${aiSessionHistoryCard(t, a)}` + tail;
+}
+/* Session history: newest first. Interrupted runs (stopped before a final decision, so no rating) are hidden unless asked for;
+   the first 15 are shown unless "show all" is on. Source: a notebook run (its logged model) or a website run (its model). */
+function aiSessionHistoryCard(t, a) {
+  const all = a.sessions.slice().reverse(), interrupted = all.filter(s => s.finished === false), finished = all.length - interrupted.length;
+  const rows = X.ai.histInt ? all : all.filter(s => s.finished !== false), shown = X.ai.histAll ? rows : rows.slice(0, 15);
+  const src = s => s.source === "notebook" ? `Notebook${s.model ? ` · ${esc(s.model)}` : ""}` : s.source === "website" ? `Website${s.model ? ` · ${esc(s.model)}` : ""}` : "–";
+  const sub = `${finished} finished session${finished === 1 ? "" : "s"}${interrupted.length ? ` and ${interrupted.length} interrupted` : ""} for ${esc(t)} · showing ${shown.length}.`;
+  const btns = `${rows.length > 15 ? `<button type="button" class="link" data-act="ai-hist-all">${X.ai.histAll ? "Show newest 15" : `Show all ${rows.length}`}</button>` : ""}${interrupted.length ? `<button type="button" class="link" data-act="ai-hist-int">${X.ai.histInt ? "Hide interrupted" : `Show interrupted (${interrupted.length})`}</button>` : ""}`;
+  return card("Session history", sub, btns, `<div class="scroll"><table><thead><tr><th>Date</th><th>Started</th><th>Source</th><th>Signal</th><th>Rating</th></tr></thead><tbody>${shown.map(s => `<tr><td class="t">${dShort(s.date)}</td><td>${esc((s.start || "").slice(11, 16))}</td><td>${src(s)}</td><td>${s.signal && s.signal !== "nan" ? esc(s.signal) : "–"}</td><td>${s.finished === false ? `<span class="badge">interrupted</span>` : ratingBadge(s.rating)}</td></tr>`).join("")}</tbody></table></div><p class="src">An interrupted run stopped before its final decision, so it has no rating. Source: notebooks/trading_log_*.json, the session archive and website runs.</p>`);
 }
 
 /* ----- watchlist ----- */
@@ -1374,7 +1388,7 @@ function mktIndices(d) {
 function mktSummary(s, d) {
   return `<div class="stats">${statCard("Total trade", fmtN(s.total_trade), `${fmtN(s.traded_issues)} issues traded`, "", "pulse")}${statCard("Total volume", fmtN(s.total_volume), "shares", "", "chart")}${statCard("Value (mn)", fmtN(s.value_mn, 2), "BDT", "", "wallet")}
     <div class="card stat"><div style="min-width:0"><p class="k">Advanced / declined</p><p class="v breadth"><span class="up">▲ ${s.advanced}</span> <span class="down">▼ ${s.declined}</span> <span class="flat">■ ${s.unchanged}</span></p><p class="h">against the previous close</p></div><div class="ico">${ic("check")}</div></div></div>
-    <p class="src">These totals add up every issue traded in the exchange's day-end archive${d && d.date ? ` for ${dLong(d.date)}` : ""}${d && d.fetched_at ? `, fetched ${esc(d.fetched_at.replace("T", " ").slice(0, 16))} (Dhaka time)` : ""}${d && d.provisional ? ", which may not be final yet" : ""}. The exchange's own notices can show a different turnover, because each is a snapshot taken at its own time and may cover other boards or block trades. Compare the notice's time before comparing the figures.</p>`;
+    <p class="src">These totals add up every issue traded in the exchange's day-end archive${d && d.date ? ` for ${dLong(d.date)}` : ""}${d && d.fetched_at ? `, fetched ${esc(d.fetched_at.replace("T", " ").slice(0, 16))} (Dhaka time)` : ""}${d && d.provisional ? ", which may not be final yet" : ""}. ${(() => { const ex = d && d.exchange_totals; return ex && ex.value_mn != null ? `The exchange's own front page shows ${fmtN(ex.value_mn, 2)} mn BDT from ${fmtN(ex.total_trade)} trades${ex.as_of ? ` (last update ${esc(ex.as_of)})` : ""}. The two totals can differ, and the exchange does not say why, so each is shown with its own time.` : "The exchange's own notices can show a different turnover. Compare each figure's time before comparing them."; })()}</p>`;
 }
 function mktSectors(s) {
   if (!s.sectors.length) return emptyState("db", "Sector breadth needs the sector list", "Add backend/data/dse_sectors.json (trading code to sector) and it fills in on the next refresh.");
@@ -2090,6 +2104,8 @@ document.addEventListener("click", e => {
   else if (a === "stk-ai") { X.ai.extra = X.ai.extra || []; if (!DATA[v] && !X.ai.extra.includes(v)) X.ai.extra.push(v); X.ai.t = v; goPage("ai"); return; }
   else if (a === "mkt-refresh") { loadMarket(true); return; }
   else if (a === "mkt-news-more") X.mkt.newsN += 20;
+  else if (a === "ai-hist-all") X.ai.histAll = !X.ai.histAll;
+  else if (a === "ai-hist-int") X.ai.histInt = !X.ai.histInt;
   else if (d.mem) X.mem.tab = d.mem;
   else if (d.setTheme) { settings.theme = d.setTheme; saveSettings(); applySettings(false); }
   else if (d.setView) { settings.view = d.setView; S.view = d.setView; saveSettings(); }

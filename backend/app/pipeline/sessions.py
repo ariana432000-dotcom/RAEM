@@ -269,6 +269,24 @@ def final_signal(last: dict, raw: dict) -> str | None:
     return SIGNAL_OF.get(rating(last.get("final_decision")) or "")
 
 
+def session_row(s: dict, csv_signal: str | None) -> dict:
+    """One row of the page's session history.
+
+    source: "notebook" when the session logged an "LLM Setup" step (every notebook run does, e.g. "Ollama Qwen2.5 7B"),
+    else "website" (the website pipeline logs no such step; the model of a website run is added from the run database by
+    tools/refresh_sessions.py). finished: the run reached a final decision (an interrupted run has none, so no rating).
+    signal: the CSV's final_signal, else the session's own logged signal or rating (never a value the session lacks)."""
+    setup = next((st for st in s.get("steps") or [] if isinstance(st, dict) and st.get("step") == "LLM Setup"), None)
+    rt = rating(s.get("final_decision"))
+    sig = str(csv_signal).upper() if str(csv_signal or "").upper() in ("BUY", "HOLD", "SELL") else None
+    if sig is None:
+        logged = str((s.get("summary_table") or {}).get("final_signal") or "").upper()
+        sig = logged if logged in ("BUY", "HOLD", "SELL") else SIGNAL_OF.get(rt or "")
+    return {"date": s.get("trade_date"), "start": s.get("session_start"), "signal": sig, "rating": rt,
+            "finished": bool(s.get("final_decision")), "source": "notebook" if setup else "website",
+            "model": str(setup.get("input") or "").strip() or None if setup else None}
+
+
 def entry_from_session(last: dict, history: list[tuple[dict, str | None]]) -> dict:
     steps, raw = {}, {}
     for st in last.get("steps", []) or []:
@@ -282,8 +300,7 @@ def entry_from_session(last: dict, history: list[tuple[dict, str | None]]) -> di
         if key:
             raw[key] = st.get("output")
     tbl = {k: v for k, v in (last.get("summary_table") or {}).items() if k != "market_stock_data"}
-    hist = [{"date": s.get("trade_date"), "start": s.get("session_start"), "signal": g, "rating": rating(s.get("final_decision"))}
-            for s, g in history]
+    hist = [session_row(s, g) for s, g in history]
     return sanitize({
         "sessions": hist,
         "latest": {"date": last.get("trade_date"), "start": last.get("session_start"), "end": last.get("session_end"),
