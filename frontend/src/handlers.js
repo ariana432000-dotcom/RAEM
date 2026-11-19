@@ -23,6 +23,8 @@ document.addEventListener("click", e => {
   else if (a === "stk-ai") { X.ai.extra = X.ai.extra || []; if (!DATA[v] && !X.ai.extra.includes(v)) X.ai.extra.push(v); X.ai.t = v; goPage("ai"); return; }
   else if (a === "mkt-refresh") { loadMarket(true); return; }
   else if (a === "mkt-news-more") X.mkt.newsN += 20;
+  else if (a === "ai-hist-all") X.ai.histAll = !X.ai.histAll;
+  else if (a === "ai-hist-int") X.ai.histInt = !X.ai.histInt;
   else if (d.mem) X.mem.tab = d.mem;
   else if (d.setTheme) { settings.theme = d.setTheme; saveSettings(); applySettings(false); }
   else if (d.setView) { settings.view = d.setView; S.view = d.setView; saveSettings(); }

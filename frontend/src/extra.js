@@ -109,12 +109,14 @@ function aiFiveDay(t) {
   const lo = band ? band[k][0] / last - 1 : null, hi = band ? band[k][1] / last - 1 : null;
   const money2 = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : stakeSigned(v);
   const pl = x => money2(A * x), stake = tk ? `${A.toLocaleString("en-US")} Tk` : stakeShow(A);
-  return `<div class="sect"><p class="l">If you buy now: next 5 trading days (to ${dShort(f.dates[k])})</p>
+  // once the 5th forecast day is past, this is what the saved forecast expected then, not what buying today would bring
+  const past = f.dates[k] < refDate();
+  return `<div class="sect"><p class="l">${past ? `Historical forecast: 5 trading days from the ${dShort(f.last_date)} close (to ${dShort(f.dates[k])}, already past)` : `If you buy now: next 5 trading days (to ${dShort(f.dates[k])})`}</p>
     <p class="v ${cls(r)}">${pl(r)} <span class="vs">${fmtPct(r * 100)} on ${stake}</span></p>
     ${band ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
       <div><p class="l" style="margin:0">Likely worst (10%)</p><p class="v ${cls(lo)}">${pl(lo)}</p><p class="vs ${cls(lo)}">${fmtPct(lo * 100)} · price ${fmtP(band[k][0])} ${esc(cur)}</p></div>
       <div><p class="l" style="margin:0">Likely best (90%)</p><p class="v ${cls(hi)}">${pl(hi)}</p><p class="vs ${cls(hi)}">${fmtPct(hi * 100)} · price ${fmtP(band[k][1])} ${esc(cur)}</p></div></div>` : ""}
-    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days old, so the real start price may differ)` : ""}. The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. Not investment advice.</p></div>`;
+    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days old, so the real start price may differ)` : ""}.${past ? " Its dates are already past, so it does not say what buying today would bring; run the forecast again for current prices." : ""} The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. Not investment advice.</p></div>`;
 }
 function aiDecisionCard(t, L) {
   const sig = aiSignal(L), d = DATA[t], seen = +(L.summary || {}).market_latest_close || null, cur = d ? d.meta.currency : "", entry = d ? d.forecast.last_price : seen;
@@ -163,7 +165,17 @@ function aiResults(t, a, top, tail = "") {
     ${aiDebateCard(L)}${aiRiskCard(L)}
     ${card("Final decision text", `${esc(t)} · ${dLong(L.date)}`, ratingBadge(L.rating), `<div class="pre">${md(L.final_decision)}</div>`)}
     ${card("Analyst pipeline", "Each stage's saved output for this session.", "", `${pillTabs(stages.map(s => [s, s]), X.ai.stage, "data-stage")}<div class="scrollbox" style="margin-top:16px"><p class="sub" style="margin-bottom:8px">${esc(X.ai.stage)} · ${esc(st.time || "")}</p><div class="pre">${md(st.text)}</div></div><p class="src">Source: notebooks/trading_log_*.json (step outputs, shortened).</p>`)}
-    ${card("Session history", `${a.sessions.length} saved sessions for ${esc(t)}.`, "", `<div class="scroll"><table><thead><tr><th>Date</th><th>Started</th><th>Signal</th><th>Rating</th></tr></thead><tbody>${a.sessions.slice().reverse().slice(0, 15).map(s => `<tr><td class="t">${dShort(s.date)}</td><td>${esc((s.start || "").slice(11, 16))}</td><td>${s.signal && s.signal !== "nan" ? esc(s.signal) : "–"}</td><td>${ratingBadge(s.rating)}</td></tr>`).join("")}</tbody></table></div>`)}` + tail;
+    ${aiSessionHistoryCard(t, a)}` + tail;
+}
+/* Session history: newest first. Interrupted runs (stopped before a final decision, so no rating) are hidden unless asked for;
+   the first 15 are shown unless "show all" is on. Source: a notebook run (its logged model) or a website run (its model). */
+function aiSessionHistoryCard(t, a) {
+  const all = a.sessions.slice().reverse(), interrupted = all.filter(s => s.finished === false), finished = all.length - interrupted.length;
+  const rows = X.ai.histInt ? all : all.filter(s => s.finished !== false), shown = X.ai.histAll ? rows : rows.slice(0, 15);
+  const src = s => s.source === "notebook" ? `Notebook${s.model ? ` · ${esc(s.model)}` : ""}` : s.source === "website" ? `Website${s.model ? ` · ${esc(s.model)}` : ""}` : "–";
+  const sub = `${finished} finished session${finished === 1 ? "" : "s"}${interrupted.length ? ` and ${interrupted.length} interrupted` : ""} for ${esc(t)} · showing ${shown.length}.`;
+  const btns = `${rows.length > 15 ? `<button type="button" class="link" data-act="ai-hist-all">${X.ai.histAll ? "Show newest 15" : `Show all ${rows.length}`}</button>` : ""}${interrupted.length ? `<button type="button" class="link" data-act="ai-hist-int">${X.ai.histInt ? "Hide interrupted" : `Show interrupted (${interrupted.length})`}</button>` : ""}`;
+  return card("Session history", sub, btns, `<div class="scroll"><table><thead><tr><th>Date</th><th>Started</th><th>Source</th><th>Signal</th><th>Rating</th></tr></thead><tbody>${shown.map(s => `<tr><td class="t">${dShort(s.date)}</td><td>${esc((s.start || "").slice(11, 16))}</td><td>${src(s)}</td><td>${s.signal && s.signal !== "nan" ? esc(s.signal) : "–"}</td><td>${s.finished === false ? `<span class="badge">interrupted</span>` : ratingBadge(s.rating)}</td></tr>`).join("")}</tbody></table></div><p class="src">An interrupted run stopped before its final decision, so it has no rating. Source: notebooks/trading_log_*.json, the session archive and website runs.</p>`);
 }
 
 /* ----- watchlist ----- */
@@ -564,7 +576,7 @@ function mktIndices(d) {
 function mktSummary(s, d) {
   return `<div class="stats">${statCard("Total trade", fmtN(s.total_trade), `${fmtN(s.traded_issues)} issues traded`, "", "pulse")}${statCard("Total volume", fmtN(s.total_volume), "shares", "", "chart")}${statCard("Value (mn)", fmtN(s.value_mn, 2), "BDT", "", "wallet")}
     <div class="card stat"><div style="min-width:0"><p class="k">Advanced / declined</p><p class="v breadth"><span class="up">▲ ${s.advanced}</span> <span class="down">▼ ${s.declined}</span> <span class="flat">■ ${s.unchanged}</span></p><p class="h">against the previous close</p></div><div class="ico">${ic("check")}</div></div></div>
-    <p class="src">These totals add up every issue traded in the exchange's day-end archive${d && d.date ? ` for ${dLong(d.date)}` : ""}${d && d.fetched_at ? `, fetched ${esc(d.fetched_at.replace("T", " ").slice(0, 16))} (Dhaka time)` : ""}${d && d.provisional ? ", which may not be final yet" : ""}. The exchange's own notices can show a different turnover, because each is a snapshot taken at its own time and may cover other boards or block trades. Compare the notice's time before comparing the figures.</p>`;
+    <p class="src">These totals add up every issue traded in the exchange's day-end archive${d && d.date ? ` for ${dLong(d.date)}` : ""}${d && d.fetched_at ? `, fetched ${esc(d.fetched_at.replace("T", " ").slice(0, 16))} (Dhaka time)` : ""}${d && d.provisional ? ", which may not be final yet" : ""}. ${(() => { const ex = d && d.exchange_totals; return ex && ex.value_mn != null ? `The exchange's own front page shows ${fmtN(ex.value_mn, 2)} mn BDT from ${fmtN(ex.total_trade)} trades${ex.as_of ? ` (last update ${esc(ex.as_of)})` : ""}. The two totals can differ, and the exchange does not say why, so each is shown with its own time.` : "The exchange's own notices can show a different turnover. Compare each figure's time before comparing them."; })()}</p>`;
 }
 function mktSectors(s) {
   if (!s.sectors.length) return emptyState("db", "Sector breadth needs the sector list", "Add backend/data/dse_sectors.json (trading code to sector) and it fills in on the next refresh.");

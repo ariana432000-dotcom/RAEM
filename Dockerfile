@@ -28,5 +28,6 @@ RUN python backend/refresh.py --build-only \
 EXPOSE 8000
 # hf_sync.py restores the saved data from a Hugging Face dataset when RAEM_HF_DATASET and HF_TOKEN are set (a Space);
 # persist.py moves the changing folders onto the volume when RAEM_DATA_DIR is set (Railway); the page is then rebuilt
-# from that data. Both do nothing when unset. One worker only: the run queue and SQLite live in this one process.
-CMD ["sh", "-c", "python backend/tools/hf_sync.py restore && python backend/tools/persist.py && python backend/refresh.py --build-only && uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
+# from that data. Both do nothing when unset. refresh_sessions.py then brings the committed session archive and memory store
+# into the page data (keeping website runs; it never fails the start). One worker only: the run queue and SQLite live in this one process.
+CMD ["sh", "-c", "python backend/tools/hf_sync.py restore && python backend/tools/persist.py && (python backend/tools/refresh_sessions.py || true) && python backend/refresh.py --build-only && uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

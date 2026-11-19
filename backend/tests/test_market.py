@@ -33,6 +33,27 @@ def test_parse_indices_finds_what_is_there():
     idx = {i["name"]: i for i in market.parse_indices(FRONT)}
     assert set(idx) == {"DSEX", "DSES"}                                     # DS30 is not on this page: left out, no error
     assert idx["DSEX"]["value"] == 5012.34 and idx["DSEX"]["change"] == -12.5 and idx["DSEX"]["change_pct"] == -0.25
+    assert market.parse_front_totals(FRONT) is None                         # no totals block: None, no error
+
+
+# The real front page (old.dsebd.org, 2026-11-19): the last letter is marked up apart ("DSE<font>X</font>", read as "DSE X"),
+# the menu names the indices before the values, and the day totals sit in their own block.
+FRONT_DSE = """<html><body><ul><li>DSEX Shariah Index Methodology</li><li>Algorithm of DSE Indices</li><li>DSEX Index</li><li>DS30 Index</li>
+<li>Holidays &amp; Trading Sessions</li></ul><h2 class="Bodyheading">Last update on Nov 19, 2026 at 2:40 PM </h2>
+<div class="midrow"><div class="m_col-1">DSE<font size="+1">X</font> Index</div><div class="m_col-2"> 5505.63875 </div><div class="m_col-3"> 4.80254 </div><div class="m_col-4"> 0.08731% </div></div>
+<div class="midrow"><div class="m_col-1">DSE<font size="+1">S</font> Index</div><div class="m_col-2"> 1074.08097 </div><div class="m_col-3"> -0.82331 </div><div class="m_col-4"> -0.07659% </div></div>
+<div class="midrow"><div class="m_col-1">DS30 Index</div><div class="m_col-2"> 2085.73389 </div><div class="m_col-3"> -2.75497 </div><div class="m_col-4"> -0.13191% </div></div>
+<div>Total Trade</div><div>Total Volume</div><div>Total Value in Taka (mn)</div><div>201554</div><div>215681302</div><div>7466.351</div></body></html>"""
+
+
+def test_parse_indices_reads_the_real_front_page_markup():
+    idx = {i["name"]: (i["value"], i["change"], i["change_pct"]) for i in market.parse_indices(FRONT_DSE)}
+    assert idx == {"DSEX": (5505.63875, 4.80254, 0.08731), "DSES": (1074.08097, -0.82331, -0.07659), "DS30": (2085.73389, -2.75497, -0.13191)}
+
+
+def test_parse_front_totals_reads_the_exchange_totals_and_time():
+    assert market.parse_front_totals(FRONT_DSE) == {"total_trade": 201554, "total_volume": 215681302, "value_mn": 7466.351,
+                                                     "as_of": "Nov 19, 2026 at 2:40 PM", "source": "DSE front page"}
 
 
 def test_route_caches_and_survives_a_failed_fetch(client, monkeypatch, tmp_path):

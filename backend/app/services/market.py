@@ -107,16 +107,33 @@ def summarise(rows: list[dict], sectors: dict | None = None, top: int = 20) -> d
             "top": stocks[:top], "stocks": stocks}   # stocks: every issue traded, so the page can rank by value, volume or trade
 
 
-def parse_indices(html: str) -> list[dict]:
-    """DSEX / DSES / DS30 value, point change and percent change from the front page text; an index not found is left out."""
+def _front_text(html: str) -> str:
     from bs4 import BeautifulSoup
-    text = re.sub(r"\s+", " ", BeautifulSoup(html, "lxml").get_text(" ", strip=True))
+    return re.sub(r"\s+", " ", BeautifulSoup(html, "lxml").get_text(" ", strip=True))
+
+
+def parse_indices(html: str) -> list[dict]:
+    """DSEX / DSES / DS30 value, point change and percent change from the front page text; an index not found is left out.
+    The page marks the last letter up separately (DSE<font>X</font>), which reads as "DSE X", so a space is allowed there."""
+    text = _front_text(html)
     out = []
     for name in INDEX_NAMES:
-        m = re.search(rf"\b{name}\b(?:\s*Index)?[^0-9\-+]{{0,30}}([\d,]+\.\d+)\s+([+\-]?[\d,]*\.?\d+)\s+\(?([+\-]?[\d.]+)\s*%?\)?", text, re.I)
+        m = re.search(rf"\b{name[:-1]}\s*{name[-1]}\b(?:\s*Index)?[^0-9\-+]{{0,30}}([\d,]+\.\d+)\s+([+\-]?[\d,]*\.?\d+)\s+\(?([+\-]?[\d.]+)\s*%?\)?", text, re.I)
         if m:
             out.append({"name": name, "value": _num(m.group(1)), "change": _num(m.group(2)), "change_pct": _num(m.group(3))})
     return out
+
+
+def parse_front_totals(html: str) -> dict | None:
+    """The exchange's own day totals from its front page ("Total Trade Total Volume Total Value in Taka (mn) 201554 215681302
+    7466.351") and the page's "Last update on Nov 19, 2026 at 2:40 PM" time. None when the block is not on the page."""
+    text = _front_text(html)
+    m = re.search(r"Total Trade\s+Total Volume\s+Total Value in Taka\s*\(mn\)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+\.?\d*)", text, re.I)
+    if not m:
+        return None
+    u = re.search(r"Last update on\s+([A-Za-z]{3,9}\.? \d{1,2}, \d{4} at \d{1,2}:\d{2}\s*[AP]M)", text, re.I)
+    return {"total_trade": _num(m.group(1)), "total_volume": _num(m.group(2)), "value_mn": _num(m.group(3)),
+            "as_of": u.group(1) if u else None, "source": "DSE front page"}
 
 
 def _sectors() -> dict:
@@ -191,7 +208,9 @@ def build(today: date | None = None) -> dict:
     except Exception as e:
         out["errors"].append(f"archive: {e}")
     try:
-        out["indices"] = parse_indices(_get(""))
+        front = _get("")
+        out["indices"] = parse_indices(front)
+        out["exchange_totals"] = parse_front_totals(front)
     except Exception as e:
         out["errors"].append(f"indices: {e}")
     out["news"] = _news()
