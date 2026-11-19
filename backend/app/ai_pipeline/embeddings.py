@@ -100,9 +100,17 @@ def embedding_function(mode: str):
     return ef.DefaultEmbeddingFunction() if mode == "local" else _hash_function()
 
 
+# Episodes removed from the original store on purpose. copy_memory only adds rows, so a removed row would stay in a
+# mode's store (e.g. raem_chroma_db_local on the server) that copied it earlier; these ids are deleted there too.
+REMOVED_EPISODE_IDS = {
+    "e8a0fffaaf77b360",   # BPML 2026-10-07: no entry price (insufficient DSE price history), could never be resolved
+}
+
+
 def copy_memory(mode: str) -> int:
     """Copy what the mode's store lacks from the original store (by id, embedded again), so past episodes still count.
-    The original store keeps its contents. Returns the number of rows added."""
+    The original store keeps its contents. In the mode's store, only the ids in REMOVED_EPISODE_IDS are deleted, and a
+    PENDING episode takes the outcome the original store has resolved for it. Returns the number of rows added."""
     if mode == "ollama" or not os.path.isdir(config.CHROMA_DB_PATH):
         return 0
     import chromadb
@@ -114,8 +122,22 @@ def copy_memory(mode: str) -> int:
             s = src.get_collection(getattr(col, "name", col))
             got = s.get(include=["documents", "metadatas"])
             d = dst.get_or_create_collection(name=s.name, embedding_function=ef, metadata=s.metadata or None)
-            have = set(d.get(include=[])["ids"])
-            rows = [r for r in zip(got["ids"], got["documents"], got["metadatas"]) if r[0] not in have and r[1]]
+            mine = d.get(include=["metadatas"])
+            have = set(mine["ids"])
+            # an episode the original store has resolved since it was copied: take the outcome (metadata only, same text);
+            # one this store resolved itself is left as it is
+            pending = {i for i, m in zip(mine["ids"], mine["metadatas"]) if (m or {}).get("outcome_status") == "PENDING"}
+            resolved = [(i, m) for i, m in zip(got["ids"], got["metadatas"])
+                        if i in pending and (m or {}).get("outcome_status") == "RESOLVED"]
+            if resolved:
+                d.update(ids=[i for i, _ in resolved], metadatas=[m for _, m in resolved])
+                print(f"== Memory: {len(resolved)} pending episode(s) took their resolved outcome from the original store", flush=True)
+            gone = sorted(have & REMOVED_EPISODE_IDS)
+            if gone:
+                d.delete(ids=gone)
+                print(f"== Memory: removed {len(gone)} dropped episode(s) from the {mode} store", flush=True)
+            rows = [r for r in zip(got["ids"], got["documents"], got["metadatas"])
+                    if r[0] not in have and r[0] not in REMOVED_EPISODE_IDS and r[1]]
             for k in range(0, len(rows), 100):
                 part = rows[k:k + 100]
                 d.add(ids=[r[0] for r in part], documents=[r[1] for r in part], metadatas=[r[2] or None for r in part])
