@@ -12,6 +12,7 @@ This folder is self-contained: put it on GitHub, clone it anywhere and run it. I
 | Forecast | 7-day path (the reviewed forecast, with its 10-90% range), BUY/HOLD/SELL from its tested odds after trading costs, plain-language summary, every model's prediction, reviewer, track record; **Run** runs the best 5 models on the server; the page shows what 100 tk could become | `forecast_lib` + `predictor_lib` |
 | **AI Analysis** | **pick any company and an LLM (Ollama, OpenAI, Claude, Gemini, Groq or Kimi) and run the AI analysis** on the server: analysts, bull vs bear debate, trader, risk debate, portfolio manager, verifier; open earlier stored runs | `backend/app/ai_pipeline/` (the any_with_dse pipeline) + `backend/tradingagents/` |
 | Backtest, Dataset, News, Fundamentals, Memory | evidence and data behind the forecasts | engine data and trading logs |
+| **Evaluation** | how often the AI analysis' BUY / HOLD / SELL calls were right: accuracy per company and overall (window of 1, 2 or 3 trading days), 95% intervals, the always-HOLD baseline, graphs by company, by signal and over time, every call; merged and scored again on every refresh | `app/pipeline/export_evaluation.py`: trading logs + session archive + `backend/data/evaluation_inputs/` |
 | Watchlist, Settings, Help | pins, preferences, server token, glossary | your browser |
 
 **Stored runs.** Every forecast and AI analysis run is saved in a database (SQLite, `backend/storage/raem.db`). Asking again on the same date for the same company and the same model(s) returns the stored result at once instead of running everything again. Tick "Run again" to force a new run. The notebooks also cache their own analysts per company, date and model.
@@ -36,13 +37,13 @@ web/
 │   │   ├── api/                  deps.py (tokens, known tickers, queueing) and routes/: health, stocks, forecast, analysis, refresh, runs
 │   │   ├── services/             tickers.py (saved company data), live.py (progress of a running analysis)
 │   │   ├── workers/jobs.py       the run queue and its runners (forecast, analysis, refresh)
-│   │   ├── pipeline/             export_ticker.py (forecast one company -> JSON), add_company.py (any ticker: prices, forecast, page data), export_extra.py, patch_daily.py, sessions.py (trading logs -> JSON)
+│   │   ├── pipeline/             export_ticker.py (forecast one company -> JSON), add_company.py (any ticker: prices, forecast, page data), export_extra.py, patch_daily.py, sessions.py (trading logs -> JSON), export_evaluation.py (score the calls -> data/evaluation.json)
 │   │   ├── ai_engine/            run_pipeline.py (the AI analysis of any ticker with a chosen LLM, Ollama or cloud)
 │   │   └── ai_pipeline/          the any_with_dse pipeline: runner.py (17 steps), agents.py, llm.py (providers + saved answers), memory.py (RAEM memory), embeddings.py, market_data.py, logger.py
 │   ├── tradingagents/            vendored TradingAgents package (data tools incl. the Dhaka Stock Exchange vendor)
 │   ├── engine/                   forecasting code and its data (CSV prices, trading logs, memory)
 │   │   └── notebooks/            trading_log_<TICKER>.json/.csv written by the AI analysis, and raem_chroma_db (episodic memory, news)
-│   ├── data/                     saved results the page is built from (tickers/*.json, extra.json, session_archive.json.gz)
+│   ├── data/                     saved results the page is built from (tickers/*.json, extra.json, evaluation.json, session_archive.json.gz); evaluation_inputs/ = drop-in files for the Evaluation page
 │   ├── storage/                  run database and saved LLM answers (created at runtime, not in git)
 │   ├── tests/                    API tests (fake runners, no models needed)
 │   ├── tools/sync_engine.py      copy fresh code and data from the research project
@@ -58,7 +59,7 @@ web/
 ```bash
 cd web
 pip install -r backend/requirements.txt
-python backend/refresh.py --build-only                       # build the page from the saved results
+python backend/refresh.py --build-only                       # build the page from the saved results (also re-scores the Evaluation page)
 python -m uvicorn app.main:app --app-dir backend --port 8000
 ```
 
@@ -72,6 +73,18 @@ ollama pull nomic-embed-text      # RAEM's memory uses it (optional: a built-in 
 ```
 
 Any other chat model you pull (e.g. `llama3.2:3b`) appears in the model list. The AI analysis makes many long LLM calls (analysts, two debates, trader, verifier), so one run with `qwen2.5:7b` on a CPU-only machine takes about 1 to 3 hours. A GPU or a smaller model (`qwen2.5:1.5b`, `llama3.2:3b`) is much faster. The server allows 6 hours per run (`RAEM_ANALYSIS_TIMEOUT`). Keep the computer awake and plugged in during a run: on Windows the server keeps the PC and the display on while a run is going, but closing a laptop lid still sleeps. Its LLM answers are saved, so running it again continues from there. Forecast runs need no Ollama and take 1 to 3 minutes.
+
+### Evaluation page: new data
+
+The **Evaluation** tab scores every BUY / HOLD / SELL call of the AI analysis against the closes of the next trading days. `python backend/refresh.py` (also with `--build-only`, and the server's refresh run) runs `backend/app/pipeline/export_evaluation.py`, which merges everything it finds and writes `backend/data/evaluation.json`; the page is then rebuilt from it. To add data, put files in `backend/data/evaluation_inputs/` and refresh; nothing else changes:
+
+| File in `evaluation_inputs/` | Columns / format | Use |
+|---|---|---|
+| `*.json`, `*.json.gz` | a list of sessions, like `trading_log_<T>.json` | more sessions (merged by company and session id) |
+| `*.csv` with `trade_date, ticker, final_signal` | optional `finalized`, `filled`, `imputed` (imputed and unfinished rows are ignored) | one call per company and day; wins over the logs |
+| `*.csv` with `ticker, date, close` | optional `source` | closing prices; win over the prices the sessions logged |
+
+The trading logs (`backend/engine/notebooks`) and the session archive are read too, and the engine price CSVs extend the prices after the last logged close when they agree with it. A call is scored once three later closes exist; later runs score the calls that are still waiting. `python backend/app/pipeline/export_evaluation.py --check` prints the result without writing. The step never stops a refresh: on an error it keeps the old `evaluation.json`. `--no-evaluation` skips it. The seed files `signals_merged_dataset.csv` and `closes_merged_dataset.csv` hold the merged research dataset.
 
 ### Cloud LLMs (Claude, Kimi, OpenAI, Gemini, Groq)
 

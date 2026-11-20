@@ -33,6 +33,9 @@ document.addEventListener("click", e => {
   else if (a === "wl-reset") { X.wl = ORDER.slice(); lsDel("raem:wl"); X.wlMsg = ""; }
   else if (a === "bt-m") { X.bt.sel.has(v) ? X.bt.sel.delete(v) : X.bt.sel.add(v); }
   else if (a === "bt-t") { X.bt.t = v; X.bt.sel = new Set(["Ensemble"]); }
+  else if (a === "ev-w") X.ev.w = +v;
+  else if (a === "ev-t") { X.ev.t = v; X.ev.n = 25; }
+  else if (a === "ev-more") X.ev.n += 25;
   else if (a === "fund-t") X.fund.t = v;
   else if (a === "more") S.more = !S.more;
   else if (a === "opt-toggle") S.optOpen = !S.optOpen;

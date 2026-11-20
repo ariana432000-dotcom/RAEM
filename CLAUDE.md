@@ -116,7 +116,7 @@ web/
 │   ├── app/                  FastAPI, laid out like the DSE app: main.py (creates the app), core/config.py (env, model lists, paths),
 │   │                         db/runs.py (SQLite), models/schemas.py, api/deps.py + api/routes/ (health, stocks, forecast, analysis, refresh, runs),
 │   │                         services/ (tickers, live), workers/jobs.py (run queue + runners),
-│   │                         pipeline/ (export_ticker.py, add_company.py, export_extra.py, patch_daily.py, sessions.py), ai_engine/run_pipeline.py (CLI runner),
+│   │                         pipeline/ (export_ticker.py, add_company.py, export_extra.py, export_evaluation.py, patch_daily.py, sessions.py), ai_engine/run_pipeline.py (CLI runner),
 │   │                         ai_pipeline/ (the AI analysis: runner, agents, llm, memory, embeddings, data_providers, logger)
 │   ├── refresh.py            one command: top up prices, re-run the forecasts, rebuild the page
 │   ├── requirements.txt
@@ -126,7 +126,7 @@ web/
 │   ├── tradingagents/        the TradingAgents package used by the AI analysis (from the any_with_dse app; DSE vendor in dataflows/dse_*.py)
 │   ├── storage/              raem.db, llm_cache/ (runtime, git-ignored)
 │   ├── tests/                API tests with fake runners
-│   ├── data/                 saved results the page is built from: tickers/*.json, extra.json
+│   ├── data/                 saved results the page is built from: tickers/*.json, extra.json, evaluation.json; evaluation_inputs/ (drop-in CSV / JSON for the Evaluation page)
 │   └── tools/sync_engine.py  re-copy engine/ from the research project
 └── frontend/
     ├── src/                  template2.html, extra.css, extra.js, live.js (backend calls), handlers.js, merge.py, build.py
@@ -145,6 +145,8 @@ Model set: the site shows five models (N-BEATS, LASSO, Ridge, RandomForest, Thet
 
 AI Analysis notes: served by the backend, the page shows `aiLiveCard()` (the connected LLMs only, "Run again", Run / Hold / Resume) and `aiHistoryCard()` (stored runs, Resume on today's held runs), plus `aiEffectCard()` (how the rating moves the forecast), and a run executes the AI pipeline on the server (see Live runs; no notebooks). As a static copy (artifact, static host) it shows the latest saved analysis at once (an info card, `aiEffectCard()` and the results); by the user's choice there is no replay button there. The card title says "Today's AI analysis" with the server date; the pipeline takes the trade date from `datetime.now()`, so the server's time zone decides the day: the Dockerfile and compose set `TZ=Asia/Dhaka`, and `app/core/config.py` drops an IANA `TZ` on Windows (the CRT would read it as UTC) and calls `time.tzset()` elsewhere.
 
+**Evaluation** (page id `eval`, a main nav link; `renderEval()`, state `X.ev`, `drawEval()` in `afterRender()`): the accuracy of the AI analysis' BUY / HOLD / SELL calls, from `EXTRA.evaluation`, which `build.py` reads from `backend/data/evaluation.json` (optional: without it the page shows an empty state). `app/pipeline/export_evaluation.py` (standard library only) merges the trading logs, the session archive and the files in `backend/data/evaluation_inputs/` (later sources win; see the README), keeps one call per company and day, and scores each call within the next 1, 2 and 3 trading days (BUY right if a close is above the entry, SELL if below, HOLD if the same or higher; returns rounded to 0.01% first). A call on a day with no price bar keeps its own date and uses the last close before it (`carried`); a call needs three later closes to be scored, otherwise it is `pending` until a later refresh. Intervals are 95% Wilson. The always-HOLD baseline is shown beside every accuracy, because HOLD is right most of the time. The bars are `evBars()`: HTML rows with a percent-coordinate SVG track, so labels never scale on phones. `refresh.py` runs the export before the page merge, also with `--build-only`; it never fails (an error keeps the old file). Tests: `backend/tests/test_evaluation.py`.
+
 Page pattern: each page is `renderXxx()` returning an HTML string, registered in `renderExtra()` (or handled in `render()` for `dash` and `tk`). State lives in `S` (ticker pages) and `X` (extra pages). Clicks use `data-*` attributes (`data-t`, `data-act`, `data-ai`, ...) handled by delegation. A page that draws a chart gets a hook in `afterRender()`.
 
 ### Commands
@@ -154,7 +156,8 @@ Run from this folder (`web/`):
 ```bash
 python backend/refresh.py                      # everything: price top-up, all tickers, extra pages, build
 python backend/refresh.py AAPL IBM --no-top-up # some tickers only (about 1-2 min each with 5 models)
-python backend/refresh.py --build-only         # rebuild the page from the data already exported
+python backend/refresh.py --build-only         # rebuild the page from the data already exported (re-scores the Evaluation page first)
+python backend/app/pipeline/export_evaluation.py [--check]   # merge logs + archive + evaluation_inputs/, score the calls, write backend/data/evaluation.json
 python -m uvicorn app.main:app --app-dir backend --port 8000   # serve the page and the API
 python backend/tools/sync_engine.py /path/to/research/project   # bring engine/ up to date
 ```

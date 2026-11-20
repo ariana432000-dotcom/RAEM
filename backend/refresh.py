@@ -5,6 +5,10 @@
     python backend/refresh.py --no-top-up      # skip the yfinance price top-up
     python backend/refresh.py --no-extra       # skip the extra pages (AI analysis, memory, backtest...)
     python backend/refresh.py --build-only     # only rebuild the page from the data already exported
+    python backend/refresh.py --no-evaluation  # leave the Evaluation page's data (backend/data/evaluation.json) as it is
+
+The Evaluation step (merge trading logs + archive + backend/data/evaluation_inputs, score the calls, write evaluation.json) is offline,
+fast and never fails the refresh, so it also runs with --build-only.
 
 Each step runs as its own Python process, so a crash in one model does not take the
 web server down when the backend calls this. The backend imports `steps()` and `run()`.
@@ -28,7 +32,8 @@ def all_tickers() -> list[str]:
     return list(pl.TICKERS)
 
 
-def steps(tickers: list[str] | None = None, extra: bool = True, top_up: bool = True, build_only: bool = False) -> list[tuple[str, list[str]]]:
+def steps(tickers: list[str] | None = None, extra: bool = True, top_up: bool = True, build_only: bool = False,
+          evaluation: bool = True) -> list[tuple[str, list[str]]]:
     """The commands a refresh runs, as (label, argv) pairs."""
     out: list[tuple[str, list[str]]] = []
     if not build_only:
@@ -40,6 +45,8 @@ def steps(tickers: list[str] | None = None, extra: bool = True, top_up: bool = T
         out.append((f"Forecast {len(tks)} ticker(s)", [PY, "-W", "ignore", os.path.join(WEB, "app", "pipeline", "export_ticker.py"), *tks]))
         if extra:
             out.append(("Extra pages", [PY, "-W", "ignore", os.path.join(WEB, "app", "pipeline", "export_extra.py")]))
+    if evaluation:
+        out.append(("Evaluation", [PY, os.path.join(WEB, "app", "pipeline", "export_evaluation.py")]))
     out.append(("Merge page sources", [PY, os.path.join(FRONTEND, "src", "merge.py")]))
     out.append(("Build page", [PY, os.path.join(FRONTEND, "src", "build.py")]))
     return out
@@ -62,5 +69,6 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     flags = {a for a in args if a.startswith("--")}
     tks = [a for a in args if not a.startswith("--")] or None
-    ok = run(steps(tks, extra="--no-extra" not in flags, top_up="--no-top-up" not in flags, build_only="--build-only" in flags))
+    ok = run(steps(tks, extra="--no-extra" not in flags, top_up="--no-top-up" not in flags, build_only="--build-only" in flags,
+             evaluation="--no-evaluation" not in flags))
     sys.exit(0 if ok else 1)

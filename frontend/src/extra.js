@@ -1,5 +1,5 @@
 /* ---------- extra pages ---------- */
-const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["bt", "Backtest", "chart"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
+const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["bt", "Backtest", "chart"], ["eval", "Evaluation", "check"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
 Object.assign(ICONS, {
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
@@ -503,6 +503,10 @@ const GLOSS = {
   debate: ["AI debate", "Two LLM agents argue for (bull) and against (bear) the stock over several rounds using the analysts' reports; a facilitator weighs the evidence. A second debate between aggressive, conservative and neutral risk analysts tests the trader's plan."],
   aiadj: ["AI-adjusted forecast", "The 7-day forecast after the latest AI analysis (the AI analysis run with an LLM) has had its say. The AI rating (Buy +1, Overweight +½, Hold 0, Underweight −½, Sell −1) times the stock's typical 7-day move is its view; the adjusted move is 80% the models and 20% that view. Once the AI has five graded calls, its weight moves between 10% and 35% with how often it was right. A session more than 10 days older than the prices does not count."],
   runai: ["Run AI analysis", "Runs the whole AI analysis of the company on the server (analysts, debates, trader, risk, portfolio manager, verifier) with the LLM you choose, then shows the new session. Ollama models run on the server itself; OpenAI, Claude, Gemini and Groq models run with the server's API key, so no key is ever typed into this page. Each run is stored by company, date and model."],
+  evwin: ["Window", "A call is judged on the closes of the next 1, 2 or 3 trading days. BUY is right if some close in that window is above the entry price, SELL if some close is below it, HOLD if some close is the same or higher. A longer window gives each call more chances, so accuracy rises with it. Only calls with three later closes are scored, the same calls for every window."],
+  evacc: ["Accuracy", "The share of scored calls that were right under the window rule. With 30 to 40 calls per company it is uncertain: read it together with the 95% interval."],
+  wilson: ["95% interval", "The range the true hit rate probably lies in, given how few calls there are (a Wilson interval). When two companies' intervals overlap a lot, the data do not show that one is better than the other."],
+  evbase: ["Always HOLD", "What you would score by answering HOLD on every call. HOLD is right whenever some close in the window is not below the entry, which is most of the time, so this is the bar a BUY / HOLD / SELL agent has to clear."],
 };
 let hintN = 0;
 const hint = g => `<span class="help" tabindex="0" role="note" aria-label="${esc(g[0])}: ${esc(g[1])}"><span aria-hidden="true">?</span><span class="tipbox" aria-hidden="true"><b>${esc(g[0])}</b>${esc(g[1])}</span></span>`;
@@ -530,15 +534,93 @@ function renderHelp() {
     ${card("About the data", "", "", `<ul class="plain"><li>All numbers were exported from the project's Python code on ${dLong(ASOF)}. This site replays them; it does not train models or fetch live prices.</li><li>Saved prices end between ${dLong(ORDER.map(t => DATA[t].forecast.last_date).sort()[0])} and ${dLong(ORDER.map(t => DATA[t].forecast.last_date).sort().slice(-1)[0])}, so every saved forecast starts from those closes, not from today's prices.</li><li>The watchlist and your settings are saved only in this browser.</li><li>This is a research tool. Nothing here is investment advice.</li></ul>`)}`;
 }
 
+/* ----- evaluation (accuracy of the AI analysis' BUY / HOLD / SELL calls; data: backend/data/evaluation.json) ----- */
+X.ev = { w: 3, t: "", n: 25 };
+const EV = () => EXTRA.evaluation || null;
+const EV_W = [[1, "1 day"], [2, "2 days"], [3, "3 days"]];
+const evA = v => v == null ? "–" : v.toFixed(1) + "%";
+const evI = o => o && o.lo != null ? `${o.lo.toFixed(1)}–${o.hi.toFixed(1)}%` : "–";
+const evRight = (sig, r) => sig === "BUY" ? Math.max(...r) > 0 : sig === "SELL" ? Math.min(...r) < 0 : Math.max(...r) >= 0;
+const evName = t => DATA[t] ? DATA[t].meta.name : ((EV().companies.find(c => c.ticker === t) || {}).name || t);
+/* A bar list: label | SVG track (percent coordinates, so text never scales) | value. items: {label, sub, k, n, acc, lo, hi, base, color} */
+function evBars(items, avg, baseLabel) {
+  const grid = [0, 25, 50, 75, 100];
+  const axis = `<div class="evrow" aria-hidden="true"><span></span><svg class="evt" height="16">${grid.map(g => `<text class="ax" x="${g}%" y="12" text-anchor="${g === 0 ? "start" : g === 100 ? "end" : "middle"}">${g}%</text>`).join("")}</svg><span></span></div>`;
+  const rows = items.map(it => {
+    const left = `<div class="evl"><b class="mono">${esc(it.label)}</b><span title="${esc(it.sub)}">${esc(it.sub)}</span></div>`;
+    if (it.acc == null) return `<div class="evrow">${left}<div class="evt evnone">no scored calls yet</div><div class="evv mono">–</div></div>`;
+    const lab = `${it.label}: ${it.acc.toFixed(1)}% right (${it.k} of ${it.n}), 95% interval ${it.lo.toFixed(1)} to ${it.hi.toFixed(1)}%${it.base != null ? `, ${baseLabel} ${it.base.toFixed(1)}%` : ""}`;
+    return `<div class="evrow">${left}<svg class="evt" height="28" role="img" aria-label="${esc(lab)}">
+      ${grid.slice(1, 4).map(g => `<line x1="${g}%" x2="${g}%" y1="0" y2="28" stroke="var(--border-soft)"/>`).join("")}
+      <rect x="0" y="6" width="${it.acc}%" height="16" rx="3" fill="${it.color || "var(--accent)"}"/>
+      <line x1="${it.lo}%" x2="${it.hi}%" y1="14" y2="14" stroke="var(--text)" stroke-width="1.5"/>
+      <line x1="${it.lo}%" x2="${it.lo}%" y1="9" y2="19" stroke="var(--text)" stroke-width="1.5"/>
+      <line x1="${it.hi}%" x2="${it.hi}%" y1="9" y2="19" stroke="var(--text)" stroke-width="1.5"/>
+      ${it.base != null ? `<line x1="${it.base}%" x2="${it.base}%" y1="2" y2="26" stroke="var(--hold)" stroke-width="2.5"/>` : ""}
+      ${avg != null ? `<line x1="${avg}%" x2="${avg}%" y1="0" y2="28" stroke="var(--faint)" stroke-dasharray="3 3"/>` : ""}
+    </svg><div class="evv mono">${it.acc.toFixed(1)}%</div></div>`;
+  }).join("");
+  return `<div class="evchart">${axis}${rows}</div>`;
+}
+function renderEval() {
+  const ev = EV();
+  const head = `<div class="page-h"><h1>Evaluation</h1><p>How often the AI analysis' BUY, HOLD and SELL calls were right, judged on the closes of the next trading days. Every refresh merges the trading logs, the session archive and the files in <span class="mono">backend/data/evaluation_inputs</span> and scores them again.</p></div>`;
+  if (!ev || !ev.scored) return head + card("", "", "", emptyState("chart", "No evaluation saved yet", "Run <span class='mono'>python backend/app/pipeline/export_evaluation.py</span> (or <span class='mono'>python backend/refresh.py</span>), then rebuild the page."));
+  const w = X.ev.w, W = String(w), o = ev.overall[W], diff = o.acc - o.base, pend = ev.pending;
+  const co = ev.companies.map(c => ({ c, s: c.w[W] })), sg = ev.signals[W];
+  const byCo = co.slice().sort((p, q) => (q.s.acc == null ? -1 : q.s.acc) - (p.s.acc == null ? -1 : p.s.acc));
+  const coBars = evBars(byCo.map(({ c, s }) => ({ label: c.ticker, sub: `${evName(c.ticker)} · ${s.k}/${s.n}`, k: s.k, n: s.n, acc: s.acc, lo: s.lo, hi: s.hi, base: s.base })), o.acc, "always HOLD");
+  const sigColor = { BUY: "var(--buy)", HOLD: "var(--hold)", SELL: "var(--sell)" };
+  const sgBars = evBars(["BUY", "HOLD", "SELL"].map(k => ({ label: k, sub: `${sg[k].n} calls · ${sg[k].k} right`, k: sg[k].k, n: sg[k].n, acc: sg[k].acc, lo: sg[k].lo, hi: sg[k].hi, base: sg[k].base, color: sigColor[k] })), o.acc, "if always this signal");
+  const windowPills = `<div class="pills" role="group" aria-label="Window">${EV_W.map(([v, l]) => `<button type="button" class="pillbtn" data-act="ev-w" data-v="${v}" aria-pressed="${w === v}"><i></i>${l}</button>`).join("")}</div>`;
+  const dv = d => d == null ? "–" : (d > 0 ? "+" : d < 0 ? "−" : "") + Math.abs(d).toFixed(1);
+  const coRows = byCo.map(({ c, s }) => { const d = s.acc == null ? null : s.acc - s.base; return `<tr><td class="t"><span class="tkr">${esc(c.ticker)}</span>${evName(c.ticker) === c.ticker ? "" : " " + esc(evName(c.ticker))}</td><td>${c.calls}</td><td>${s.n}</td><td>${s.k}</td><td>${evA(s.acc)}</td><td>${evI(s)}</td><td>${evA(s.base)}</td><td class="${cls(d)}">${dv(d)}</td><td>${c.pending}</td></tr>`; }).join("");
+  const sgRows = ["BUY", "HOLD", "SELL"].map(k => `<tr><td class="t">${sigBadge(k)}</td><td>${sg[k].n}</td><td>${sg[k].k}</td><td>${evA(sg[k].acc)}</td><td>${evI(sg[k])}</td><td>${evA(sg[k].base)}</td></tr>`).join("");
+  const tick = ev.companies.map(c => c.ticker), rowsAll = ev.rows.filter(r => !X.ev.t || r[1] === X.ev.t).slice().reverse(), shown = rowsAll.slice(0, X.ev.n);
+  const filt = `<div class="pills" role="group" aria-label="Company">${[["", "All"], ...tick.map(t => [t, t])].map(([v, l]) => `<button type="button" class="pillbtn" data-act="ev-t" data-v="${esc(v)}" aria-pressed="${X.ev.t === v}"><i></i>${esc(l)}</button>`).join("")}</div>`;
+  const callRows = shown.map(r => {
+    const [d, t, sig, entry, rets, carried, filled, scored] = r;
+    const res = scored ? (evRight(sig, rets.slice(0, w)) ? `<span class="up">Right</span>` : `<span class="down">Wrong</span>`) : `<span class="flat">Waiting</span>`;
+    return `<tr><td class="t"><span class="mono">${dShort(d)}</span>${carried ? " †" : ""}${filled ? " ‡" : ""}</td><td class="t"><span class="tkr">${esc(t)}</span></td><td class="t">${sigBadge(sig)}</td><td>${entry == null ? "–" : fmtP(entry)}</td>${[0, 1, 2].map(i => `<td class="${cls(rets[i])}">${rets[i] == null ? "–" : fmtPct(rets[i])}</td>`).join("")}<td class="t">${res}</td></tr>`;
+  }).join("");
+  const sc = ev.sources || {}, ss = sc.sessions || {}, cl = sc.closes || {};
+  const srcRows = [["Trading logs", "backend/engine/notebooks", `${fmtN(ss.logs || 0)} sessions`], ["Session archive", "backend/data/session_archive.json.gz", `${fmtN(ss.archive || 0)} sessions`],
+    ["Input files", (sc.files || []).join(", ") || "backend/data/evaluation_inputs", `${fmtN(ss.input_files || 0)} sessions, ${fmtN(sc.signal_rows_from_files || 0)} signal rows`],
+    ["Closes logged by sessions", "price window of each session", `${fmtN(cl.logged_windows || 0)} closes`], ["Closes from input files", "ticker, date, close", `${fmtN(cl.input_files || 0)} closes`],
+    ["Closes from the engine CSVs", "only days after the last logged close", `${fmtN(cl.engine_csv || 0)} closes`]];
+  return `${head}
+    ${card("", "", "", `<div class="field"><span class="lbl">Window ${hint(GLOSS.evwin)}</span>${windowPills}</div>`)}
+    <div class="stats">${statCard(`Accuracy ${hint(GLOSS.evacc)}`, evA(o.acc), `${o.k} of ${o.n} · ${evI(o)}`, "accent", "check")}${statCard(`Always HOLD ${hint(GLOSS.evbase)}`, evA(o.base), `agent is ${Math.abs(diff).toFixed(1)} pts ${diff >= 0 ? "above" : "below"} this bar`, "hold", "pulse")}${statCard("Calls scored", fmtN(ev.scored), `${fmtN(ev.calls)} calls · ${fmtN(pend)} waiting`, "", "chart")}${statCard("Companies", fmtN(ev.companies.length), `${dShort(ev.first)} to ${dLong(ev.asof)}`, "", "db")}</div>
+    ${card("Accuracy by company", `Share of calls judged right within the next ${w} trading day${w > 1 ? "s" : ""}, best first. The whisker is the 95% interval ${hint(GLOSS.wilson)}.`, "", `${coBars}<p class="evleg"><span><i class="b"></i>Accuracy</span><span><i class="w"></i>95% interval</span><span><i class="h"></i>Always HOLD</span><span><i class="a"></i>All stocks ${evA(o.acc)}</span></p><p class="src">Source: backend/data/evaluation.json, written by backend/app/pipeline/export_evaluation.py.</p>`)}
+    <div class="two">
+      ${card("Accuracy by signal", "How each kind of call did. The amber mark is what answering the same signal on every call would have scored.", "", `${sgBars}<p class="evleg"><span><i class="h"></i>If always this signal</span><span><i class="a"></i>All calls ${evA(o.acc)}</span></p>`)}
+      ${card("Accuracy over time", "Running accuracy of all scored calls by the day they were made, from the 20th call on.", "", `<div class="chartbox" id="evtrend"></div><div class="legend"><span><i style="background:var(--accent)"></i>Agent</span><span><i style="background:var(--hold)"></i>Always HOLD</span></div>`)}
+    </div>
+    ${card("Companies", `Calls scored within ${w} day${w > 1 ? "s" : ""}. Vs HOLD is the agent's accuracy minus always-HOLD, in points.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Calls</th><th>Scored</th><th>Right</th><th>Accuracy</th><th>95% interval</th><th>Always HOLD</th><th>Vs HOLD</th><th>Waiting</th></tr></thead><tbody>${coRows}<tr class="tot"><td class="t">All stocks</td><td>${ev.calls}</td><td>${o.n}</td><td>${o.k}</td><td>${evA(o.acc)}</td><td>${evI(o)}</td><td>${evA(o.base)}</td><td class="${cls(diff)}">${dv(diff)}</td><td>${pend}</td></tr></tbody></table></div>`)}
+    ${card("Signals", "", "", `<div class="scroll"><table><thead><tr><th>Signal</th><th>Scored</th><th>Right</th><th>Accuracy</th><th>95% interval</th><th>If always this signal</th></tr></thead><tbody>${sgRows}</tbody></table></div>`)}
+    ${card("Calls", `Newest first. Right or Wrong uses the ${w}-day window above; the +1d to +3d columns are the change of the next three closes against the entry close.`, "", `<div class="field"><span class="lbl">Company</span>${filt}</div><div class="scroll"><table><thead><tr><th>Date</th><th>Company</th><th>Signal</th><th>Entry</th><th>+1d</th><th>+2d</th><th>+3d</th><th>Result</th></tr></thead><tbody>${callRows}</tbody></table></div>
+      ${rowsAll.length > shown.length ? `<p class="evmore"><button type="button" class="btn secondary sm" data-act="ev-more">Show more (${rowsAll.length - shown.length} left)</button></p>` : ""}
+      <p class="src">† no price bar that day (weekend, holiday or no data yet): the entry is the last close before it. ‡ the run stopped after the Trader step, so its own Trader decision is used. Waiting: fewer than three later closes exist so far.</p>`)}
+    ${card("How a call is scored", "", "", `<ul class="plain"><li><b>BUY</b> is right if some close within the window is above the entry price, <b>SELL</b> if some close is below it, <b>HOLD</b> if some close is the same or higher. Longer windows give a call more chances, so accuracy rises with the window.</li><li>The entry price is the close of the day of the call, or the last close before it when the market had no bar that day. Calls on such days keep their own date.</li><li>A call is scored only when three later closes exist, the same calls for every window. The others say Waiting and are scored by a later refresh.</li><li>One call per company and day: the most complete finished run. A run that stopped after the Trader step uses its Trader decision (${fmtN(ev.filled)} scored calls).</li><li>Always HOLD is the bar to beat: HOLD is right whenever the price does not fall inside the window, which is most of the time.</li><li>This page replays saved results; it never fetches prices itself. Research output, not investment advice.</li></ul>`)}
+    ${card("Where the numbers come from", "Files are merged by company and day; a later source wins. Drop new files into backend/data/evaluation_inputs and run python backend/refresh.py.", "", `<div class="scroll"><table class="lt"><thead><tr><th>Source</th><th>Where</th><th>Amount</th></tr></thead><tbody>${srcRows.map(r => `<tr><td class="t">${esc(r[0])}</td><td class="t"><span class="mono">${esc(r[1])}</span></td><td class="t">${esc(r[2])}</td></tr>`).join("")}</tbody></table></div>${(sc.skipped || []).length ? `<p class="src">Skipped: ${esc(sc.skipped.join("; "))}</p>` : ""}`)}`;
+}
+function drawEval() {
+  const h = $("#evtrend"), ev = EV(); if (!h || !ev) return;
+  const pts = ev.trend[String(X.ev.w)] || [], MIN = 20;
+  if (pts.length < 2) { h.innerHTML = ""; return; }
+  const pct = (a, b) => b >= MIN ? 100 * a / b : null;
+  lineChart(h, pts.map(p => p[0]), [{ name: "Agent", v: pts.map(p => pct(p[2], p[1])), color: "var(--accent)", w: 2.4 }, { name: "Always HOLD", v: pts.map(p => pct(p[3], p[1])), color: "var(--hold)", dash: true, w: 1.8 }], { label: "Running accuracy of all scored calls", fmt: v => v.toFixed(0) + "%" });
+}
+
 /* ----- router ----- */
 function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; }
 function renderExtra() {
-  return ({ ai: renderAI, watch: renderWatch, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock })[S.page]();
+  return ({ ai: renderAI, watch: renderWatch, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock, eval: renderEval })[S.page]();
 }
-function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
+function afterRender() { if (S.page === "bt") drawBT(); if (S.page === "eval") drawEval(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
 
 /* ---------- top nav ---------- */
-const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["bt", "Backtest"], ["ai", "AI Analysis"]];
+const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["bt", "Backtest"], ["eval", "Evaluation"], ["ai", "AI Analysis"]];
 const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg>';
 function renderNav() {
   const cur = id => (S.page === id || (id === "stocks" && S.page === "stock") ? ' aria-current="page"' : "");

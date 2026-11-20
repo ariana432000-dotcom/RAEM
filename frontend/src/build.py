@@ -19,6 +19,12 @@ out = tpl.replace("/*__DATA__*/null", json.dumps(data, ensure_ascii=False, separ
 extra = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "extra.json"), encoding="utf-8"))
 shown = {"N-BEATS", "LASSO", "Ridge", "RandomForest", "Theta", "Ensemble", "Fusion", "Fusion-Top3"}
 extra["backtest"] = {t: {m: r for m, r in v.items() if m in shown} for t, v in extra["backtest"].items()}
+# Evaluation page (accuracy of the AI analysis calls): written by app/pipeline/export_evaluation.py on each refresh.
+# Optional and fail-soft: without the file, or with a broken one, the page shows an empty state and the rest is unchanged.
+try:
+    extra["evaluation"] = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "evaluation.json"), encoding="utf-8"))
+except (OSError, ValueError):
+    extra.pop("evaluation", None)
 # "Data as of" date: written by export_extra.py on each refresh; the newest price date is the fallback for older exports
 asof = max(extra.get("asof") or "", max(d["forecast"]["last_date"] for d in data.values()))   # never older than the prices themselves
 assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof), asof
