@@ -96,27 +96,23 @@ function mdField(text, label) {  // the text after "**Label**:" up to the next "
   return m ? m[1].trim() : "";
 }
 const aiSignal = L => L.signal || SIGNAL_OF[String(L.rating || "").toUpperCase()] || "";
-/* "If I buy now, what could the next 5 trading days bring?" on the Decision card. Uses a fixed stake (100 USD, or 10,000 Tk for
-   Dhaka stocks) and the AI-adjusted path when the AI analysis is fresh, else the Ensemble. */
-function aiFiveDay(t) {
+/* "If I invest today, what could the next 3 trading days bring?" on the Decision card: one expected profit or loss on a fixed stake
+   (100 USD, or 10,000 Tk for Dhaka stocks) and a likely range. Uses the AI-adjusted path when the AI analysis is fresh, else the Ensemble. */
+function aiThreeDay(t) {
   const d = DATA[t];
   if (!d) return "";   // a company that is not on the site has no forecast yet
-  const f = d.forecast, last = f.last_price, cur = d.meta.currency, b = aiBlend(t), band = fcBand(t);
-  const useAI = b && !b.stale && b.path, path = useAI ? b.path : fcPath(t);
+  const f = d.forecast, last = f.last_price, cur = d.meta.currency, b = aiBlend(t), rb = fcBand(t), rp = fcPath(t);
+  const path = b && !b.stale && b.path ? b.path : rp;
   if (!path) return "";
-  // Dhaka stocks are shown in taka on a 10,000 Tk stake; the others on a 100 USD stake
-  const tk = cur === "BDT", A = tk ? 10000 : STAKE, k = 4, r = path[k] / last - 1, age = daysBetween(f.last_date, refDate());
-  const lo = band ? band[k][0] / last - 1 : null, hi = band ? band[k][1] / last - 1 : null;
-  const money2 = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : stakeSigned(v);
-  const pl = x => money2(A * x), stake = tk ? `${A.toLocaleString("en-US")} Tk` : stakeShow(A);
-  // once the 5th forecast day is past, this is what the saved forecast expected then, not what buying today would bring
-  const past = f.dates[k] < refDate();
-  return `<div class="sect"><p class="l">${past ? `Historical forecast: 5 trading days from the ${dShort(f.last_date)} close (to ${dShort(f.dates[k])}, already past)` : `If you buy now: next 5 trading days (to ${dShort(f.dates[k])})`}</p>
-    <p class="v ${cls(r)}">${pl(r)} <span class="vs">${fmtPct(r * 100)} on ${stake}</span></p>
-    ${band ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px">
-      <div><p class="l" style="margin:0">Likely worst (10%)</p><p class="v ${cls(lo)}">${pl(lo)}</p><p class="vs ${cls(lo)}">${fmtPct(lo * 100)} · price ${fmtP(band[k][0])} ${esc(cur)}</p></div>
-      <div><p class="l" style="margin:0">Likely best (90%)</p><p class="v ${cls(hi)}">${pl(hi)}</p><p class="vs ${cls(hi)}">${fmtPct(hi * 100)} · price ${fmtP(band[k][1])} ${esc(cur)}</p></div></div>` : ""}
-    <p class="small">Based on the ${useAI ? "AI-adjusted forecast" : "Ensemble forecast"} from the ${dShort(f.last_date)} close of ${fmtP(last)} ${esc(cur)}${age > 5 ? ` (${age} days old, so the real start price may differ)` : ""}.${past ? " Its dates are already past, so it does not say what buying today would bring; run the forecast again for current prices." : ""} The range comes from this stock's own past forecast errors; the price can end outside it. Before costs and tax. Not investment advice.</p></div>`;
+  const tk = cur === "BDT", A = tk ? 10000 : STAKE, k = 2, r = path[k] / last - 1;
+  // the band holds the reviewed forecast's own error range; it is moved onto the path that is shown so both share one centre
+  const lo = rb && rp ? (rb[k][0] - rp[k] + path[k]) / last - 1 : null, hi = rb && rp ? (rb[k][1] - rp[k] + path[k]) / last - 1 : null;
+  const money = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : stakeSigned(v);
+  const stake = tk ? `${A.toLocaleString("en-US")} Tk` : stakeShow(A), old = f.dates[k] < refDate();
+  return `<div class="sect"><p class="l">If you invest ${stake} today: after 3 trading days</p>
+    <p class="v ${cls(r)}">${money(A * r)} <span class="vs">${fmtPct(r * 100)} expected</span></p>
+    ${lo != null ? `<p class="small">Likely range: ${money(A * lo)} to ${money(A * hi)} (${fmtPct(lo * 100)} to ${fmtPct(hi * 100)}).</p>` : ""}
+    <p class="small">${old ? `This forecast ends at the ${dShort(f.last_date)} close, so it is out of date; run the forecast again for today's estimate. ` : ""}An estimate from the forecast, before costs and tax; the real result can fall outside the range. Not investment advice.</p></div>`;
 }
 function aiDecisionCard(t, L) {
   const sig = aiSignal(L), d = DATA[t], seen = +(L.summary || {}).market_latest_close || null, cur = d ? d.meta.currency : "", entry = d ? d.forecast.last_price : seen;
@@ -131,7 +127,7 @@ function aiDecisionCard(t, L) {
       ${seen && Math.abs(seen / entry - 1) > 0.01 ? `<p class="small">The analysis saw ${fmtP(seen)} ${esc(cur)} on ${dShort(L.date)}; the forecast uses closes to ${dShort(d.forecast.last_date)}. Run the forecast again for the newer prices.</p>` : ""}</div>`
       : `<div class="sect"><p class="l">Close seen by the analysis (${dShort(L.date)})</p><p class="v">${fmtP(entry)}</p><p class="small">${esc(t)} is not on the site yet, so it has no 7-day forecast. Add it from the search box to get one.</p></div>`}
     ${b && !b.stale ? `<div class="sect"><p class="l">7-day outlook with this decision</p><p class="v ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</p>${band ? `<p class="small">Range from past forecast errors: ${fmtP(band[6][0])} to ${fmtP(band[6][1])} ${esc(cur)}.</p>` : ""}</div>` : ""}
-    ${aiFiveDay(t)}
+    ${aiThreeDay(t)}
     ${why ? `<div class="sect"><p class="l">Why ${esc(sig || L.rating || "")}</p><p class="why">${esc(why)}</p></div>` : ""}`);
 }
 const turnHtml = x => `<li class="turn ${SIDE_TONE[x.side] || "hold"}"><div class="who"><b>${esc(x.speaker)}</b><span class="badge ${SIDE_TONE[x.side] || "hold"}">${esc(x.side)}</span>${x.round ? `<span class="sub">round ${x.round}</span>` : ""}</div><div class="pre">${md(x.text)}</div></li>`;
