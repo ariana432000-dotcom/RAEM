@@ -969,14 +969,6 @@ function aiDecisionCard(t, L) {
     ${why ? `<div class="sect"><p class="l">Why ${esc(sig || L.rating || "")}</p><p class="why">${esc(why)}</p></div>` : ""}`);
 }
 const turnHtml = x => `<li class="turn ${SIDE_TONE[x.side] || "hold"}"><div class="who"><b>${esc(x.speaker)}</b><span class="badge ${SIDE_TONE[x.side] || "hold"}">${esc(x.side)}</span>${x.round ? `<span class="sub">round ${x.round}</span>` : ""}</div><div class="pre">${md(x.text)}</div></li>`;
-function aiRiskCard(L) {
-  const db = L.debate;
-  if (!db || (!(db.risk_turns || []).length && !db.risk_facilitator && !db.trader)) return "";
-  return card("Trader and risk debate", "The trader's plan, then aggressive, conservative and neutral risk analysts argue over it.", "", `
-    ${db.trader ? `<div class="sect" style="margin-top:0;padding-top:0;border-top:0"><p class="l">Trader's plan</p><div class="pre">${md(db.trader)}</div></div>` : ""}
-    <ol class="debate" style="margin-top:12px">${(db.risk_turns || []).map(turnHtml).join("")}</ol>
-    ${db.risk_facilitator ? `<div class="sect"><p class="l">Risk facilitator</p><div class="pre">${md(db.risk_facilitator)}</div></div>` : ""}`);
-}
 function aiResults(t, a, top, tail = "") {
   const L = a.latest, sm = L.summary || {}, mi = sm.market_indicators || {}, na = sm.news_analyst || {};
   const stages = Object.keys(L.steps);
@@ -989,7 +981,6 @@ function aiResults(t, a, top, tail = "") {
       ${statCard("RSI", mi.rsi == null ? "–" : mi.rsi.toFixed(1), mi.macd == null ? "" : `MACD ${mi.macd.toFixed(2)}`, "", "line")}
       ${statCard("News sentiment", esc(na.overall_sentiment || "–"), `+${esc(na.positive_count ?? "–")} / −${esc(na.negative_count ?? "–")} / ${esc(na.neutral_count ?? "–")} neutral`, "", "news")}
     </div>
-    ${aiRiskCard(L)}
     ${card("Final decision text", `${esc(t)} · ${dLong(L.date)}`, ratingBadge(L.rating), `<div class="pre">${md(L.final_decision)}</div>`)}
     ${card("Analyst pipeline", "Each stage's saved output for this session.", "", `${pillTabs(stages.map(s => [s, s]), X.ai.stage, "data-stage")}<div class="scrollbox" style="margin-top:16px"><p class="sub" style="margin-bottom:8px">${esc(X.ai.stage)} · ${esc(st.time || "")}</p><div class="pre">${md(st.text)}</div></div><p class="src">Source: notebooks/trading_log_*.json (step outputs, shortened).</p>`)}
     ${aiSessionHistoryCard(t, a)}` + tail;
