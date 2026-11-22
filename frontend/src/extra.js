@@ -147,7 +147,6 @@ function aiResults(t, a, top, tail = "") {
       ${statCard("RSI", mi.rsi == null ? "–" : mi.rsi.toFixed(1), mi.macd == null ? "" : `MACD ${mi.macd.toFixed(2)}`, "", "line")}
       ${statCard("News sentiment", esc(na.overall_sentiment || "–"), `+${esc(na.positive_count ?? "–")} / −${esc(na.negative_count ?? "–")} / ${esc(na.neutral_count ?? "–")} neutral`, "", "news")}
     </div>
-    ${card("Final decision text", `${esc(t)} · ${dLong(L.date)}`, ratingBadge(L.rating), `<div class="pre">${md(L.final_decision)}</div>`)}
     ${card("Analyst pipeline", "Each stage's saved output for this session.", "", `${pillTabs(stages.map(s => [s, s]), X.ai.stage, "data-stage")}<div class="scrollbox" style="margin-top:16px"><p class="sub" style="margin-bottom:8px">${esc(X.ai.stage)} · ${esc(st.time || "")}</p><div class="pre">${md(st.text)}</div></div><p class="src">Source: notebooks/trading_log_*.json (step outputs, shortened).</p>`)}
     ${aiSessionHistoryCard(t, a)}` + tail;
 }
