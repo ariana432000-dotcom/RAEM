@@ -80,7 +80,12 @@ def backtest_for(t):
                   "strategy_pct": clean(float((eq[-1] - 1) * 100)), "buyhold_pct": clean(float((np.prod(1 + bh) - 1) * 100)),
                   "avg_trade_pct": clean(float(strat.mean() * 100)), "max_dd_pct": clean(float(((eq / peak - 1).min()) * 100)),
                   "dates": [str(x.date()) for x in pdx["made_on"]], "equity": [round(float(x), 4) for x in eq],
-                  "buyhold_eq": [round(float(x), 4) for x in np.cumprod(1 + bh)]}
+                  "buyhold_eq": [round(float(x), 4) for x in np.cumprod(1 + bh)],
+                  # one row per trade for the Backtest page's price chart: [entry date, exit date, call (1 long, -1 short, 0 flat),
+                  # entry price, exit price, return of the call in %]
+                  "trades": [[str(a.date()), str(b.date()), int(s), round(float(p0), 4), round(float(p1), 4), round(float(rt) * 100, 3)]
+                             for a, b, s, p0, p1, rt in zip(pdx["made_on"], pdx["target_date"], sgn, pdx["price_when_made"],
+                                                            pdx["actual_price"], strat)]}
     return res
 
 
