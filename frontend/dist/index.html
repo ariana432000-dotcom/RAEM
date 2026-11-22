@@ -969,13 +969,6 @@ function aiDecisionCard(t, L) {
     ${why ? `<div class="sect"><p class="l">Why ${esc(sig || L.rating || "")}</p><p class="why">${esc(why)}</p></div>` : ""}`);
 }
 const turnHtml = x => `<li class="turn ${SIDE_TONE[x.side] || "hold"}"><div class="who"><b>${esc(x.speaker)}</b><span class="badge ${SIDE_TONE[x.side] || "hold"}">${esc(x.side)}</span>${x.round ? `<span class="sub">round ${x.round}</span>` : ""}</div><div class="pre">${md(x.text)}</div></li>`;
-function aiDebateCard(L) {
-  const db = L.debate;
-  if (!db || (!(db.turns || []).length && !db.facilitator)) return "";
-  return card(`AI debate ${hint(GLOSS.debate)}`, db.complete ? "Bull vs bear, round by round, then the facilitator's verdict." : "Excerpt the trading log kept; runs made on this site keep the whole debate.", "", `
-    <ol class="debate">${(db.turns || []).map(turnHtml).join("")}</ol>
-    ${db.facilitator ? `<div class="sect"><p class="l">Facilitator's verdict</p><div class="pre">${md(db.facilitator)}</div></div>` : ""}`);
-}
 function aiRiskCard(L) {
   const db = L.debate;
   if (!db || (!(db.risk_turns || []).length && !db.risk_facilitator && !db.trader)) return "";
@@ -996,7 +989,7 @@ function aiResults(t, a, top, tail = "") {
       ${statCard("RSI", mi.rsi == null ? "–" : mi.rsi.toFixed(1), mi.macd == null ? "" : `MACD ${mi.macd.toFixed(2)}`, "", "line")}
       ${statCard("News sentiment", esc(na.overall_sentiment || "–"), `+${esc(na.positive_count ?? "–")} / −${esc(na.negative_count ?? "–")} / ${esc(na.neutral_count ?? "–")} neutral`, "", "news")}
     </div>
-    ${aiDebateCard(L)}${aiRiskCard(L)}
+    ${aiRiskCard(L)}
     ${card("Final decision text", `${esc(t)} · ${dLong(L.date)}`, ratingBadge(L.rating), `<div class="pre">${md(L.final_decision)}</div>`)}
     ${card("Analyst pipeline", "Each stage's saved output for this session.", "", `${pillTabs(stages.map(s => [s, s]), X.ai.stage, "data-stage")}<div class="scrollbox" style="margin-top:16px"><p class="sub" style="margin-bottom:8px">${esc(X.ai.stage)} · ${esc(st.time || "")}</p><div class="pre">${md(st.text)}</div></div><p class="src">Source: notebooks/trading_log_*.json (step outputs, shortened).</p>`)}
     ${aiSessionHistoryCard(t, a)}` + tail;
@@ -1334,7 +1327,6 @@ const GLOSS = {
   runfc: ["Run the forecast", "Fits the chosen forecast models on the server, on the same CSV price files the engine uses, and draws the new 7-day path. Ensemble, Fusion and the reviewer range are rebuilt from the models you pick. Each run is stored; the same company, date and models give back the stored run."],
   ind: ["Indicators", "RSI above 70 is often called overbought and below 30 oversold. MACD above its signal line means upward momentum. %B shows where the price sits in its Bollinger band (0 = lower band, 1 = upper band). Volatility is the typical daily move over 30 days. They describe the recent past and are not a forecast."],
   aidec: ["Decision", "BUY, HOLD or SELL after the whole analysis has run: analysts, the bull vs bear debate, the trader, the risk debate and the portfolio manager. The decision verifier can override the signal when the text and the rating disagree. Overweight counts as BUY and Underweight as SELL."],
-  debate: ["AI debate", "Two LLM agents argue for (bull) and against (bear) the stock over several rounds using the analysts' reports; a facilitator weighs the evidence. A second debate between aggressive, conservative and neutral risk analysts tests the trader's plan."],
   aiadj: ["AI-adjusted forecast", "The 7-day forecast after the latest AI analysis (the AI analysis run with an LLM) has had its say. The AI rating (Buy +1, Overweight +½, Hold 0, Underweight −½, Sell −1) times the stock's typical 7-day move is its view; the adjusted move is 80% the models and 20% that view. Once the AI has five graded calls, its weight moves between 10% and 35% with how often it was right. A session more than 10 days older than the prices does not count."],
   runai: ["Run AI analysis", "Runs the whole AI analysis of the company on the server (analysts, debates, trader, risk, portfolio manager, verifier) with the LLM you choose, then shows the new session. Ollama models run on the server itself; OpenAI, Claude, Gemini and Groq models run with the server's API key, so no key is ever typed into this page. Each run is stored by company, date and model."],
   evwin: ["Window", "A call is judged on the closes of the next 1, 2 or 3 trading days. BUY is right if some close in that window is above the entry price, SELL if some close is below it, HOLD if some close is the same or higher. A longer window gives each call more chances, so accuracy rises with it. Only calls with three later closes are scored, the same calls for every window."],
