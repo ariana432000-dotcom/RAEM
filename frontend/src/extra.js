@@ -284,22 +284,10 @@ function renderBT() {
   const sum = ORDER.map(tk => { const e = (EXTRA.backtest[tk] || {}).Ensemble; return e ? `<tr class="click" data-act="bt-t" data-v="${esc(tk)}"><td><span class="tkr">${esc(tk)}</span></td><td>${e.n}</td><td>${e.hit == null ? "–" : e.hit.toFixed(0) + "%"}</td><td>${e.always_up.toFixed(0)}%</td><td class="${cls(e.strategy_pct)}">${fmtPct(e.strategy_pct, 1)}</td><td class="${cls(e.buyhold_pct)}">${fmtPct(e.buyhold_pct, 1)}</td></tr>` : ""; }).join("");
   return `<div class="page-h"><h1>Backtest</h1><p>How each model's saved day-7 calls would have done: long when it predicted up, short when down. Built from graded rows in the forecast log.</p></div>
     ${card("", "", "", `<div class="field"><span class="lbl">Ticker</span>${tkrPills(t, "data-bt")}</div>`)}
-    ${models.length ? card("Equity curve", "Growth of 1.00 following each selected model's calls, one non-overlapping 7-day trade at a time. Dashed grey = buy and hold on the same entry dates.", "", `<div class="chartbox" id="btchart"></div><div class="legend" id="btlegend"></div><p class="src">Source: forecast_log/${esc(t)}_forecasts.csv (graded day-7 rows).</p>`) : ""}
     ${hasPrice ? card("Trades on the price chart", `Every call of ${esc(first)} (the first selected model) on the price. ▲ long entry, ▼ short entry; the line runs from entry to exit, green if the call made money and red if it lost. The dots above show each call's return.`, "", `<div class="ohlc" id="btp-ohlc"></div><div class="chartbox" id="btprice"></div><p class="src">Day-7 calls from non-overlapping entry dates; the exit is the target date. Most rows are walk-forward replays, not live calls. No costs.${((DATA[t] || {}).meta || {}).source === "dse" ? " DSE trading is treated as long-only on this site, so the short calls are part of the test only." : ""}</p>`) : ""}
     ${models.length ? card(`Models ${hint(GLOSS.bt)}`, "Click a row to add or remove its curve.", "", `<div class="scroll"><table><thead><tr><th>Model</th><th>Trades</th><th>Direction hit</th><th>Always-UP</th><th>Edge (pts)</th><th>Strategy</th><th>Buy &amp; hold</th><th>Avg trade</th><th>Max drawdown</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">No costs, no slippage. Most rows are walk-forward replays from Ridge, ARIMA and Kalman, so of the six models on this site only Ridge, ARIMA and the Ensemble have enough history. Past Ensemble rows were made from the full model set. A strategy that trails buy and hold in a rising market is common and not a bug.</p>`) : nonEmpty("inbox", "Not enough graded calls", "This ticker has fewer than 8 non-overlapping graded day-7 calls for any model.")}
     ${card("Ensemble across tickers", "Click a row to open that ticker.", "", `<div class="scroll"><table><thead><tr><th>Ticker</th><th>Trades</th><th>Direction hit</th><th>Always-UP</th><th>Strategy</th><th>Buy &amp; hold</th></tr></thead><tbody>${sum}</tbody></table></div>`)}`;
 }
-function drawBT() {
-  const h = $("#btchart"); if (!h) return;
-  const res = EXTRA.backtest[X.bt.t] || {}, sel = [...X.bt.sel].filter(m => res[m]);
-  if (!sel.length) return;
-  const base = res[sel[0]], series = [{ name: "Buy & hold", v: base.buyhold_eq, color: "var(--faint)", dash: true, w: 1.5 }];
-  sel.forEach((m, i) => series.push({ name: m, v: res[m].equity, color: `var(${COLORS[i % 8]})`, w: 2.2 }));
-  const n = Math.min(...series.map(s => s.v.length));
-  lineChart(h, base.dates.slice(0, n), series.map(s => ({ ...s, v: s.v.slice(0, n) })), { base: 1, label: "Equity curve", fmt: v => v.toFixed(2) });
-  $("#btlegend").innerHTML = series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("");
-}
-
 /* Trades of the first selected model on the price (Backtest page): a row of dots with each call's return above candles and volume,
    on one shared x axis. A triangle marks each entry (up = long, down = short); a line runs from entry to exit, green when the call
    made money and red when it lost. Candles are grey so the trade marks stand out; direction is shown by shape, outcome by colour
@@ -650,7 +638,7 @@ function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app"
 function renderExtra() {
   return ({ ai: renderAI, watch: renderWatch, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock, eval: renderEval })[S.page]();
 }
-function afterRender() { if (S.page === "bt") { drawBT(); drawBTPrice(); } if (S.page === "eval") drawEval(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
+function afterRender() { if (S.page === "bt") drawBTPrice(); if (S.page === "eval") drawEval(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
 
 /* ---------- top nav ---------- */
 const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["bt", "Backtest"], ["ai", "AI Analysis"], ["eval", "Evaluation"]];
