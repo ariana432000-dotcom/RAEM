@@ -775,9 +775,9 @@ function renderStocks() {
 }
 
 function stockStats(d) {
-  const t = (k, v, c) => `<div class="card statx"><p class="k">${k}</p><p class="v mono ${c || ""}">${v}</p></div>`;
+  const t = (k, v, c) => `<div class="statx"><p class="k">${k}</p><p class="v mono ${c || ""}">${v}</p></div>`;
   const chg = d.change == null ? "–" : `${d.change >= 0 ? "+" : "−"}${fmtN(Math.abs(d.change), 2)} <span>(${fmtPct(d.change_pct)})</span>`;
-  return `<div class="statsx">${t("Last close", taka(d.last_close))}${t("Change", chg, cls(d.change))}${t("Day high", taka(d.day_high))}${t("Day low", taka(d.day_low))}${t("52W high", taka(d.week52_high))}${t("52W low", taka(d.week52_low))}${t("Volume", fmtN(d.volume))}${t("Market cap", takaCr(d.market_cap_mn))}</div>`;
+  return `<div class="card statone"><div class="statcells">${t("Last close", taka(d.last_close))}${t("Change", chg, cls(d.change))}${t("Day high", taka(d.day_high))}${t("Day low", taka(d.day_low))}${t("52W high", taka(d.week52_high))}${t("52W low", taka(d.week52_low))}${t("Volume", fmtN(d.volume))}${t("Market cap", takaCr(d.market_cap_mn))}</div></div>`;
 }
 function stockRaem(d) {
   const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null;
