@@ -779,19 +779,30 @@ function stockStats(d) {
   const chg = d.change == null ? "–" : `${d.change >= 0 ? "+" : "−"}${fmtN(Math.abs(d.change), 2)} <span>(${fmtPct(d.change_pct)})</span>`;
   return `<div class="card statone"><div class="statcells">${t("Last close", taka(d.last_close))}${t("Change", chg, cls(d.change))}${t("Day high", taka(d.day_high))}${t("Day low", taka(d.day_low))}${t("52W high", taka(d.week52_high))}${t("52W low", taka(d.week52_low))}${t("Volume", fmtN(d.volume))}${t("Market cap", takaCr(d.market_cap_mn))}</div></div>`;
 }
+function stockLastSession(code) {
+  const a = EXTRA.ai[code], L = a && a.latest; if (!L) return "";
+  const sig = aiSignal(L), d = DATA[code], cur = d ? d.meta.currency : "", fd = L.final_decision || "", v = L.verifier || {};
+  const summ = mdField(fd, "Executive Summary") || (fd ? fd.replace(/\*\*/g, "").slice(0, 400) : ""), b = d ? aiBlend(code) : null;
+  const out = b && !b.stale ? `<p class="sub">7-day outlook with this decision: <b class="mono ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</b></p>` : "";
+  return `<div class="raemai"><p class="sigline">AI analysis, last saved session: ${sig ? sigBadge(sig) : ratingBadge(L.rating)}</p>
+    <p class="sub">${dLong(L.date)}${L.llm_model ? " · " + esc(L.llm_model) : ""} · portfolio manager rating ${esc(L.rating || "n/a")}${v.status ? ` · verifier ${esc(String(v.status).toLowerCase())}` : ""}</p>
+    ${summ ? `<p class="rsum">${esc(summ)}</p>` : ""}${out}
+    <div class="cta"><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">Open AI analysis</button></div></div>`;
+}
 function stockRaem(d) {
   const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null;
+  const sess = stockLastSession(code);
   let left, right;
   if (o) {
     left = `${ring(o.sig, Math.max(o.pGain || 0, o.pFall || 0), o.sig, 96)}`;
     right = `<p class="sigline">RAEM signal: ${sigBadge(o.sig)}</p><p class="sub">Expected 7-day move <b class="mono ${cls(o.m)}">${fmtPct(o.m * 100)}</b> from the reviewed forecast. ${esc(o.why ? o.why.charAt(0).toUpperCase() + o.why.slice(1) + "." : "")}</p>
-      <div class="cta"><button type="button" class="btn primary sm" data-t="${esc(code)}">Open full forecast</button><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis</button></div>`;
+      <div class="cta"><button type="button" class="btn primary sm" data-t="${esc(code)}">Open full forecast</button>${sess ? "" : `<button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis</button>`}</div>`;
   } else {
     left = `<div class="ring0" aria-hidden="true">–</div>`;
     right = `<p class="sigline">No RAEM analysis for ${esc(code)} yet</p><p class="sub">Adding the company fetches its prices and runs the seven-day forecast with the models; the signal and the AI analysis then appear here.${busy ? " Adding it now…" : ""}</p>
-      <div class="cta"><button type="button" class="btn primary sm" data-add="${esc(code)}" data-market="dse" data-name="${esc(d.name || "")}"${busy ? " disabled" : ""}>${busy ? "Adding…" : "Run RAEM analysis"}</button><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis only</button></div>`;
+      <div class="cta"><button type="button" class="btn primary sm" data-add="${esc(code)}" data-market="dse" data-name="${esc(d.name || "")}"${busy ? " disabled" : ""}>${busy ? "Adding…" : "Run RAEM analysis"}</button>${sess ? "" : `<button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis only</button>`}</div>`;
   }
-  return card("RAEM analysis", "Seven-day model forecast and the BUY, HOLD or SELL signal.", "", `<div class="raemrow"><div>${left}</div><div>${right}</div></div>`);
+  return card("RAEM analysis", "Seven-day model forecast and the BUY, HOLD or SELL signal.", "", `<div class="raemrow"><div>${left}</div><div>${right}</div></div>${sess}`);
 }
 const HOLD_COL = { "Sponsor/Director": "var(--c7)", Institute: "var(--buy)", Public: "var(--faint)", Govt: "var(--hold)", Foreign: "var(--c3)" };
 function donut(sh) {
