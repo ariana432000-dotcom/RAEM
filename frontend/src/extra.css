@@ -141,7 +141,6 @@ table.dense tr.tot td { font-weight: 700; border-top: 1px solid var(--border); b
 .stktable tr.click:hover td { background: var(--panel-hover); }
 .stkcode { font-size: 0.55em; font-weight: 600; color: var(--muted); }
 .stkjump { display: flex; gap: 10px; max-width: 560px; margin-bottom: 20px; }
-.stksum { font-size: 14px; line-height: 1.7; color: var(--text); max-width: 80ch; }
 .statsx { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .statx { padding: 14px 16px; }
 .statx .k { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
@@ -192,3 +191,11 @@ table.stktable th:last-child, table.stktable td:last-child { text-align: right; 
 /* six top links (Evaluation was added) need the room the search box takes between 861px and 1040px */
 @media (min-width: 861px) and (max-width: 1040px) { .topnav-in { gap: 6px; } .search { flex: 0 1 120px; min-width: 0; } }
 table.lt th, table.lt td { text-align: left; }
+
+.stkmain { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; align-items: start; }
+.stkside .stkh { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; }
+.stkside .statsx { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.stkside .statx { padding: 12px 14px; }
+.stkside .statx .v { font-size: 16px; }
+@media (max-width: 960px) { .stkmain { grid-template-columns: minmax(0, 1fr); } .stkside .statsx { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .stkside .statsx { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
