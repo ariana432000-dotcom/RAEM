@@ -805,13 +805,27 @@ function stockStats(d) {
 }
 function stockLastSession(code) {
   const a = EXTRA.ai[code], L = a && a.latest; if (!L) return "";
-  const sig = aiSignal(L), d = DATA[code], cur = d ? d.meta.currency : "", fd = L.final_decision || "", v = L.verifier || {};
+  const sig = aiSignal(L), d = DATA[code], cur = d ? d.meta.currency : "", fd = L.final_decision || "", v = L.verifier || {}, open = !!(X.stk.detail && X.stk.detail[code]);
   const summ = mdField(fd, "Executive Summary") || (fd ? fd.replace(/\*\*/g, "").slice(0, 400) : ""), b = d ? aiBlend(code) : null;
   const out = b && !b.stale ? `<p class="sub">7-day outlook with this decision: <b class="mono ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</b></p>` : "";
   return `<div class="raemai"><p class="sigline">AI analysis, last saved session: ${sig ? sigBadge(sig) : ratingBadge(L.rating)}</p>
     <p class="sub">${dLong(L.date)}${L.llm_model ? " · " + esc(L.llm_model) : ""} · portfolio manager rating ${esc(L.rating || "n/a")}${v.status ? ` · verifier ${esc(String(v.status).toLowerCase())}` : ""}</p>
     ${summ ? `<p class="rsum">${esc(summ)}</p>` : ""}${out}
-    <div class="cta"><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">Open AI analysis</button></div></div>`;
+    <div class="cta"><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">Open AI analysis</button>
+      <button type="button" class="btn secondary sm" data-act="stk-detail" data-v="${esc(code)}" aria-expanded="${open}">${open ? "Hide details" : "Details"}</button></div>${open ? stockProcess(L) : ""}</div>`;
+}
+/* The full process behind a saved decision: every stage of the session in the order it ran, each one openable. The
+   debates use the complete turns when the session kept them (website runs), else the stage's saved text. */
+function stockProcess(L) {
+  const steps = Object.entries(L.steps || {}), dbg = L.debate && L.debate.complete ? L.debate : null, sig = aiSignal(L);
+  const turns = (list, fallback) => list && list.length ? `<ul class="turns">${list.map(turnHtml).join("")}</ul>` : `<div class="pre">${md(fallback)}</div>`;
+  const body = (name, st) => name === "Bull vs bear debate" && dbg ? turns(dbg.turns, st.text)
+    : name === "Risk debate" && dbg ? turns(dbg.risk_turns, st.text) : `<div class="pre">${md(st.text)}</div>`;
+  if (!steps.length) return `<p class="sub" style="margin-top:12px">This session did not keep its stage outputs.</p>`;
+  const last = steps.length - 1;
+  return `<div class="aiproc"><p class="sub">${steps.length} stages ran in this order; open any stage to read what it produced. Outputs are shortened where the session saved only an excerpt.</p>
+    <ol class="flow">${steps.map(([n], i) => `<li>${esc(n)}</li>`).join("")}<li class="end">${esc(sig || L.rating || "Decision")}</li></ol>
+    ${steps.map(([n, st], i) => `<details${i === last ? " open" : ""}><summary><span class="no mono">${i + 1}</span><span class="nm">${esc(n)}</span><span class="tm mono">${esc(st.time || "")}</span></summary><div class="scrollbox">${body(n, st)}</div></details>`).join("")}</div>`;
 }
 function stockRaem(d) {
   const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null;
