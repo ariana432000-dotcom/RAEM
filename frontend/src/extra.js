@@ -774,37 +774,35 @@ function renderStocks() {
       ${rows.length > x.n ? `<p style="margin-top:14px"><button type="button" class="btn secondary sm" data-act="stk-more">Show more (${rows.length - x.n})</button></p>` : ""}` : emptyState("search", "No company matches", "Try another symbol or company name, or clear the sector filter."))}`;
 }
 
-function stockSummary(d) {
-  const nm = esc(d.name || d.code), p = [];
-  p.push(`${nm} (${esc(d.code)}) is ${d.category ? `a Category ${esc(d.category)} company` : "a company"} listed on the Dhaka Stock Exchange${d.sector ? ` in the ${esc(d.sector)} sector` : ""}.`);
-  if (d.last_close != null) p.push(`The share last closed at ${taka(d.last_close)} on ${dLong(d.as_of)}${d.change_pct != null ? `, ${d.change_pct >= 0 ? "up" : "down"} ${Math.abs(d.change_pct).toFixed(2)}% from the previous session` : ""}.`);
-  if (d.week52_low != null) p.push(`Over the past 52 weeks it has traded between ${taka(d.week52_low)} and ${taka(d.week52_high)}.`);
-  if (d.paid_up_mn != null) p.push(`Paid-up capital stands at ${takaCr(d.paid_up_mn)}${d.market_cap_mn != null ? `, with a market capitalisation of approximately ${takaCr(d.market_cap_mn)}` : ""}.`);
-  const sh = d.shareholding || [];
-  if (sh.length) p.push(`Shareholding is split ${sh.map(s => `${s.label.toLowerCase()} ${s.pct.toFixed(2)}%`).join(", ")}.`);
-  if (d.dividend) p.push(`The last declared cash dividend was ${d.dividend.pct}% for ${d.dividend.year}.`);
-  const ae = (d.annual_eps || []).slice(-1)[0];
-  if (ae) p.push(`Audited annual EPS for ${ae.year} was ${taka(ae.eps)}.`);
-  return p.join(" ").replace(/\s+/g, " ");
-}
 function stockStats(d) {
-  const t = (k, v, c) => `<div class="card statx"><p class="k">${k}</p><p class="v mono ${c || ""}">${v}</p></div>`;
+  const t = (k, v, c) => `<div class="statx"><p class="k">${k}</p><p class="v mono ${c || ""}">${v}</p></div>`;
   const chg = d.change == null ? "–" : `${d.change >= 0 ? "+" : "−"}${fmtN(Math.abs(d.change), 2)} <span>(${fmtPct(d.change_pct)})</span>`;
-  return `<div class="statsx">${t("Last close", taka(d.last_close))}${t("Change", chg, cls(d.change))}${t("Day high", taka(d.day_high))}${t("Day low", taka(d.day_low))}${t("52W high", taka(d.week52_high))}${t("52W low", taka(d.week52_low))}${t("Volume", fmtN(d.volume))}${t("Market cap", takaCr(d.market_cap_mn))}</div>`;
+  return `<div class="card statone"><div class="statcells">${t("Last close", taka(d.last_close))}${t("Change", chg, cls(d.change))}${t("Day high", taka(d.day_high))}${t("Day low", taka(d.day_low))}${t("52W high", taka(d.week52_high))}${t("52W low", taka(d.week52_low))}${t("Volume", fmtN(d.volume))}${t("Market cap", takaCr(d.market_cap_mn))}</div></div>`;
+}
+function stockLastSession(code) {
+  const a = EXTRA.ai[code], L = a && a.latest; if (!L) return "";
+  const sig = aiSignal(L), d = DATA[code], cur = d ? d.meta.currency : "", fd = L.final_decision || "", v = L.verifier || {};
+  const summ = mdField(fd, "Executive Summary") || (fd ? fd.replace(/\*\*/g, "").slice(0, 400) : ""), b = d ? aiBlend(code) : null;
+  const out = b && !b.stale ? `<p class="sub">7-day outlook with this decision: <b class="mono ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</b></p>` : "";
+  return `<div class="raemai"><p class="sigline">AI analysis, last saved session: ${sig ? sigBadge(sig) : ratingBadge(L.rating)}</p>
+    <p class="sub">${dLong(L.date)}${L.llm_model ? " · " + esc(L.llm_model) : ""} · portfolio manager rating ${esc(L.rating || "n/a")}${v.status ? ` · verifier ${esc(String(v.status).toLowerCase())}` : ""}</p>
+    ${summ ? `<p class="rsum">${esc(summ)}</p>` : ""}${out}
+    <div class="cta"><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">Open AI analysis</button></div></div>`;
 }
 function stockRaem(d) {
   const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null;
+  const sess = stockLastSession(code);
   let left, right;
   if (o) {
     left = `${ring(o.sig, Math.max(o.pGain || 0, o.pFall || 0), o.sig, 96)}`;
     right = `<p class="sigline">RAEM signal: ${sigBadge(o.sig)}</p><p class="sub">Expected 7-day move <b class="mono ${cls(o.m)}">${fmtPct(o.m * 100)}</b> from the reviewed forecast. ${esc(o.why ? o.why.charAt(0).toUpperCase() + o.why.slice(1) + "." : "")}</p>
-      <div class="cta"><button type="button" class="btn primary sm" data-t="${esc(code)}">Open full forecast</button><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis</button></div>`;
+      <div class="cta"><button type="button" class="btn primary sm" data-t="${esc(code)}">Open full forecast</button>${sess ? "" : `<button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis</button>`}</div>`;
   } else {
     left = `<div class="ring0" aria-hidden="true">–</div>`;
     right = `<p class="sigline">No RAEM analysis for ${esc(code)} yet</p><p class="sub">Adding the company fetches its prices and runs the seven-day forecast with the models; the signal and the AI analysis then appear here.${busy ? " Adding it now…" : ""}</p>
-      <div class="cta"><button type="button" class="btn primary sm" data-add="${esc(code)}" data-market="dse" data-name="${esc(d.name || "")}"${busy ? " disabled" : ""}>${busy ? "Adding…" : "Run RAEM analysis"}</button><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis only</button></div>`;
+      <div class="cta"><button type="button" class="btn primary sm" data-add="${esc(code)}" data-market="dse" data-name="${esc(d.name || "")}"${busy ? " disabled" : ""}>${busy ? "Adding…" : "Run RAEM analysis"}</button>${sess ? "" : `<button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis only</button>`}</div>`;
   }
-  return card("RAEM analysis", "Seven-day model forecast and the BUY, HOLD or SELL signal.", "", `<div class="raemrow"><div>${left}</div><div>${right}</div></div>`);
+  return card("RAEM analysis", "Seven-day model forecast and the BUY, HOLD or SELL signal.", "", `<div class="raemrow"><div>${left}</div><div>${right}</div></div>${sess}`);
 }
 const HOLD_COL = { "Sponsor/Director": "var(--c7)", Institute: "var(--buy)", Public: "var(--faint)", Govt: "var(--hold)", Foreign: "var(--c3)" };
 function donut(sh) {
@@ -839,9 +837,7 @@ function renderStock() {
   return `${bc}
   <div class="pagehead"><div><h1>${esc(d.name || code)} <span class="stkcode">(${esc(code)})</span></h1><p class="sub">Dhaka Stock Exchange${d.sector ? ` · ${esc(d.sector)}` : ""}${d.category ? ` · Category ${esc(d.category)}` : ""} · As of ${dLong(d.as_of)}</p></div></div>
   <form class="stkjump" id="stk-jump" autocomplete="off"><input class="inp" id="stk-jump-q" placeholder="Search another DSE stock, e.g. IPDC, Renata, Robi" aria-label="Search another DSE stock" spellcheck="false"><button type="submit" class="btn secondary sm">Search</button></form>
-  <section class="mksec">${card("", "", "", `<p class="stksum">${stockSummary(d)}</p>`)}</section>
-  <section class="mksec"><div class="sec-h"><div><h2>${esc(code)} key statistics</h2></div></div>${stockStats(d)}</section>
-  <section class="mksec">${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${[[63, "3M"], [126, "6M"], [252, "1Y"]].map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div>`)}</section>
+  <section class="mksec stkmain"><div class="stkside"><h2 class="stkh">${esc(code)} key statistics</h2>${stockStats(d)}</div>${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${[[63, "3M"], [126, "6M"], [252, "1Y"]].map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div>`)}</section>
   <section class="mksec">${stockRaem(d)}</section>
   <section class="mksec">${stockFundamentals(d)}</section>
   ${d.errors && d.errors.length ? `<p class="sub">Some parts could not be fetched: ${esc(d.errors.join(" · "))}</p>` : ""}`;
