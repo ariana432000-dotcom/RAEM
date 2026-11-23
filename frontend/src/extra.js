@@ -861,7 +861,7 @@ function renderStock() {
   return `${bc}
   <div class="pagehead"><div><h1>${esc(d.name || code)} <span class="stkcode">(${esc(code)})</span></h1><p class="sub">Dhaka Stock Exchange${d.sector ? ` · ${esc(d.sector)}` : ""}${d.category ? ` · Category ${esc(d.category)}` : ""} · As of ${dLong(d.as_of)}</p></div></div>
   <form class="stkjump" id="stk-jump" autocomplete="off"><input class="inp" id="stk-jump-q" placeholder="Search another DSE stock, e.g. IPDC, Renata, Robi" aria-label="Search another DSE stock" spellcheck="false"><button type="submit" class="btn secondary sm">Search</button></form>
-  <section class="mksec stkmain"><div class="stkside"><h2 class="stkh">${esc(code)} key statistics</h2>${stockStats(d)}</div>${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${[[63, "3M"], [126, "6M"], [252, "1Y"]].map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div>`)}</section>
+  <section class="mksec stkmain"><div class="stkside"><h2 class="stkh">${esc(code)} key statistics</h2>${stockStats(d)}</div>${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${[[63, "3M"], [126, "6M"], [252, "1Y"]].map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div><p class="src" id="stk-fcnote"></p>`)}</section>
   <section class="mksec">${stockRaem(d)}</section>
   <section class="mksec">${stockFundamentals(d)}</section>
   ${d.errors && d.errors.length ? `<p class="sub">Some parts could not be fetched: ${esc(d.errors.join(" · "))}</p>` : ""}`;
@@ -870,9 +870,22 @@ function drawStockChart() {
   const h = $("#stk-chart"); if (!h) return;
   const d = X.stk.det[X.stk.code]; if (!d || !d.candles || !d.candles.length) return;
   const cs = d.candles.slice(-X.stk.range), n = cs.length;
+  // the site's 7-day forecast for this company (when it has one), drawn after its own last close
+  const ax = cs.map(c => c[0]), fT = DATA[d.code] && fcPath(d.code) ? d.code : null;
+  let fc = null;
+  if (fT) {
+    const f = DATA[fT].forecast, fp = fcPath(fT), bd = fcBand(fT);
+    f.dates.forEach(ds => { if (ds > ax[ax.length - 1]) ax.push(ds); });
+    const ix = ds => ax.findIndex(a => a >= ds), a0 = ix(f.last_date);
+    if (a0 >= 0 && ax[0] <= f.last_date) {
+      fc = { name: fcName(fT), from: f.last_date, pts: [[a0, f.last_price, f.last_price, f.last_price]] };
+      f.dates.forEach((ds, k) => fc.pts.push([ix(ds), fp[k], bd ? bd[k][0] : fp[k], bd ? bd[k][1] : fp[k]]));
+    }
+  }
+  const nAx = ax.length;
   const W = Math.max(320, h.clientWidth || 700), H = 380, padL = 8, padR = 56, padT = 10, volH = 70, axisH = 22, gap = 12, priceH = H - padT - volH - gap - axisH;
-  const lo0 = Math.min(...cs.map(c => c[3])), hi0 = Math.max(...cs.map(c => c[2])), pad = (hi0 - lo0) * 0.06 || 0.05, lo = lo0 - pad, hi = hi0 + pad;
-  const y = v => padT + (hi - v) * priceH / (hi - lo), vmax = Math.max(...cs.map(c => c[5])) || 1, step = (W - padL - padR) / n, cw = Math.max(1, Math.min(10, step * 0.7)), x = i => padL + step * (i + 0.5);
+  const fcv = fc ? fc.pts.flatMap(q => [q[1], q[2], q[3]]) : [], lo0 = Math.min(...cs.map(c => c[3]), ...fcv), hi0 = Math.max(...cs.map(c => c[2]), ...fcv), pad = (hi0 - lo0) * 0.06 || 0.05, lo = lo0 - pad, hi = hi0 + pad;
+  const y = v => padT + (hi - v) * priceH / (hi - lo), vmax = Math.max(...cs.map(c => c[5])) || 1, step = (W - padL - padR) / nAx, cw = Math.max(1, Math.min(10, step * 0.7)), x = i => padL + step * (i + 0.5);
   const volTop = padT + priceH + gap, last = cs[n - 1];
   let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(d.code)} candlestick chart with volume">`;
   niceTicks(lo, hi, 5).filter(v => v >= lo && v <= hi).forEach(v => { s += `<line x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--border-soft)"/><text class="ax" x="${W - padR + 6}" y="${(y(v) + 3).toFixed(1)}">${fmtN(v, 2)}</text>`; });
@@ -881,15 +894,26 @@ function drawStockChart() {
     s += `<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${y(c[2]).toFixed(1)}" y2="${y(c[3]).toFixed(1)}" stroke="${col}"/><rect x="${(x(i) - cw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${cw.toFixed(1)}" height="${Math.max(1, bot - top).toFixed(1)}" fill="${col}"/>`;
     s += `<rect x="${(x(i) - cw / 2).toFixed(1)}" y="${(volTop + volH - c[5] / vmax * volH).toFixed(1)}" width="${cw.toFixed(1)}" height="${(c[5] / vmax * volH).toFixed(1)}" fill="${col}" opacity="0.45"/>`;
   });
+  if (fc) {
+    const P = (q, k) => `${x(q[0]).toFixed(1)},${y(q[k]).toFixed(1)}`;
+    s += `<polygon points="${[...fc.pts.map(q => P(q, 3)), ...fc.pts.slice().reverse().map(q => P(q, 2))].join(" ")}" fill="var(--accent-soft)"/>`;
+    s += `<polyline points="${fc.pts.map(q => P(q, 1)).join(" ")}" fill="none" stroke="var(--accent-strong)" stroke-width="2" stroke-dasharray="5 3"/>`;
+    fc.pts.slice(1).forEach(q => { s += `<circle cx="${x(q[0]).toFixed(1)}" cy="${y(q[1]).toFixed(1)}" r="2.5" fill="var(--accent-strong)"/>`; });
+  }
   s += `<line x1="${padL}" x2="${W - padR}" y1="${y(last[4]).toFixed(1)}" y2="${y(last[4]).toFixed(1)}" stroke="${last[4] >= last[1] ? "var(--buy)" : "var(--sell)"}" stroke-dasharray="2 3"/><rect x="${W - padR + 2}" y="${(y(last[4]) - 9).toFixed(1)}" width="${padR - 4}" height="18" rx="3" fill="${last[4] >= last[1] ? "var(--buy)" : "var(--sell)"}"/><text x="${W - padR / 2}" y="${(y(last[4]) + 4).toFixed(1)}" text-anchor="middle" style="font:600 11px var(--font-mono);fill:var(--on-accent)">${fmtN(last[4], 2)}</text>`;
-  [0, 0.25, 0.5, 0.75, 1].forEach((f, k) => { const i = Math.min(n - 1, Math.round(f * (n - 1))); s += `<text class="ax" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}">${dShort(cs[i][0])}</text>`; });
+  [0, 0.25, 0.5, 0.75, 1].forEach((f, k) => { const i = Math.min(nAx - 1, Math.round(f * (nAx - 1))); s += `<text class="ax" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}">${dShort(ax[i])}</text>`; });
   s += `<line id="stk-cross" x1="0" x2="0" y1="${padT}" y2="${volTop + volH}" stroke="var(--faint)" stroke-dasharray="3 3" opacity="0"/><rect id="stk-hit" x="${padL}" y="${padT}" width="${W - padL - padR}" height="${H - padT}" fill="transparent"/></svg>`;
   h.innerHTML = s;
-  const out = $("#stk-ohlc"), show = i => { const c = cs[i], p = i ? cs[i - 1][4] : null, ch = p ? (c[4] / p - 1) * 100 : null;
-    out.innerHTML = `<b>${esc(d.code)}</b> <span class="sub">${esc(c[0])}</span> &nbsp; O <span>${fmtN(c[1], 2)}</span> H <span>${fmtN(c[2], 2)}</span> L <span>${fmtN(c[3], 2)}</span> C <span>${fmtN(c[4], 2)}</span> V <span>${fmtN(c[5])}</span> <span class="${cls(ch)}">${fmtPct(ch)}</span>`; };
+  const out = $("#stk-ohlc"), show = i => {
+    const c = cs[i], p = c && i ? cs[i - 1][4] : null, ch = p ? (c[4] / p - 1) * 100 : null, q = fc && fc.pts.slice(1).find(z => z[0] === i);
+    const fcTxt = q ? ` &nbsp; <span class="fcv">Forecast ${fmtN(q[1], 2)}</span> <span class="sub">(${fmtN(q[2], 2)} to ${fmtN(q[3], 2)})</span>` : "";
+    out.innerHTML = c ? `<b>${esc(d.code)}</b> <span class="sub">${esc(c[0])}</span> &nbsp; O <span>${fmtN(c[1], 2)}</span> H <span>${fmtN(c[2], 2)}</span> L <span>${fmtN(c[3], 2)}</span> C <span>${fmtN(c[4], 2)}</span> V <span>${fmtN(c[5])}</span> <span class="${cls(ch)}">${fmtPct(ch)}</span>${fcTxt}`
+      : `<b>${esc(d.code)}</b> <span class="sub">${esc(ax[i])}</span>${fcTxt}`; };
+  const note = $("#stk-fcnote");
+  if (note) note.innerHTML = fc ? `Dashed blue line: ${esc(fc.name.toLowerCase())} for the next 7 trading days after the ${dLong(fc.from)} close, with its likely range shaded. ${fc.from < last[0] ? "It was made on older prices, so you can compare it with what actually happened. " : ""}Source: forecast_lib. Research output, not investment advice.` : "";
   show(n - 1);
   const svg = h.querySelector("svg"), cross = $("#stk-cross");
-  svg.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width, i = Math.max(0, Math.min(n - 1, Math.floor((px - padL) / step)));
+  svg.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width, i = Math.max(0, Math.min(nAx - 1, Math.floor((px - padL) / step)));
     cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", "1"); show(i); });
   svg.addEventListener("pointerleave", () => { cross.setAttribute("opacity", "0"); show(n - 1); });
 }

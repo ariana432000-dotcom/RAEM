@@ -208,3 +208,5 @@ table.lt th, table.lt td { text-align: left; }
 .btpchart svg { touch-action: pan-y; cursor: grab; user-select: none; }
 .btpchart svg:active { cursor: grabbing; }
 .pills.nw { flex-wrap: nowrap; flex-shrink: 0; }
+
+.fcv { color: var(--accent-strong); font-weight: 700; }
