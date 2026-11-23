@@ -466,6 +466,9 @@ table.lt th, table.lt td { text-align: left; }
 .raemai .sigline { margin-bottom: 4px; }
 .raemai .rsum { margin: 10px 0 8px; font-size: 14px; line-height: 1.6; color: var(--text); max-width: 80ch; }
 .raemai .cta { margin-top: 12px; }
+.btpchart svg { touch-action: pan-y; cursor: grab; user-select: none; }
+.btpchart svg:active { cursor: grabbing; }
+.pills.nw { flex-wrap: nowrap; flex-shrink: 0; }
 
 @media (max-width: 767px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1131,7 +1134,7 @@ function renderBT() {
   const sum = ORDER.map(tk => { const e = (EXTRA.backtest[tk] || {}).Ensemble; return e ? `<tr class="click" data-act="bt-t" data-v="${esc(tk)}"><td><span class="tkr">${esc(tk)}</span></td><td>${e.n}</td><td>${e.hit == null ? "–" : e.hit.toFixed(0) + "%"}</td><td>${e.always_up.toFixed(0)}%</td><td class="${cls(e.strategy_pct)}">${fmtPct(e.strategy_pct, 1)}</td><td class="${cls(e.buyhold_pct)}">${fmtPct(e.buyhold_pct, 1)}</td></tr>` : ""; }).join("");
   return `<div class="page-h"><h1>Backtest</h1><p>How each model's saved day-7 calls would have done: long when it predicted up, short when down. Built from graded rows in the forecast log.</p></div>
     ${card("", "", "", `<div class="field"><span class="lbl">Ticker</span>${tkrPills(t, "data-bt")}</div>`)}
-    ${hasPrice ? card("Trades on the price chart", `Every finished call of the AI analysis for ${esc(t)}, read from the ChromaDB episodic memory. ▲ BUY, ▼ SELL, ○ HOLD (no position, so only a marker); for BUY and SELL the line runs from the price when the analysis was made to the price when the call was checked, green if the call made money and red if it lost. The dots above show each call's return.`, "", `<div class="ohlc" id="btp-ohlc"></div><div class="chartbox" id="btprice"></div><p class="src">Source: ChromaDB raem_episodic_memory (${aiT.length} finished calls${((EXTRA.ai_trades_pending || {})[t] || 0) ? `, ${EXTRA.ai_trades_pending[t]} still pending` : ""}). Candles come from the saved price data and stop where that data ends. No costs.${((DATA[t] || {}).meta || {}).source === "dse" ? " DSE trading is treated as long-only on this site, so a SELL here means staying out." : ""}</p>`) : card("Trades on the price chart", "", "", emptyState("inbox", "No saved AI analysis calls for this ticker", "Run the AI analysis for it; every finished call is stored in the episodic memory and appears here."))}
+    ${hasPrice ? card("Trades on the price chart", `Every finished call of the AI analysis for ${esc(t)}, read from the ChromaDB episodic memory. ▲ BUY, ▼ SELL, ○ HOLD (no position, so only a marker); for BUY and SELL the line runs from the price when the analysis was made to the price when the call was checked, green if the call made money and red if it lost. The dots above show each call's return.`, `<div class="pills nw"><button type="button" class="pillbtn" data-act="btp-zin" aria-label="Zoom in">+</button><button type="button" class="pillbtn" data-act="btp-zout" aria-label="Zoom out">−</button><button type="button" class="pillbtn" data-act="btp-reset">Reset</button></div>`, `<div class="ohlc" id="btp-ohlc"></div><div class="chartbox btpchart" id="btprice"></div><p class="src">Source: ChromaDB raem_episodic_memory (${aiT.length} finished calls${((EXTRA.ai_trades_pending || {})[t] || 0) ? `, ${EXTRA.ai_trades_pending[t]} still pending` : ""}). Candles come from the saved price data and stop where that data ends. No costs.${((DATA[t] || {}).meta || {}).source === "dse" ? " DSE trading is treated as long-only on this site, so a SELL here means staying out." : ""}</p>`) : card("Trades on the price chart", "", "", emptyState("inbox", "No saved AI analysis calls for this ticker", "Run the AI analysis for it; every finished call is stored in the episodic memory and appears here."))}
     ${models.length ? card(`Models ${hint(GLOSS.bt)}`, "Click a row to add or remove its curve.", "", `<div class="scroll"><table><thead><tr><th>Model</th><th>Trades</th><th>Direction hit</th><th>Always-UP</th><th>Edge (pts)</th><th>Strategy</th><th>Buy &amp; hold</th><th>Avg trade</th><th>Max drawdown</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">No costs, no slippage. Most rows are walk-forward replays from Ridge, ARIMA and Kalman, so of the six models on this site only Ridge, ARIMA and the Ensemble have enough history. Past Ensemble rows were made from the full model set. A strategy that trails buy and hold in a rising market is common and not a bug.</p>`) : nonEmpty("inbox", "Not enough graded calls", "This ticker has fewer than 8 non-overlapping graded day-7 calls for any model.")}
     ${card("Ensemble across tickers", "Click a row to open that ticker.", "", `<div class="scroll"><table><thead><tr><th>Ticker</th><th>Trades</th><th>Direction hit</th><th>Always-UP</th><th>Strategy</th><th>Buy &amp; hold</th></tr></thead><tbody>${sum}</tbody></table></div>`)}`;
 }
@@ -1149,26 +1152,34 @@ function drawBTPrice() {
   const at = d => { let a = 0, b = dates.length; while (a < b) { const c = (a + b) >> 1; if (dates[c] < d) a = c + 1; else b = c; } return a; };   // first row on or after d
   const trades = src.map(([d0, d1, s, p0, p1, rt]) => ({ d0, d1, s, p0, p1, rt, i0: at(d0), i1: at(d1) })).filter(x => x.i0 < dates.length && x.i1 < dates.length).sort((a, b) => a.i0 - b.i0);
   if (!trades.length) return;
-  const from = Math.max(0, trades[0].i0 - 2), to = Math.min(dates.length - 1, Math.max(...trades.map(q => q.i1)) + 2), n = to - from + 1;
+  const fFrom = Math.max(0, trades[0].i0 - 2), fTo = Math.min(dates.length - 1, Math.max(...trades.map(q => q.i1)) + 2);
+  X.bt.full = [fFrom, fTo];                                    // the whole range; X.bt.win is the zoomed window inside it (null = whole)
+  let [from, to] = X.bt.win || [fFrom, fTo];
+  from = Math.max(fFrom, Math.min(from, fTo)); to = Math.min(fTo, Math.max(to, from));
+  const n = to - from + 1, vis = trades.filter(q => q.i1 >= from && q.i0 <= to), pts = vis.length ? vis : trades;
   const cs = dates.slice(from, to + 1).map((d, j) => { const r = rows[from + j]; if (!r) return [d, null, null, null, null, 0]; const c = r[4]; return [r[0], r[1] ?? c, r[2] ?? c, r[3] ?? c, c, r[5] || 0]; });
   const cdl = cs.filter(c => c[4] != null);
   const W = Math.max(320, h.clientWidth || 700), padL = 8, padR = 56, padT = 8, plH = 90, gap1 = 14, priceH = 260, gap2 = 8, volH = 56, axisH = 22;
   const H = padT + plH + gap1 + priceH + gap2 + volH + axisH, step = (W - padL - padR) / n, x = i => padL + step * (i - from + 0.5), cw = Math.max(1, Math.min(8, step * 0.65));
-  const rmax = Math.max(1, Math.ceil(Math.max(...trades.map(q => Math.abs(q.rt))))), yr = v => padT + plH / 2 - v / rmax * (plH / 2 - 8);
-  const top = padT + plH + gap1, lo0 = Math.min(...cdl.map(c => c[3]), ...trades.map(q => Math.min(q.p0, q.p1))), hi0 = Math.max(...cdl.map(c => c[2]), ...trades.map(q => Math.max(q.p0, q.p1))), pad = (hi0 - lo0) * 0.06 || 0.05, lo = lo0 - pad, hi = hi0 + pad;
+  const rmax = Math.max(1, Math.ceil(Math.max(...pts.map(q => Math.abs(q.rt))))), yr = v => padT + plH / 2 - v / rmax * (plH / 2 - 8);
+  const top = padT + plH + gap1, lo0 = Math.min(...cdl.map(c => c[3]), ...pts.map(q => Math.min(q.p0, q.p1))), hi0 = Math.max(...cdl.map(c => c[2]), ...pts.map(q => Math.max(q.p0, q.p1))), pad = (hi0 - lo0) * 0.06 || 0.05, lo = lo0 - pad, hi = hi0 + pad;
   const y = v => top + (hi - v) * priceH / (hi - lo), vtop = top + priceH + gap2, vmax = Math.max(...cs.map(c => c[5])) || 1;
   const col = q => q.rt > 0 ? "var(--buy)" : q.rt < 0 ? "var(--sell)" : "var(--faint)";
   let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(m)} calls for ${esc(t)}: returns above, candlestick price chart with entries and exits below">`;
   [rmax, 0, -rmax].forEach(v => { s += `<line x1="${padL}" x2="${W - padR}" y1="${yr(v).toFixed(1)}" y2="${yr(v).toFixed(1)}" stroke="${v === 0 ? "var(--faint)" : "var(--border-soft)"}" ${v === 0 ? 'stroke-dasharray="3 3"' : ""}/><text class="ax" x="${W - padR + 6}" y="${(yr(v) + 3).toFixed(1)}">${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v)}%</text>`; });
-  trades.forEach(q => { s += `<circle cx="${x(q.i1).toFixed(1)}" cy="${yr(Math.max(-rmax, Math.min(rmax, q.rt))).toFixed(1)}" r="3.5" fill="${col(q)}"/>`; });
+  const CLIP = `<g clip-path="url(#btp-clip)">`;
+  s += `<defs><clipPath id="btp-clip"><rect x="${padL}" y="0" width="${W - padL - padR}" height="${H}"/></clipPath></defs>${CLIP}`;
+  vis.forEach(q => { s += `<circle cx="${x(q.i1).toFixed(1)}" cy="${yr(Math.max(-rmax, Math.min(rmax, q.rt))).toFixed(1)}" r="3.5" fill="${col(q)}"/>`; });
+  s += "</g>";
   niceTicks(lo, hi, 5).filter(v => v >= lo && v <= hi).forEach(v => { s += `<line x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--border-soft)"/><text class="ax" x="${W - padR + 6}" y="${(y(v) + 3).toFixed(1)}">${fmtN(v, 2)}</text>`; });
+  s += CLIP;
   cs.forEach((c, j) => {
     if (c[4] == null) return;
     const cx = x(from + j), up = c[4] >= c[1], bt = y(Math.max(c[1], c[4])), bb = y(Math.min(c[1], c[4]));
     s += `<line x1="${cx.toFixed(1)}" x2="${cx.toFixed(1)}" y1="${y(c[2]).toFixed(1)}" y2="${y(c[3]).toFixed(1)}" stroke="var(--faint)" opacity="0.7"/><rect x="${(cx - cw / 2).toFixed(1)}" y="${bt.toFixed(1)}" width="${cw.toFixed(1)}" height="${Math.max(1, bb - bt).toFixed(1)}" fill="${up ? "var(--panel)" : "var(--faint)"}" stroke="var(--faint)" opacity="0.8"/>`;
     s += `<rect x="${(cx - cw / 2).toFixed(1)}" y="${(vtop + volH - c[5] / vmax * volH).toFixed(1)}" width="${cw.toFixed(1)}" height="${(c[5] / vmax * volH).toFixed(1)}" fill="var(--faint)" opacity="0.35"/>`;
   });
-  trades.forEach(q => {
+  vis.forEach(q => {
     const x0 = x(q.i0), y0 = y(q.p0), x1 = x(q.i1), y1 = y(q.p1);
     if (!q.s) { s += `<circle cx="${x0.toFixed(1)}" cy="${y0.toFixed(1)}" r="3" fill="var(--panel)" stroke="var(--text)"/>`; return; }   // HOLD: no position, so only a marker at the entry
     s += `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${col(q)}" stroke-width="1.8"/><circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="2.8" fill="var(--panel)" stroke="${col(q)}" stroke-width="1.6"/>`;
@@ -1176,11 +1187,12 @@ function drawBTPrice() {
       : q.s < 0 ? `<polygon points="${x0.toFixed(1)},${(y0 + 6).toFixed(1)} ${(x0 - 5).toFixed(1)},${(y0 - 3).toFixed(1)} ${(x0 + 5).toFixed(1)},${(y0 - 3).toFixed(1)}" fill="var(--text)" stroke="var(--panel)"/>`
       : `<circle cx="${x0.toFixed(1)}" cy="${y0.toFixed(1)}" r="3" fill="none" stroke="var(--text)"/>`;
   });
+  s += "</g>";
   [0, 0.25, 0.5, 0.75, 1].forEach((f, k) => { const j = Math.min(n - 1, Math.round(f * (n - 1))); s += `<text class="ax" x="${x(from + j).toFixed(1)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}">${dShort(cs[j][0])}</text>`; });
   s += `<line id="btp-cross" x1="0" x2="0" y1="${padT}" y2="${vtop + volH}" stroke="var(--faint)" stroke-dasharray="3 3" opacity="0"/><rect x="${padL}" y="${padT}" width="${W - padL - padR}" height="${H - padT}" fill="transparent"/></svg>`;
   h.innerHTML = s;
   const out = $("#btp-ohlc"), wins = trades.filter(q => q.rt > 0).length, sgnTxt = q => q.s > 0 ? "BUY" : q.s < 0 ? "SELL" : "HOLD";
-  const base = `<b>${esc(m)}</b> <span class="sub">${trades.length} calls, ${trades.filter(q => q.s).length} of them BUY or SELL and ${wins} of those made money. Hover over the chart for details.</span>`;
+  const base = `<b>${esc(m)}</b> <span class="sub">${trades.length} calls, ${trades.filter(q => q.s).length} of them BUY or SELL and ${wins} of those made money. Hover over the chart for details. Scroll to zoom, drag to move, double-click to reset.</span>`;
   const show = j => {
     const c = cs[j], i = from + j, q = trades.find(z => i >= z.i0 && i <= z.i1);
     out.innerHTML = `<b>${esc(t)}</b> <span class="sub">${esc(c[0])}</span>${c[4] == null ? ` <span class="sub">no price bar saved</span>` : ` &nbsp; O <span>${fmtN(c[1], 2)}</span> H <span>${fmtN(c[2], 2)}</span> L <span>${fmtN(c[3], 2)}</span> C <span>${fmtN(c[4], 2)}</span> V <span>${fmtN(c[5])}</span>`}`
@@ -1191,7 +1203,31 @@ function drawBTPrice() {
   svg.addEventListener("pointermove", ev => { const r = svg.getBoundingClientRect(), px = (ev.clientX - r.left) * W / r.width, j = Math.max(0, Math.min(n - 1, Math.floor((px - padL) / step)));
     cross.setAttribute("x1", x(from + j)); cross.setAttribute("x2", x(from + j)); cross.setAttribute("opacity", "1"); show(j); });
   svg.addEventListener("pointerleave", () => { cross.setAttribute("opacity", "0"); out.innerHTML = base; });
+  const frac = ev => { const r = svg.getBoundingClientRect(); return Math.max(0, Math.min(1, ((ev.clientX - r.left) * W / r.width - padL) / (W - padL - padR))); };
+  svg.addEventListener("wheel", ev => { ev.preventDefault(); btpZoom(ev.deltaY < 0 ? 0.8 : 1.25, frac(ev)); }, { passive: false });
+  svg.addEventListener("dblclick", () => btpReset());
+  svg.addEventListener("pointerdown", ev => { if (ev.button === 0) btpDrag = { x0: ev.clientX, win: [from, to], cols: step * svg.getBoundingClientRect().width / W }; });
 }
+/* Zoom and pan of the trades chart. X.bt.win = [first, last] column shown inside X.bt.full (null = everything). */
+let btpDrag = null;
+function btpSet(a, b) {
+  const [f0, f1] = X.bt.full || [0, 0], size = Math.min(b - a + 1, f1 - f0 + 1);
+  a = Math.max(f0, Math.min(a, f1 - size + 1));
+  X.bt.win = a === f0 && a + size - 1 === f1 ? null : [a, a + size - 1];
+  drawBTPrice();
+}
+function btpZoom(fac, f = 0.5) {
+  const [f0, f1] = X.bt.full || [0, 0], [a, b] = X.bt.win || [f0, f1], span = b - a + 1;
+  const size = Math.max(Math.min(6, f1 - f0 + 1), Math.min(f1 - f0 + 1, Math.round(span * fac))), centre = a + f * span;
+  btpSet(Math.round(centre - f * size), Math.round(centre - f * size) + size - 1);
+}
+function btpReset() { X.bt.win = null; drawBTPrice(); }
+document.addEventListener("pointermove", ev => {
+  if (!btpDrag || !X.bt.full) return;
+  const d = Math.round((btpDrag.x0 - ev.clientX) / btpDrag.cols), [a, b] = btpDrag.win;
+  if (d) btpSet(a + d, b + d);
+});
+document.addEventListener("pointerup", () => { btpDrag = null; });
 
 /* ----- dataset explorer ----- */
 const PAGE_N = 20;
@@ -2231,7 +2267,7 @@ document.addEventListener("click", e => {
   else if (a === "lfc-m") { const m = lfcModels(); m.has(v) ? m.delete(v) : m.add(v); }
   else if (a === "ai-runall") { aiRun(AI_T.slice()); return; }
   else if (d.stage) X.ai.stage = d.stage;
-  else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); }
+  else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); X.bt.win = null; }
   else if (d.ds) { X.ds.t = d.ds; X.ds.page = 0; }
   else if (d.news) X.news.t = d.news;
   else if (d.mkt) X.mkt.sort = d.mkt;
@@ -2252,7 +2288,10 @@ document.addEventListener("click", e => {
   else if (a === "wl-add") { if (!X.wl.includes(v)) X.wl.push(v); lsSet("raem:wl", X.wl); X.wlMsg = ""; }
   else if (a === "wl-reset") { X.wl = ORDER.slice(); lsDel("raem:wl"); X.wlMsg = ""; }
   else if (a === "bt-m") { X.bt.sel.has(v) ? X.bt.sel.delete(v) : X.bt.sel.add(v); }
-  else if (a === "bt-t") { X.bt.t = v; X.bt.sel = new Set(["Ensemble"]); }
+  else if (a === "bt-t") { X.bt.t = v; X.bt.sel = new Set(["Ensemble"]); X.bt.win = null; }
+  else if (a === "btp-zin") { btpZoom(0.6); return; }
+  else if (a === "btp-zout") { btpZoom(1 / 0.6); return; }
+  else if (a === "btp-reset") { btpReset(); return; }
   else if (a === "ev-w") X.ev.w = +v;
   else if (a === "ev-t") { X.ev.t = v; X.ev.n = 25; }
   else if (a === "ev-more") X.ev.n += 25;

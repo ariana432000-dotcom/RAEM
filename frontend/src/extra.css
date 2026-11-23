@@ -205,3 +205,6 @@ table.lt th, table.lt td { text-align: left; }
 .raemai .sigline { margin-bottom: 4px; }
 .raemai .rsum { margin: 10px 0 8px; font-size: 14px; line-height: 1.6; color: var(--text); max-width: 80ch; }
 .raemai .cta { margin-top: 12px; }
+.btpchart svg { touch-action: pan-y; cursor: grab; user-select: none; }
+.btpchart svg:active { cursor: grabbing; }
+.pills.nw { flex-wrap: nowrap; flex-shrink: 0; }
