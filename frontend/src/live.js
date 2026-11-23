@@ -311,11 +311,6 @@ function aiLiveCard(t, a) {
     : held && held.status === "failed" ? `<button type="button" class="btn primary" data-act="ai-live">Continue (${held.saved_answers} saved answers)</button>`
     : held ? `<button type="button" class="btn primary" data-act="ai-live">Resume${heldStep ? ` from step ${heldStep[1]} of ${heldStep[2]}` : ""}</button>`
     : `<button type="button" class="btn primary" data-act="ai-live">${storedToday && !X.ai.force ? "Open today's stored run" : `Run AI analysis for ${dShort(LIVE.health.date)}`}</button>`;
-  const how = sel.provider === "ollama" ? "Runs the whole analysis (analysts, debates, trader, risk, portfolio manager, verifier) on this server's Ollama. A 7B model on a computer without a GPU takes about 1 to 3 hours; smaller models are faster."
-    : `Runs the whole analysis with ${esc(sel.p.label)} through the server's API key: minutes instead of hours, and the provider bills each run.`;
-  const holdNote = held ? ` The last run ${held.status === "failed" ? "stopped with an error" : "was held"} at ${esc(held.step || "an early step")}. Running it again reuses every saved answer whose inputs (prices, news, earlier answers) are unchanged, so it continues where it stopped; steps whose inputs changed run again.`
-    : " Hold stops a run and keeps what it has done; running it again later continues from there while the market data is unchanged.";
-  const mem = LIVE.models.embeddings_ok === false ? " Memory: Ollama's nomic-embed-text is not reachable, so the memory uses a separate local store." : "";
   return card(`Today's AI analysis ${hint(GLOSS.runai)}`, `${esc(d0(t))} · runs for ${dLong(LIVE.health.date)}`, badge, `
     <div class="formgrid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
       ${aiCompanyField(t)}
@@ -323,8 +318,7 @@ function aiLiveCard(t, a) {
     </div>
     <div class="formgrid" style="grid-template-columns:minmax(0,1fr);margin-top:6px"><div class="field"><div class="checks"><label><input type="checkbox" id="ai-force" data-bind="ai-force" ${X.ai.force ? "checked" : ""}> Run again even if stored today</label></div></div>
     </div>${tokenRow()}
-    <div class="runbar">${main}
-      <p class="note">${how} Runs are stored by company, date and model, so asking again today opens the stored result at once.${holdNote}${mem}</p></div>
+    <div class="runbar">${main}</div>
     ${LIVE.err[key] ? `<p class="err" role="alert">${esc(LIVE.err[key])}</p>` : ""}
     <div id="live-${liveId(key)}">${liveStatus(key)}</div>`);
 }
