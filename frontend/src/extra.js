@@ -279,12 +279,12 @@ function renderBT() {
   const t = X.bt.t, res = EXTRA.backtest[t] || {}, models = Object.keys(res);
   X.bt.sel = new Set([...X.bt.sel].filter(m => res[m]));
   if (!X.bt.sel.size && models.length) X.bt.sel.add(models.includes("Ensemble") ? "Ensemble" : models[0]);
-  const first = [...X.bt.sel][0], hasPrice = !!(first && res[first].trades && res[first].trades.length && (EXTRA.dataset || {})[t]);
+  const aiT = ((EXTRA.ai_trades || {})[t] || []), hasPrice = !!(aiT.length && (EXTRA.dataset || {})[t]);
   const rows = models.map(m => { const r = res[m], edge = r.hit == null ? null : r.hit - r.always_up; return `<tr class="click ${X.bt.sel.has(m) ? "sel" : ""}" data-act="bt-m" data-v="${esc(m)}"><td class="t"><span class="mname"><i style="${X.bt.sel.has(m) ? `background:var(${COLORS[[...X.bt.sel].indexOf(m) % 8]})` : ""}"></i>${esc(m)}</span></td><td>${r.n}</td><td>${r.hit == null ? "–" : r.hit.toFixed(0) + "%"}</td><td>${r.always_up.toFixed(0)}%</td><td class="${cls(edge)}">${edge == null ? "–" : (edge > 0 ? "+" : "") + edge.toFixed(0)}</td><td class="${cls(r.strategy_pct)}">${fmtPct(r.strategy_pct, 1)}</td><td class="${cls(r.buyhold_pct)}">${fmtPct(r.buyhold_pct, 1)}</td><td class="${cls(r.avg_trade_pct)}">${fmtPct(r.avg_trade_pct)}</td><td class="down">${r.max_dd_pct.toFixed(1)}%</td></tr>`; }).join("");
   const sum = ORDER.map(tk => { const e = (EXTRA.backtest[tk] || {}).Ensemble; return e ? `<tr class="click" data-act="bt-t" data-v="${esc(tk)}"><td><span class="tkr">${esc(tk)}</span></td><td>${e.n}</td><td>${e.hit == null ? "–" : e.hit.toFixed(0) + "%"}</td><td>${e.always_up.toFixed(0)}%</td><td class="${cls(e.strategy_pct)}">${fmtPct(e.strategy_pct, 1)}</td><td class="${cls(e.buyhold_pct)}">${fmtPct(e.buyhold_pct, 1)}</td></tr>` : ""; }).join("");
   return `<div class="page-h"><h1>Backtest</h1><p>How each model's saved day-7 calls would have done: long when it predicted up, short when down. Built from graded rows in the forecast log.</p></div>
     ${card("", "", "", `<div class="field"><span class="lbl">Ticker</span>${tkrPills(t, "data-bt")}</div>`)}
-    ${hasPrice ? card("Trades on the price chart", `Every call of ${esc(first)} (the first selected model) on the price. ▲ long entry, ▼ short entry; the line runs from entry to exit, green if the call made money and red if it lost. The dots above show each call's return.`, "", `<div class="ohlc" id="btp-ohlc"></div><div class="chartbox" id="btprice"></div><p class="src">Day-7 calls from non-overlapping entry dates; the exit is the target date. Most rows are walk-forward replays, not live calls. No costs.${((DATA[t] || {}).meta || {}).source === "dse" ? " DSE trading is treated as long-only on this site, so the short calls are part of the test only." : ""}</p>`) : ""}
+    ${hasPrice ? card("Trades on the price chart", `Every finished call of the AI analysis for ${esc(t)}, read from the ChromaDB episodic memory. ▲ BUY, ▼ SELL, ○ HOLD (no position, so only a marker); for BUY and SELL the line runs from the price when the analysis was made to the price when the call was checked, green if the call made money and red if it lost. The dots above show each call's return.`, "", `<div class="ohlc" id="btp-ohlc"></div><div class="chartbox" id="btprice"></div><p class="src">Source: ChromaDB raem_episodic_memory (${aiT.length} finished calls${((EXTRA.ai_trades_pending || {})[t] || 0) ? `, ${EXTRA.ai_trades_pending[t]} still pending` : ""}). Candles come from the saved price data and stop where that data ends. No costs.${((DATA[t] || {}).meta || {}).source === "dse" ? " DSE trading is treated as long-only on this site, so a SELL here means staying out." : ""}</p>`) : card("Trades on the price chart", "", "", emptyState("inbox", "No saved AI analysis calls for this ticker", "Run the AI analysis for it; every finished call is stored in the episodic memory and appears here."))}
     ${models.length ? card(`Models ${hint(GLOSS.bt)}`, "Click a row to add or remove its curve.", "", `<div class="scroll"><table><thead><tr><th>Model</th><th>Trades</th><th>Direction hit</th><th>Always-UP</th><th>Edge (pts)</th><th>Strategy</th><th>Buy &amp; hold</th><th>Avg trade</th><th>Max drawdown</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">No costs, no slippage. Most rows are walk-forward replays from Ridge, ARIMA and Kalman, so of the six models on this site only Ridge, ARIMA and the Ensemble have enough history. Past Ensemble rows were made from the full model set. A strategy that trails buy and hold in a rising market is common and not a bug.</p>`) : nonEmpty("inbox", "Not enough graded calls", "This ticker has fewer than 8 non-overlapping graded day-7 calls for any model.")}
     ${card("Ensemble across tickers", "Click a row to open that ticker.", "", `<div class="scroll"><table><thead><tr><th>Ticker</th><th>Trades</th><th>Direction hit</th><th>Always-UP</th><th>Strategy</th><th>Buy &amp; hold</th></tr></thead><tbody>${sum}</tbody></table></div>`)}`;
 }
@@ -294,18 +294,21 @@ function renderBT() {
    and by the dot's position above or below zero. */
 function drawBTPrice() {
   const h = $("#btprice"); if (!h) return;
-  const t = X.bt.t, res = EXTRA.backtest[t] || {}, m = [...X.bt.sel].filter(k => res[k])[0], rows = (EXTRA.dataset || {})[t];
-  if (!m || !rows || !res[m].trades) return;
-  const dates = rows.map(r => r[0]);
+  const t = X.bt.t, src = (EXTRA.ai_trades || {})[t] || [], rows = (EXTRA.dataset || {})[t], m = "AI analysis";
+  if (!src.length || !rows) return;
+  /* the AI calls can run past the end of the saved price data: those dates get empty columns (no candle), so the calls still show */
+  const dates0 = rows.map(r => r[0]), lastD = dates0[dates0.length - 1];
+  const dates = dates0.concat([...new Set(src.flatMap(q => [q[0], q[1]]).filter(d => d > lastD))].sort());
   const at = d => { let a = 0, b = dates.length; while (a < b) { const c = (a + b) >> 1; if (dates[c] < d) a = c + 1; else b = c; } return a; };   // first row on or after d
-  const trades = res[m].trades.map(([d0, d1, s, p0, p1, rt]) => ({ d0, d1, s, p0, p1, rt, i0: at(d0), i1: at(d1) })).filter(x => x.i0 < dates.length && x.i1 < dates.length);
+  const trades = src.map(([d0, d1, s, p0, p1, rt]) => ({ d0, d1, s, p0, p1, rt, i0: at(d0), i1: at(d1) })).filter(x => x.i0 < dates.length && x.i1 < dates.length).sort((a, b) => a.i0 - b.i0);
   if (!trades.length) return;
-  const from = Math.max(0, trades[0].i0 - 2), to = Math.min(dates.length - 1, trades[trades.length - 1].i1 + 2), n = to - from + 1;
-  const cs = rows.slice(from, to + 1).map(r => { const c = r[4]; return [r[0], r[1] ?? c, r[2] ?? c, r[3] ?? c, c, r[5] || 0]; });
+  const from = Math.max(0, trades[0].i0 - 2), to = Math.min(dates.length - 1, Math.max(...trades.map(q => q.i1)) + 2), n = to - from + 1;
+  const cs = dates.slice(from, to + 1).map((d, j) => { const r = rows[from + j]; if (!r) return [d, null, null, null, null, 0]; const c = r[4]; return [r[0], r[1] ?? c, r[2] ?? c, r[3] ?? c, c, r[5] || 0]; });
+  const cdl = cs.filter(c => c[4] != null);
   const W = Math.max(320, h.clientWidth || 700), padL = 8, padR = 56, padT = 8, plH = 90, gap1 = 14, priceH = 260, gap2 = 8, volH = 56, axisH = 22;
   const H = padT + plH + gap1 + priceH + gap2 + volH + axisH, step = (W - padL - padR) / n, x = i => padL + step * (i - from + 0.5), cw = Math.max(1, Math.min(8, step * 0.65));
   const rmax = Math.max(1, Math.ceil(Math.max(...trades.map(q => Math.abs(q.rt))))), yr = v => padT + plH / 2 - v / rmax * (plH / 2 - 8);
-  const top = padT + plH + gap1, lo0 = Math.min(...cs.map(c => c[3])), hi0 = Math.max(...cs.map(c => c[2])), pad = (hi0 - lo0) * 0.06 || 0.05, lo = lo0 - pad, hi = hi0 + pad;
+  const top = padT + plH + gap1, lo0 = Math.min(...cdl.map(c => c[3]), ...trades.map(q => Math.min(q.p0, q.p1))), hi0 = Math.max(...cdl.map(c => c[2]), ...trades.map(q => Math.max(q.p0, q.p1))), pad = (hi0 - lo0) * 0.06 || 0.05, lo = lo0 - pad, hi = hi0 + pad;
   const y = v => top + (hi - v) * priceH / (hi - lo), vtop = top + priceH + gap2, vmax = Math.max(...cs.map(c => c[5])) || 1;
   const col = q => q.rt > 0 ? "var(--buy)" : q.rt < 0 ? "var(--sell)" : "var(--faint)";
   let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="${esc(m)} calls for ${esc(t)}: returns above, candlestick price chart with entries and exits below">`;
@@ -313,12 +316,14 @@ function drawBTPrice() {
   trades.forEach(q => { s += `<circle cx="${x(q.i1).toFixed(1)}" cy="${yr(Math.max(-rmax, Math.min(rmax, q.rt))).toFixed(1)}" r="3.5" fill="${col(q)}"/>`; });
   niceTicks(lo, hi, 5).filter(v => v >= lo && v <= hi).forEach(v => { s += `<line x1="${padL}" x2="${W - padR}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--border-soft)"/><text class="ax" x="${W - padR + 6}" y="${(y(v) + 3).toFixed(1)}">${fmtN(v, 2)}</text>`; });
   cs.forEach((c, j) => {
+    if (c[4] == null) return;
     const cx = x(from + j), up = c[4] >= c[1], bt = y(Math.max(c[1], c[4])), bb = y(Math.min(c[1], c[4]));
     s += `<line x1="${cx.toFixed(1)}" x2="${cx.toFixed(1)}" y1="${y(c[2]).toFixed(1)}" y2="${y(c[3]).toFixed(1)}" stroke="var(--faint)" opacity="0.7"/><rect x="${(cx - cw / 2).toFixed(1)}" y="${bt.toFixed(1)}" width="${cw.toFixed(1)}" height="${Math.max(1, bb - bt).toFixed(1)}" fill="${up ? "var(--panel)" : "var(--faint)"}" stroke="var(--faint)" opacity="0.8"/>`;
     s += `<rect x="${(cx - cw / 2).toFixed(1)}" y="${(vtop + volH - c[5] / vmax * volH).toFixed(1)}" width="${cw.toFixed(1)}" height="${(c[5] / vmax * volH).toFixed(1)}" fill="var(--faint)" opacity="0.35"/>`;
   });
   trades.forEach(q => {
     const x0 = x(q.i0), y0 = y(q.p0), x1 = x(q.i1), y1 = y(q.p1);
+    if (!q.s) { s += `<circle cx="${x0.toFixed(1)}" cy="${y0.toFixed(1)}" r="3" fill="var(--panel)" stroke="var(--text)"/>`; return; }   // HOLD: no position, so only a marker at the entry
     s += `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${col(q)}" stroke-width="1.8"/><circle cx="${x1.toFixed(1)}" cy="${y1.toFixed(1)}" r="2.8" fill="var(--panel)" stroke="${col(q)}" stroke-width="1.6"/>`;
     s += q.s > 0 ? `<polygon points="${x0.toFixed(1)},${(y0 - 6).toFixed(1)} ${(x0 - 5).toFixed(1)},${(y0 + 3).toFixed(1)} ${(x0 + 5).toFixed(1)},${(y0 + 3).toFixed(1)}" fill="var(--text)" stroke="var(--panel)"/>`
       : q.s < 0 ? `<polygon points="${x0.toFixed(1)},${(y0 + 6).toFixed(1)} ${(x0 - 5).toFixed(1)},${(y0 - 3).toFixed(1)} ${(x0 + 5).toFixed(1)},${(y0 - 3).toFixed(1)}" fill="var(--text)" stroke="var(--panel)"/>`
@@ -327,11 +332,11 @@ function drawBTPrice() {
   [0, 0.25, 0.5, 0.75, 1].forEach((f, k) => { const j = Math.min(n - 1, Math.round(f * (n - 1))); s += `<text class="ax" x="${x(from + j).toFixed(1)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}">${dShort(cs[j][0])}</text>`; });
   s += `<line id="btp-cross" x1="0" x2="0" y1="${padT}" y2="${vtop + volH}" stroke="var(--faint)" stroke-dasharray="3 3" opacity="0"/><rect x="${padL}" y="${padT}" width="${W - padL - padR}" height="${H - padT}" fill="transparent"/></svg>`;
   h.innerHTML = s;
-  const out = $("#btp-ohlc"), wins = trades.filter(q => q.rt > 0).length, sgnTxt = q => q.s > 0 ? "long" : q.s < 0 ? "short" : "no call";
-  const base = `<b>${esc(m)}</b> <span class="sub">${trades.length} calls, ${wins} made money. Hover over the chart for details.</span>`;
+  const out = $("#btp-ohlc"), wins = trades.filter(q => q.rt > 0).length, sgnTxt = q => q.s > 0 ? "BUY" : q.s < 0 ? "SELL" : "HOLD";
+  const base = `<b>${esc(m)}</b> <span class="sub">${trades.length} calls, ${trades.filter(q => q.s).length} of them BUY or SELL and ${wins} of those made money. Hover over the chart for details.</span>`;
   const show = j => {
     const c = cs[j], i = from + j, q = trades.find(z => i >= z.i0 && i <= z.i1);
-    out.innerHTML = `<b>${esc(t)}</b> <span class="sub">${esc(c[0])}</span> &nbsp; O <span>${fmtN(c[1], 2)}</span> H <span>${fmtN(c[2], 2)}</span> L <span>${fmtN(c[3], 2)}</span> C <span>${fmtN(c[4], 2)}</span> V <span>${fmtN(c[5])}</span>`
+    out.innerHTML = `<b>${esc(t)}</b> <span class="sub">${esc(c[0])}</span>${c[4] == null ? ` <span class="sub">no price bar saved</span>` : ` &nbsp; O <span>${fmtN(c[1], 2)}</span> H <span>${fmtN(c[2], 2)}</span> L <span>${fmtN(c[3], 2)}</span> C <span>${fmtN(c[4], 2)}</span> V <span>${fmtN(c[5])}</span>`}`
       + (q ? ` &nbsp; <b>${sgnTxt(q)}</b> <span class="sub">${esc(q.d0)} → ${esc(q.d1)}</span> <span>${fmtN(q.p0, 2)} → ${fmtN(q.p1, 2)}</span> <span class="${cls(q.rt)}">${fmtPct(q.rt)}</span>` : "");
   };
   out.innerHTML = base;
