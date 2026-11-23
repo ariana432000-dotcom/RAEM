@@ -25,14 +25,6 @@ try:
     extra["evaluation"] = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "evaluation.json"), encoding="utf-8"))
 except (OSError, ValueError):
     extra.pop("evaluation", None)
-# Backtest page, trades on the price chart: the AI analysis' calls read from the ChromaDB episodic memory by app/pipeline/export_ai_trades.py.
-# Optional and fail-soft, like the evaluation.
-try:
-    _at = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "ai_trades.json"), encoding="utf-8"))
-    extra["ai_trades"], extra["ai_trades_pending"] = _at["trades"], _at.get("pending", {})
-except (OSError, ValueError, KeyError):
-    extra.pop("ai_trades", None)
-    extra.pop("ai_trades_pending", None)
 # "Data as of" date: written by export_extra.py on each refresh; the newest price date is the fallback for older exports
 asof = max(extra.get("asof") or "", max(d["forecast"]["last_date"] for d in data.values()))   # never older than the prices themselves
 assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof), asof

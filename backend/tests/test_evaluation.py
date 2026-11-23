@@ -191,7 +191,7 @@ def test_refresh_runs_the_evaluation_before_the_page_is_built():
         labels = [l for l, _ in refresh.steps(**kw)]
         assert "Evaluation" in labels and labels.index("Evaluation") < labels.index("Merge page sources")
     assert "Evaluation" not in [l for l, _ in refresh.steps(evaluation=False)]
-    assert [l for l, _ in refresh.steps(build_only=True, evaluation=False)] == ["AI trades from ChromaDB", "Merge page sources", "Build page"]
+    assert [l for l, _ in refresh.steps(build_only=True, evaluation=False)] == ["Merge page sources", "Build page"]
 
 
 def test_shipped_evaluation_json_is_consistent():
