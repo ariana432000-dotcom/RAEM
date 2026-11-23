@@ -304,7 +304,7 @@ const STEPS = [
   ["Reviewer check", "Audit, shrink, clip and add band"],
   ["Grading track record", "Past forecasts vs actual closes"],
 ];
-const TABS = [["signal","Daily signal"],["forecast","7-day forecast"],["models","All models"],["agent","Reviewer"],["track","Track record"]];
+const TABS = [["signal","Daily signal"],["forecast","7-day forecast"],["models","All models"],["track","Track record"]];
 const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
 const DAILY_MODELS = [["xgb","XGBoost"],["lstm","LSTM"],["arima","ARIMA"],["ridge","Ridge"],["kalman","Kalman"]];
 const ICONS = {
@@ -597,18 +597,6 @@ function modelTable(d) {
     }).join("")}</tbody></table></div>
     <p class="src">Source: forecast_lib.all_models_table(). Error and direction are scored on holdout dates the model did not train on; Ensemble and fusions use the later half of the common holdout.</p>`);
 }
-function agentPanel(d) {
-  if (!d.agent || !d.agent.plan) return card("Reviewer", "", "", emptyState("alert", "No reviewer output", "The forecast agent did not run for this ticker."));
-  const p = d.agent.plan, log = p.log || [];
-  const st = s => ({ OK: "buy", PASS: "buy", WARN: "hold", FAIL: "sell" }[String(s).toUpperCase()] || "hold");
-  return card(`Forecast agent and reviewer ${hint(GLOSS.agent)}`, "Picks the 3 lowest-error models, averages their paths, then audits and adjusts the result.", `<span class="badge ${p.confidence === "HIGH" ? "buy" : p.confidence === "LOW" ? "hold" : "accent"}">Confidence ${esc(p.confidence)}</span>`, `
-    <div class="kvs"><div class="kv"><p class="k">Members</p><p class="v" style="font-size:14px">${esc((p.members || []).join(", "))}</p></div>
-      <div class="kv"><p class="k">Shrink toward no change</p><p class="v">${p.shrink == null ? "–" : p.shrink.toFixed(2)}</p></div>
-      <div class="kv"><p class="k">Holdout error vs naive</p><p class="v">${p.holdout_mae_vs_naive == null ? "–" : p.holdout_mae_vs_naive.toFixed(2)}</p></div>
-      <div class="kv"><p class="k">Holdout day-7 direction</p><p class="v">${p.holdout_dir_acc == null ? "–" : (p.holdout_dir_acc * 100).toFixed(0) + "%"}</p></div></div>
-    <ul class="checklist">${log.map(c => `<li><span class="badge ${st(c.status)}" style="justify-content:center">${esc(c.status)}</span><span><span class="c">${esc(c.check)}.</span> ${esc(c.detail)}</span></li>`).join("")}</ul>
-    <p class="src">Source: forecast_agent.forecast_agent() and reviewer_agent(). Code only, no LLM.</p>`);
-}
 function trackPanel(d) {
   const h = d.hitrate, pm = (h.per_model || []).slice().sort((a, b) => (b.graded_calls || 0) - (a.graded_calls || 0)), hz = h.by_horizon || [];
   const edge = v => v == null ? "–" : `<span class="${cls(v)}">${v > 0 ? "+" : ""}${v.toFixed(1)}</span>`;
@@ -626,7 +614,7 @@ function trackPanel(d) {
 }
 function resultsHtml() {
   const d = D();
-  const body = { signal: signalPanel, forecast: forecastPanel, models: modelTable, agent: agentPanel, track: trackPanel }[S.tab](d);
+  const body = { signal: signalPanel, forecast: forecastPanel, models: modelTable, track: trackPanel }[S.tab](d);
   return `<div><div class="tabs" role="tablist">${TABS.map((t, i) => `<button type="button" class="tab" role="tab" id="tab-${t[0]}" data-tab="${t[0]}" aria-selected="${S.tab === t[0]}" aria-controls="tabpanel" tabindex="${S.tab === t[0] ? 0 : -1}"><b>${i + 1}</b>${t[1]}</button>`).join("")}</div><div class="tabpanel" role="tabpanel" id="tabpanel" aria-labelledby="tab-${S.tab}" tabindex="0">${body}</div></div>`;
 }
 
