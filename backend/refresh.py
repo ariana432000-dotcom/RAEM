@@ -47,6 +47,7 @@ def steps(tickers: list[str] | None = None, extra: bool = True, top_up: bool = T
             out.append(("Extra pages", [PY, "-W", "ignore", os.path.join(WEB, "app", "pipeline", "export_extra.py")]))
     if evaluation:
         out.append(("Evaluation", [PY, os.path.join(WEB, "app", "pipeline", "export_evaluation.py")]))
+    out.append(("AI trades from ChromaDB", [PY, os.path.join(WEB, "app", "pipeline", "export_ai_trades.py")]))
     out.append(("Merge page sources", [PY, os.path.join(FRONTEND, "src", "merge.py")]))
     out.append(("Build page", [PY, os.path.join(FRONTEND, "src", "build.py")]))
     return out

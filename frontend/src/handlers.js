@@ -11,7 +11,7 @@ document.addEventListener("click", e => {
   else if (a === "lfc-m") { const m = lfcModels(); m.has(v) ? m.delete(v) : m.add(v); }
   else if (a === "ai-runall") { aiRun(AI_T.slice()); return; }
   else if (d.stage) X.ai.stage = d.stage;
-  else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); }
+  else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); X.bt.win = null; }
   else if (d.ds) { X.ds.t = d.ds; X.ds.page = 0; }
   else if (d.news) X.news.t = d.news;
   else if (d.mkt) X.mkt.sort = d.mkt;
@@ -32,7 +32,10 @@ document.addEventListener("click", e => {
   else if (a === "wl-add") { if (!X.wl.includes(v)) X.wl.push(v); lsSet("raem:wl", X.wl); X.wlMsg = ""; }
   else if (a === "wl-reset") { X.wl = ORDER.slice(); lsDel("raem:wl"); X.wlMsg = ""; }
   else if (a === "bt-m") { X.bt.sel.has(v) ? X.bt.sel.delete(v) : X.bt.sel.add(v); }
-  else if (a === "bt-t") { X.bt.t = v; X.bt.sel = new Set(["Ensemble"]); }
+  else if (a === "bt-t") { X.bt.t = v; X.bt.sel = new Set(["Ensemble"]); X.bt.win = null; }
+  else if (a === "btp-zin") { btpZoom(0.6); return; }
+  else if (a === "btp-zout") { btpZoom(1 / 0.6); return; }
+  else if (a === "btp-reset") { btpReset(); return; }
   else if (a === "ev-w") X.ev.w = +v;
   else if (a === "ev-t") { X.ev.t = v; X.ev.n = 25; }
   else if (a === "ev-more") X.ev.n += 25;
