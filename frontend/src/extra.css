@@ -210,3 +210,20 @@ table.lt th, table.lt td { text-align: left; }
 .pills.nw { flex-wrap: nowrap; flex-shrink: 0; }
 
 .fcv { color: var(--accent-strong); font-weight: 700; }
+
+.raemai .cta { display: flex; gap: 8px; flex-wrap: wrap; }
+.aiproc { margin-top: 16px; }
+.aiproc .flow { list-style: none; display: flex; flex-wrap: wrap; gap: 6px 4px; margin: 12px 0 14px; padding: 0; font-size: 12px; color: var(--muted); }
+.aiproc .flow li { display: inline-flex; align-items: center; }
+.aiproc .flow li::after { content: "\2192"; margin-left: 4px; color: var(--faint); }
+.aiproc .flow li.end { color: var(--text); font-weight: 700; }
+.aiproc .flow li.end::after { content: ""; }
+.aiproc details { border: 1px solid var(--border-soft); border-radius: 12px; background: var(--bg-raised); margin-top: 8px; }
+.aiproc summary { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 14px; cursor: pointer; font-weight: 700; font-size: 14px; list-style: none; }
+.aiproc summary::-webkit-details-marker { display: none; }
+.aiproc summary::after { content: "+"; margin-left: auto; color: var(--faint); font-size: 18px; line-height: 1; }
+.aiproc details[open] > summary::after { content: "\2212"; }
+.aiproc .no { color: var(--faint); font-size: 12px; min-width: 18px; }
+.aiproc .tm { color: var(--faint); font-size: 11px; font-weight: 500; }
+.aiproc .scrollbox { padding: 0 14px 14px; }
+.aiproc .turns { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }

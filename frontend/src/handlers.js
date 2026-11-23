@@ -19,6 +19,7 @@ document.addEventListener("click", e => {
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
   else if (a === "stk-more") X.stk.n += 100;
   else if (a === "stk-range") X.stk.range = +v;
+  else if (a === "stk-detail") { X.stk.detail = X.stk.detail || {}; X.stk.detail[v] = !X.stk.detail[v]; }
   else if (a === "stk-reload") { if (v) { delete X.stk.dstate[v]; delete X.stk.det[v]; } else { X.stk.lstate = "idle"; } }
   else if (a === "stk-ai") { X.ai.extra = X.ai.extra || []; if (!DATA[v] && !X.ai.extra.includes(v)) X.ai.extra.push(v); X.ai.t = v; goPage("ai"); return; }
   else if (a === "mkt-refresh") { loadMarket(true); return; }
