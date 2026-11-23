@@ -653,7 +653,7 @@ function renderExtra() {
 function afterRender() { if (S.page === "bt") { drawBT(); drawBTPrice(); } if (S.page === "eval") drawEval(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
 
 /* ---------- top nav ---------- */
-const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["bt", "Backtest"], ["eval", "Evaluation"], ["ai", "AI Analysis"]];
+const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["bt", "Backtest"], ["ai", "AI Analysis"], ["eval", "Evaluation"]];
 const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg>';
 function renderNav() {
   const cur = id => (S.page === id || (id === "stocks" && S.page === "stock") ? ' aria-current="page"' : "");
