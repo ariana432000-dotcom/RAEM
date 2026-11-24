@@ -97,7 +97,9 @@ def export(t, models=None, out_path=None):
     # --- 7-day forecast, all models ---
     f = fl.forecast_ticker(t, verbose=False, models=models + BLENDS)
     paths = f["paths"]
-    close = f["raw"]["close"] if "close" in f["raw"] else f["raw"].iloc[:, 0]
+    # the Close column ("close" never matched, so the first column, Open, was saved as the price history)
+    raw = f["raw"]
+    close = raw["Close"] if "Close" in raw else raw["close"] if "close" in raw else raw.iloc[:, 0]
     hist = close.tail(180)
     out["history"] = [[str(i.date()), round(float(v), 4)] for i, v in hist.items()]
     out["forecast"] = {

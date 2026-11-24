@@ -790,7 +790,7 @@ function stockFcPanel(d) {
   const line = `<div class="fcline">${item("Last close", fmtP(last), cur)}${item("Price data to", dShort(m.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy")}${item("Daily rows", fmtN(m.daily_rows), "price history used")}${item("Models fitted", fmtN(m.models_fitted), m.failed_models ? "failed: " + esc(m.failed_models) : "none failed")}</div>`;
   const rows = s.dates.map((ds, i) => `<tr><td class="t">${i + 1}</td><td class="t">${dShort(ds)}</td><td>${fmtP(mp[i])}</td><td class="${cls(mp[i] / last - 1)}">${fmtPct((mp[i] / last - 1) * 100)}</td><td>${s.band && main === "Reviewed" ? `${fmtP(s.band[i][0])} to ${fmtP(s.band[i][1])}` : "–"}</td></tr>`).join("");
   const models = Object.keys(s.paths).filter(k => k !== "Reviewed").map(k => { const v = s.paths[k][s.dates.length - 1]; return `<tr><td class="t">${esc(k)}</td><td>${fmtP(v)}</td><td class="${cls(v / last - 1)}">${fmtPct((v / last - 1) * 100)}</td></tr>`; }).join("");
-  return `<div class="raempanel"><p class="sigline">Last saved forecast${m.signal ? ` · daily signal ${sigBadge(m.signal)}` : ""}</p>
+  return `<div class="raempanel"><p class="sigline">Last saved forecast</p>
     <p class="sub">Run ${esc((m.generated_at || "").slice(0, 16) || "date unknown")} · loaded from the saved CSV files · main forecast: ${esc(main === "Reviewed" ? "reviewed forecast" : main)}</p>
     ${line}
     <div class="chead"><p class="k">Price and ${esc(main === "Reviewed" ? "reviewed forecast" : main.toLowerCase())}</p><div class="pills">${WIN_PILLS.map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-frange" data-v="${n}" aria-pressed="${x.frange === n}">${l}</button>`).join("")}</div></div>
