@@ -397,12 +397,10 @@ table.dense tr.tot td { font-weight: 700; border-top: 1px solid var(--border); b
 .crumb { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 14px; }
 .crumb .link { background: none; border: 0; padding: 0; color: var(--muted); } .crumb .link:hover { color: var(--text); text-decoration: underline; } .crumb b { color: var(--text); font-weight: 600; }
 .stkq { max-width: 560px; margin-bottom: 14px; }
-.stkq .inp, .stkjump .inp { width: 100%; }
+.stkq .inp { width: 100%; }
 .stktable td.nm { max-width: 340px; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .stktable tr.click:hover td { background: var(--panel-hover); }
 .stkcode { font-size: 0.55em; font-weight: 600; color: var(--muted); }
-.stkjump { display: flex; gap: 10px; width: min(460px, 100%); margin-bottom: 20px; }
-.pagehead .stkjump { margin: 4px 0 0 auto; flex: 0 1 460px; }   /* on the stock page the search sits on the right of the company name, at the top */
 .statone { padding: 0; overflow: hidden; }
 .statcells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border-soft); }
 .statcells .statx { background: var(--panel); }
@@ -428,7 +426,7 @@ table.dense tr.tot td { font-weight: 700; border-top: 1px solid var(--border); b
 .epsbars { width: 100%; height: auto; max-height: 190px; } .epsbars .ev { font: 700 11px var(--font-mono); fill: var(--text); } .epsbars .ex { font: 500 10px var(--font-mono); fill: var(--muted); }
 .qeps { display: flex; gap: 28px; flex-wrap: wrap; } .qeps div { display: flex; flex-direction: column; gap: 2px; } .qeps b { font-size: 18px; } .qeps span { font-size: 11px; color: var(--muted); }
 @media (max-width: 960px) { .fundtiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fundgrid { grid-template-columns: minmax(0, 1fr); } }
-@media (max-width: 560px) { .raemrow { grid-template-columns: minmax(0, 1fr); } .stkjump { flex-wrap: wrap; } }
+@media (max-width: 560px) { .raemrow { grid-template-columns: minmax(0, 1fr); } }
 .ring0 { width: 96px; height: 96px; border-radius: 50%; border: 2px dashed var(--border); display: flex; align-items: center; justify-content: center; font: 600 22px var(--font-mono); color: var(--faint); }
 table.stktable th:nth-child(-n+3), table.stktable td:nth-child(-n+3) { text-align: left; }
 table.stktable th:last-child, table.stktable td:last-child { text-align: right; padding-right: 0; }
@@ -509,8 +507,11 @@ table.lt th, table.lt td { text-align: left; }
 .chead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
 .chead .k { margin: 0; }
 .fcchart { margin-top: 8px; }
-
-@media (max-width: 560px) { .pagehead .stkjump { flex-wrap: nowrap; margin-left: 0; flex-basis: 100%; } }   /* phone: the search goes under the name, button beside the field */
+.stkhead { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+.stkhead h1 { font-size: clamp(24px, 3vw, 32px); font-weight: 800; letter-spacing: -0.02em; min-width: 0; }
+.backbtn { flex: none; width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--ctl); background: var(--bg-raised); color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.backbtn:hover { background: var(--panel-hover); border-color: var(--accent); }
+.backbtn svg { width: 20px; height: 20px; }
 
 @media (max-width: 767px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1359,6 +1360,7 @@ function aiEffectCard(t) {
 
 
 /* ----- help: glossary, hints, plain-language summary ----- */
+Object.assign(ICONS, { back: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>' });
 Object.assign(ICONS, { help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>' });
 const GLOSS = {
   views: ["Which forecast", "Reviewed forecast (the main one): the three models with the smallest past error, averaged, after an automatic review that can shrink or clip the forecast; it comes with a 10–90% range. Ensemble: the average of the two models with the smallest past error. Fusion: a learned blend of all models. Fusion Top 3: the three most accurate models, weighted by accuracy. Best single model: the one model that called direction best in testing."],
@@ -1605,6 +1607,7 @@ function ensureStock(code) { if (LIVE.ok && code && !X.stk.det[code] && X.stk.ds
 function openStock(code) {
   if (S.running) return;
   savePos();
+  if (S.page !== "stock") X.stk.from = S.page;   // the back arrow returns here
   X.stk.code = String(code).toUpperCase(); X.stk.sect = "stock"; saveStk(); S.more = false; S.page = "stock"; $("#app").classList.remove("open"); render(false); restorePos();
 }
 function resolveStock(v) {
@@ -1768,15 +1771,15 @@ function stockFundamentals(d) {
   const q = `<div class="subcard"><p class="k">Quarterly EPS</p>${qe.length ? `<div class="qeps">${qe.map(r => `<div><b class="mono ${r.eps < 0 ? "down" : ""}">${r.eps < 0 ? "−" : ""}${Math.abs(r.eps).toFixed(2)}</b><span>${esc(r.period)}</span></div>`).join("")}</div>` : `<p class="sub">No quarterly EPS disclosure found in the exchange's recent notices.</p>`}</div>`;
   return card("Company fundamentals", "", "", `${tiles}<div class="fundgrid">${hold}${eps}</div>${q}<p class="src">Fundamental data sourced from dsebd.org${d.as_of ? `, last updated ${esc(d.as_of)}` : ""}.</p>`);
 }
+/* The stock page's header: a back arrow and the company name, nothing else. */
+const stkHead = (code, name) => `<div class="stkhead"><button type="button" class="backbtn" data-act="stk-back" aria-label="Back">${ic("back")}</button><h1>${esc(name || code)}${name && name !== code ? ` <span class="stkcode">(${esc(code)})</span>` : ""}</h1></div>`;
 function renderStock() {
   const x = X.stk, code = x.code, d = x.det[code];
-  const bc = crumb(["dash", "Market"], ["stocks", "DSE Stocks"], code);
+  const bc = stkHead(code, d && d.name);
   if (!LIVE.ok) return bc + needServer("The stock analysis");
   if (!d) return bc + card("", "", "", emptyState("chart", x.dstate[code] === "err" ? `${esc(code)} could not be loaded` : `Loading ${esc(code)}…`, x.dstate[code] === "err" ? esc(x.derr[code] || "") : "Fetching the company page and its price history.", x.dstate[code] === "err" ? `<button type="button" class="btn secondary sm" data-act="stk-reload" data-v="${esc(code)}">Try again</button>` : ""), "dashed");
   if (!d.ok) return bc + card("", "", "", emptyState("alert", `No price data for ${esc(code)}`, `The exchange returned no daily prices for this code. ${esc((d.errors || []).join(" · "))}`, `<button type="button" class="btn secondary sm" data-page="stocks">Back to the list</button>`), "dashed");
   return `${bc}
-  <div class="pagehead"><div><h1>${esc(d.name || code)} <span class="stkcode">(${esc(code)})</span></h1><p class="sub">Dhaka Stock Exchange${d.sector ? ` · ${esc(d.sector)}` : ""}${d.category ? ` · Category ${esc(d.category)}` : ""} · As of ${dLong(d.as_of)}</p></div>
-    <form class="stkjump" id="stk-jump" autocomplete="off"><input class="inp" id="stk-jump-q" placeholder="Search another stock, e.g. IPDC, Renata" aria-label="Search another DSE stock" spellcheck="false"><button type="submit" class="btn secondary sm">Search</button></form></div>
   <section class="mksec stkmain"><div class="stkside"><h2 class="stkh">${esc(code)} key statistics</h2>${stockStats(d)}</div>${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${WIN_PILLS.map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div><p class="src" id="stk-fcnote"></p>`)}</section>
   <section class="mksec">${stockRaem(d)}</section>
   <section class="mksec">${stockFundamentals(d)}</section>
@@ -2355,6 +2358,7 @@ document.addEventListener("click", e => {
   else if (d.stk) { openStock(d.stk); return; }
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
   else if (a === "stk-more") X.stk.n += 100;
+  else if (a === "stk-back") { goPage(X.stk.from && X.stk.from !== "stock" ? X.stk.from : "stocks"); return; }
   else if (a === "stk-range") { X.stk.range = +v; saveStk(); }
   else if (a === "stk-frange") { X.stk.frange = +v; saveStk(); }
   else if (a === "stk-panel") { const c = X.stk.code; X.stk.panel[c] = X.stk.panel[c] === v ? "" : v; saveStk(); }
@@ -2421,12 +2425,6 @@ document.addEventListener("keydown", e => {
 $("#skip").addEventListener("click", e => { e.preventDefault(); $("#main").focus(); });
 function markRows() { document.querySelectorAll("tr.click").forEach(r => { r.tabIndex = 0; }); }
 document.addEventListener("click", e => { if (S.more && !e.target.closest(".morewrap")) { S.more = false; renderNav(); } });
-document.addEventListener("submit", e => {
-  if (e.target.id !== "stk-jump") return;
-  e.preventDefault();
-  const c = resolveStock(($("#stk-jump-q") || {}).value);
-  if (c) openStock(c);
-});
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { const c = $("#chart"); if (c && S.page === "tk") drawChart(c); if (S.page === "bt") drawBT(); if (S.page === "inv") drawInv(); if (S.page === "stock") { drawStockChart(); drawStockFc(); } }, 120); });
 
 $("#menu").innerHTML = ic("menu");

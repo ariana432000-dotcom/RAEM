@@ -474,6 +474,7 @@ function aiEffectCard(t) {
 
 
 /* ----- help: glossary, hints, plain-language summary ----- */
+Object.assign(ICONS, { back: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>' });
 Object.assign(ICONS, { help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>' });
 const GLOSS = {
   views: ["Which forecast", "Reviewed forecast (the main one): the three models with the smallest past error, averaged, after an automatic review that can shrink or clip the forecast; it comes with a 10–90% range. Ensemble: the average of the two models with the smallest past error. Fusion: a learned blend of all models. Fusion Top 3: the three most accurate models, weighted by accuracy. Best single model: the one model that called direction best in testing."],
@@ -720,6 +721,7 @@ function ensureStock(code) { if (LIVE.ok && code && !X.stk.det[code] && X.stk.ds
 function openStock(code) {
   if (S.running) return;
   savePos();
+  if (S.page !== "stock") X.stk.from = S.page;   // the back arrow returns here
   X.stk.code = String(code).toUpperCase(); X.stk.sect = "stock"; saveStk(); S.more = false; S.page = "stock"; $("#app").classList.remove("open"); render(false); restorePos();
 }
 function resolveStock(v) {
@@ -883,15 +885,15 @@ function stockFundamentals(d) {
   const q = `<div class="subcard"><p class="k">Quarterly EPS</p>${qe.length ? `<div class="qeps">${qe.map(r => `<div><b class="mono ${r.eps < 0 ? "down" : ""}">${r.eps < 0 ? "−" : ""}${Math.abs(r.eps).toFixed(2)}</b><span>${esc(r.period)}</span></div>`).join("")}</div>` : `<p class="sub">No quarterly EPS disclosure found in the exchange's recent notices.</p>`}</div>`;
   return card("Company fundamentals", "", "", `${tiles}<div class="fundgrid">${hold}${eps}</div>${q}<p class="src">Fundamental data sourced from dsebd.org${d.as_of ? `, last updated ${esc(d.as_of)}` : ""}.</p>`);
 }
+/* The stock page's header: a back arrow and the company name, nothing else. */
+const stkHead = (code, name) => `<div class="stkhead"><button type="button" class="backbtn" data-act="stk-back" aria-label="Back">${ic("back")}</button><h1>${esc(name || code)}${name && name !== code ? ` <span class="stkcode">(${esc(code)})</span>` : ""}</h1></div>`;
 function renderStock() {
   const x = X.stk, code = x.code, d = x.det[code];
-  const bc = crumb(["dash", "Market"], ["stocks", "DSE Stocks"], code);
+  const bc = stkHead(code, d && d.name);
   if (!LIVE.ok) return bc + needServer("The stock analysis");
   if (!d) return bc + card("", "", "", emptyState("chart", x.dstate[code] === "err" ? `${esc(code)} could not be loaded` : `Loading ${esc(code)}…`, x.dstate[code] === "err" ? esc(x.derr[code] || "") : "Fetching the company page and its price history.", x.dstate[code] === "err" ? `<button type="button" class="btn secondary sm" data-act="stk-reload" data-v="${esc(code)}">Try again</button>` : ""), "dashed");
   if (!d.ok) return bc + card("", "", "", emptyState("alert", `No price data for ${esc(code)}`, `The exchange returned no daily prices for this code. ${esc((d.errors || []).join(" · "))}`, `<button type="button" class="btn secondary sm" data-page="stocks">Back to the list</button>`), "dashed");
   return `${bc}
-  <div class="pagehead"><div><h1>${esc(d.name || code)} <span class="stkcode">(${esc(code)})</span></h1><p class="sub">Dhaka Stock Exchange${d.sector ? ` · ${esc(d.sector)}` : ""}${d.category ? ` · Category ${esc(d.category)}` : ""} · As of ${dLong(d.as_of)}</p></div>
-    <form class="stkjump" id="stk-jump" autocomplete="off"><input class="inp" id="stk-jump-q" placeholder="Search another stock, e.g. IPDC, Renata" aria-label="Search another DSE stock" spellcheck="false"><button type="submit" class="btn secondary sm">Search</button></form></div>
   <section class="mksec stkmain"><div class="stkside"><h2 class="stkh">${esc(code)} key statistics</h2>${stockStats(d)}</div>${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${WIN_PILLS.map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div><p class="src" id="stk-fcnote"></p>`)}</section>
   <section class="mksec">${stockRaem(d)}</section>
   <section class="mksec">${stockFundamentals(d)}</section>

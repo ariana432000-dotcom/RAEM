@@ -16,6 +16,7 @@ document.addEventListener("click", e => {
   else if (d.stk) { openStock(d.stk); return; }
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
   else if (a === "stk-more") X.stk.n += 100;
+  else if (a === "stk-back") { goPage(X.stk.from && X.stk.from !== "stock" ? X.stk.from : "stocks"); return; }
   else if (a === "stk-range") { X.stk.range = +v; saveStk(); }
   else if (a === "stk-frange") { X.stk.frange = +v; saveStk(); }
   else if (a === "stk-panel") { const c = X.stk.code; X.stk.panel[c] = X.stk.panel[c] === v ? "" : v; saveStk(); }
@@ -82,9 +83,3 @@ document.addEventListener("keydown", e => {
 $("#skip").addEventListener("click", e => { e.preventDefault(); $("#main").focus(); });
 function markRows() { document.querySelectorAll("tr.click").forEach(r => { r.tabIndex = 0; }); }
 document.addEventListener("click", e => { if (S.more && !e.target.closest(".morewrap")) { S.more = false; renderNav(); } });
-document.addEventListener("submit", e => {
-  if (e.target.id !== "stk-jump") return;
-  e.preventDefault();
-  const c = resolveStock(($("#stk-jump-q") || {}).value);
-  if (c) openStock(c);
-});

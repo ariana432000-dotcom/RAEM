@@ -156,6 +156,8 @@ Price band: the reviewer's 10 to 90% range is the per-day 10th and 90th percenti
 
 Saved forecast first: the Forecast page shows a company's last saved forecast as soon as it opens, with no run (`S.ran[t] !== false` means shown; only a replay sets it false), and Run makes a new one. The watchlist and the side menu show every company's saved signal the same way.
 
+Stock page header: a back arrow and the company name only (`stkHead()`, no breadcrumb, no search box, no exchange line). The arrow returns to the page the company was opened from (`X.stk.from`, set in `openStock()`), the DSE Stocks list by default.
+
 Forecast page chart: the "7-day price path" card has quick window buttons 30D, 3M, 6M, 1Y and 2Y (`WIN_QUICK`, `data-act="win"`, they set `S.win` like the History window select, which is hidden once the options collapse after a run). 1Y and 2Y use the whole price history from the saved CSV copy (`histFull`); the ticker JSON alone has 180 rows.
 
 Page state: the stock section remembers where you were. `X.stk` keeps the open company, its open panel (`panel[code]` is `fc` or `ai`), the chart windows and the section (`sect`, so the Stocks tab returns to the company you were reading; the breadcrumb's "DSE Stocks" returns to the list) in `localStorage` (`raem:stk`); `POS` keeps the scroll position of every page left (`savePos()` and `restorePos()` in `goPage()`, `openStock()` and `openTicker()`); the address hash is `#stock-<CODE>` or `#tk-<T>`. The Forecast page keeps its ticker, tab and overlays when you come back to it.
