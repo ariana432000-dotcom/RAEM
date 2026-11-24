@@ -1802,7 +1802,7 @@ function drawStockChart() {
     }
   }
   const nAx = ax.length;
-  const W = Math.max(320, h.clientWidth || 700), H = 380, padL = 8, padR = 56, padT = 10, volH = 70, axisH = 22, gap = 12, priceH = H - padT - volH - gap - axisH;
+  const W = Math.max(320, h.clientWidth || 700), H = 280, padL = 8, padR = 56, padT = 10, volH = 50, axisH = 22, gap = 10, priceH = H - padT - volH - gap - axisH;
   const fcv = fc ? fc.pts.flatMap(q => [q[1], q[2], q[3]]) : [], lo0 = Math.min(...cs.map(c => c[3]), ...fcv), hi0 = Math.max(...cs.map(c => c[2]), ...fcv), pad = (hi0 - lo0) * 0.06 || 0.05, lo = lo0 - pad, hi = hi0 + pad;
   const y = v => padT + (hi - v) * priceH / (hi - lo), vmax = Math.max(...cs.map(c => c[5])) || 1, step = (W - padL - padR) / nAx, cw = Math.max(1, Math.min(10, step * 0.7)), x = i => padL + step * (i + 0.5);
   const volTop = padT + priceH + gap, last = cs[n - 1];
