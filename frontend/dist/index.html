@@ -1658,7 +1658,11 @@ async function loadSavedFc(code) {
     const r = await api("forecast/saved/" + encodeURIComponent(code));
     x.fcr[code] = r; x.fcstate[code] = "ok";
     const d = DATA[code];   // the Forecast page gets the whole price history, not only the 180 saved rows
-    if (d && r.prices.length > d.history.length) d.histFull = r.prices.filter(p => p[0] <= d.forecast.last_date);
+    if (d && r.prices.length > d.history.length) {
+      const hp = r.prices.filter(p => p[0] <= d.forecast.last_date), lp = hp[hp.length - 1];
+      // only when it ends on the forecast's own last close: older closes under a newer forecast would show a step at "last close"
+      if (lp && lp[0] === d.forecast.last_date && Math.abs(lp[1] - d.forecast.last_price) < 0.001) d.histFull = hp;
+    }
   } catch (e) { x.fcstate[code] = /No saved forecast|Unknown ticker/.test(e.message) ? "none" : "err"; x.fcerr[code] = e.message; }
   if ((S.page === "stock" && x.code === code) || (S.page === "tk" && S.t === code)) render();
 }

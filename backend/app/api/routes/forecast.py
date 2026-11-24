@@ -30,6 +30,12 @@ def saved_forecast_for(ticker: str):
     A run made before the CSV files existed is written out from its saved page data the first time it is asked for."""
     t = deps.known(ticker)
     data = saved_forecast.read(t)
+    if data is not None:
+        # a deploy can bring a newer run in the saved page data while the CSV copy on the volume is still the old run: the
+        # chart would then draw old closes under the new forecast. The newer of the two wins, and the CSV copy is rebuilt.
+        page_run = (deps.load_ticker(t).get("run_info") or {}).get("generated_at") or ""
+        if page_run > (data["summary"].get("generated_at") or "") and saved_forecast.backfill(t, deps.load_ticker(t)):
+            data = saved_forecast.read(t)
     if data is None and saved_forecast.backfill(t, deps.load_ticker(t)):
         data = saved_forecast.read(t)
     if data is None:

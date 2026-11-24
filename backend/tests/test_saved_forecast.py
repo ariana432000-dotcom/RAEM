@@ -1,4 +1,6 @@
 """The last forecast run is kept as CSV files and loaded again from them (app/pipeline/saved_forecast.py)."""
+import json
+
 import pytest
 
 from app.pipeline import saved_forecast as sf
@@ -76,3 +78,22 @@ def test_members_and_ranking_are_saved_and_a_run_without_ranking_drops_the_old_o
     del result["agent"]["ranking"]
     sf.write("ZZZ", result, [("2026-11-23", 4.2)])
     assert sf.read("ZZZ")["ranking"] == [] and not (tmp_path / "ZZZ_ranking.csv").exists()
+
+
+def test_route_rebuilds_a_csv_copy_that_is_older_than_the_saved_page_data(client, tmp_path, monkeypatch):
+    """A deploy brings a newer run in the ticker JSON while the volume still holds the CSV copy of the old run."""
+    monkeypatch.setattr(sf, "DIR", str(tmp_path))
+    t = client.get("/api/tickers").json()[0]["ticker"]
+    page = client.get(f"/api/tickers/{t}").json()
+    old = json.loads(json.dumps(page))
+    old["run_info"]["generated_at"] = "2000-01-01 00:00:00"
+    old["forecast"]["last_price"] = page["forecast"]["last_price"] + 1.0          # the old run saw a different last close
+    sf.write(t, old, [(page["forecast"]["last_date"], old["forecast"]["last_price"])])
+    got = client.get(f"/api/forecast/saved/{t}").json()
+    assert got["summary"]["generated_at"] == page["run_info"]["generated_at"]
+    assert got["summary"]["last_close"] == pytest.approx(page["forecast"]["last_price"])
+    # a CSV copy that is newer (a run with other models writes only the CSV) is left alone
+    newer = json.loads(json.dumps(page))
+    newer["run_info"]["generated_at"] = "2999-01-01 00:00:00"
+    sf.write(t, newer, [(page["forecast"]["last_date"], page["forecast"]["last_price"])])
+    assert client.get(f"/api/forecast/saved/{t}").json()["summary"]["generated_at"] == "2999-01-01 00:00:00"
