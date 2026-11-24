@@ -112,6 +112,9 @@ def export(t, models=None, out_path=None):
         "ensemble_members": f.get("ensemble_members"), "top_models": f.get("top_models"),
         "failed_models": clean(f["failed_models"]), "always_up_holdout_acc": clean(f["always_up_holdout_acc"]),
         "naive_holdout_mae": clean(f["naive_holdout_mae"]),
+        # what each blend is made of (weights fitted on the backtest; "Naive" = no change)
+        "blend_weights": {fl.MODEL_LABELS[k]: clean(f["results"][k]["params"]["weights"])
+                          for k in ("ensemble", "fusion", "fusion_top3") if k in f["results"]},
         "scoreboard": clean(f["scoreboard"]), "fusion_report": clean(f["fusion_report"]),
         "all_models": clean(fl.all_models_table(f)),
     }

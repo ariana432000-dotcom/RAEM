@@ -12,6 +12,7 @@ GET /api/forecast/saved/<T>. The newest run overwrites the files, so a reload sh
 from __future__ import annotations
 
 import csv
+import json
 import os
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -67,7 +68,8 @@ def write(t: str, out: dict, prices: list) -> None:
                ["last_date", f["last_date"]], ["daily_rows", f.get("n_rows", len(prices))], ["history_rows", len(prices)],
                ["models_fitted", sum(1 for m in f["paths"] if m not in ("Ensemble", "Fusion", "Fusion-Top3"))],
                ["failed_models", ",".join((f.get("failed_models") or {}).keys())], ["best_model", f.get("best_model", "")],
-               ["main_forecast", "Reviewed" if pr else "Ensemble"], ["members", ",".join(plan.get("members") or [])], ["direction", f.get("direction", "")],
+               ["main_forecast", "Reviewed" if pr else "Ensemble"], ["members", ",".join(plan.get("members") or [])],
+               ["blend_weights", json.dumps(f.get("blend_weights") or {})], ["direction", f.get("direction", "")],
                ["total_return_pct", f.get("total_return_pct", "")], ["final_price", f.get("final_price", "")],
                ["signal", daily.get("final_signal", "")], ["run_models", ",".join(run.get("models") or [])],
                ["generated_at", run.get("generated_at", "")]]
@@ -138,4 +140,8 @@ def read(t: str) -> dict | None:
                                 "live_vs_naive": _num(r["live_mae_vs_naive"]), "live_origins": _num(r["live_origins"]),
                                 "live_calls": _num(r["live_calls"]), "live_weight": _num(r["live_weight"]), "score": _num(r["score"])})
     members = [m for m in (summary.get("members") or "").split(",") if m]
-    return {"summary": summary, "prices": prices, "dates": dates, "paths": paths, "band": band, "members": members, "ranking": ranking}
+    try:
+        blends = json.loads(summary.get("blend_weights") or "{}")
+    except ValueError:
+        blends = {}
+    return {"summary": summary, "prices": prices, "dates": dates, "paths": paths, "band": band, "members": members, "ranking": ranking, "blends": blends}

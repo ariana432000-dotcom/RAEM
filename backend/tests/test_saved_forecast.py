@@ -67,8 +67,10 @@ def test_members_and_ranking_are_saved_and_a_run_without_ranking_drops_the_old_o
                                    "live_calls": None, "live_weight": 0.0, "score": 0.9},
                                   {"model": "LASSO", "member": False, "mae_vs_naive": 1.1, "live_mae_vs_naive": 1.3, "live_origins": 12,
                                    "live_calls": 84, "live_weight": 0.545, "score": 1.2}]
+    result["forecast"]["blend_weights"] = {"Fusion": {"Ridge": 0.6, "Naive": 0.4}, "Ensemble": {"Ridge": 0.5, "Theta": 0.5}}
     sf.write("ZZZ", result, [("2026-11-23", 4.2)])
     r = sf.read("ZZZ")
+    assert r["blends"]["Fusion"] == {"Ridge": 0.6, "Naive": 0.4}
     assert r["members"] == ["Ridge", "Theta"] and [x["model"] for x in r["ranking"]] == ["Ridge", "LASSO"]
     assert r["ranking"][0]["member"] is True and r["ranking"][0]["live_vs_naive"] is None and r["ranking"][1]["live_origins"] == 12
     del result["agent"]["ranking"]

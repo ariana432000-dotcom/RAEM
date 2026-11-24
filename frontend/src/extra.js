@@ -787,6 +787,7 @@ function fcLines(s) {
 }
 /* One fact of the one-line strip above a forecast: label, value, small note (tone buy or hold colours the note). */
 const fcItem = (k, v, hint, tone) => `<div class="fci"><span class="k">${k}</span><b class="mono">${v}</b><span class="h ${tone || ""}">${hint}</span></div>`;
+const blendText = w => Object.entries(w || {}).sort((a, b) => b[1] - a[1]).map(([m, v]) => `${Math.round(v * 100)}% ${m === "Naive" ? "no change" : esc(m)}`).join(" + ");
 function savedMain(s) { return s.paths.Reviewed ? "Reviewed" : s.paths.Ensemble ? "Ensemble" : Object.keys(s.paths)[0]; }
 function stockFcPanel(d) {
   const code = d.code, x = X.stk, s = x.fcr[code], st = x.fcstate[code];
@@ -797,16 +798,19 @@ function stockFcPanel(d) {
   const m = s.summary, cur = esc(m.currency || ""), age = Math.round((Date.parse(refDate()) - Date.parse(m.last_date)) / 864e5), main = savedMain(s), mp = s.paths[main], last = m.last_close;
 const item = fcItem;
   const line = `<div class="fcline">${item("Last close", fmtP(last), cur)}${item("Price data to", dShort(m.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy")}${item("Daily rows", fmtN(m.daily_rows), "price history used")}${item("Models fitted", fmtN(m.models_fitted), m.failed_models ? "failed: " + esc(m.failed_models) : "none failed")}</div>`;
-  const rows = s.dates.map((ds, i) => `<tr><td class="t">${i + 1}</td><td class="t">${dShort(ds)}</td><td>${fmtP(mp[i])}</td><td class="${cls(mp[i] / last - 1)}">${fmtPct((mp[i] / last - 1) * 100)}</td><td>${s.band && main === "Reviewed" ? `${fmtP(s.band[i][0])} to ${fmtP(s.band[i][1])}` : "–"}</td></tr>`).join("");
+  const rows = s.dates.map((ds, i) => `<tr><td class="t">${i + 1} · ${dShort(ds)}</td><td>${fmtP(mp[i])}</td><td class="${cls(mp[i] / last - 1)}">${fmtPct((mp[i] / last - 1) * 100)}</td><td>${s.band && main === "Reviewed" ? `${fmtP(s.band[i][0])} to ${fmtP(s.band[i][1])}` : "–"}</td></tr>`).join("");
   const models = Object.keys(s.paths).filter(k => k !== "Reviewed").map(k => { const v = s.paths[k][s.dates.length - 1]; return `<tr><td class="t">${esc(k)}</td><td>${fmtP(v)}</td><td class="${cls(v / last - 1)}">${fmtPct((v / last - 1) * 100)}</td></tr>`; }).join("");
   return `<div class="raempanel"><p class="sigline">Last saved forecast</p>
     <p class="sub">Run ${esc((m.generated_at || "").slice(0, 16) || "date unknown")} · loaded from the saved CSV files · main forecast: ${esc(main === "Reviewed" ? "reviewed forecast" : main)}</p>
     ${line}
     <div class="chead"><p class="k">Price and ${esc(main === "Reviewed" ? "reviewed forecast" : main.toLowerCase())}</p><div class="pills">${WIN_PILLS.map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-frange" data-v="${n}" aria-pressed="${x.frange === n}">${l}</button>`).join("")}</div></div>
     <div class="chartbox fcchart" id="stk-fcchart"></div>
-    <div class="legend"><span><i style="background:var(--text)"></i>Close</span><span><i style="background:var(--accent-strong);height:4px"></i>${main === "Reviewed" ? "Reviewed forecast (average of the best 3)" : esc(main)}</span>${fcLines(s).map(l => `<span><i style="background:${l.color}"></i>${esc(l.name)}${l.name === "Fusion" ? "" : " (best 3)"}</span>`).join("")}${main === "Reviewed" && s.band ? `<span><i style="background:var(--text);opacity:.25;height:8px"></i>10 to 90% range</span>` : ""}</div>
-    <p class="src">The next ${s.dates.length} trading days. The best three models are the ones whose own saved forecasts did best against the real closes; until a model has a record, its backtest counts. Research output, not investment advice.</p>
-    <div class="two"><div><p class="k">Next ${s.dates.length} trading days</p><div class="scroll"><table class="dense"><thead><tr><th>Day</th><th>Date</th><th>Price</th><th>Change</th><th>Range</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+    <div class="legend"><span><i style="background:var(--text)"></i>Close</span><span><i style="background:var(--accent-strong);height:4px"></i>${main === "Reviewed" ? "Reviewed forecast (average of the best 3)" : esc(main)}</span>${main === "Reviewed" && s.band ? `<span><i style="background:var(--text);opacity:.25;height:8px"></i>10 to 90% range</span>` : ""}</div>
+    <p class="k">The next ${s.dates.length} days by model</p>
+    <div class="chartbox fcchart" id="stk-fczoom"></div>
+    <div class="legend"><span><i style="background:var(--accent-strong);height:4px"></i>${main === "Reviewed" ? "Reviewed forecast" : esc(main)}</span>${fcLines(s).map(l => `<span><i style="background:${l.color}"></i>${esc(l.name)}${l.name === "Fusion" ? "" : " (best 3)"}</span>`).join("")}<span><i style="background:var(--faint)"></i>last close</span></div>
+    <p class="src">${s.blends && s.blends.Fusion ? `<b>Fusion</b> = ${blendText(s.blends.Fusion)}, weights fitted on the backtest. ` : ""}The best three models are the ones whose own saved forecasts did best against the real closes; until a model has a record, its backtest counts. Research output, not investment advice.</p>
+    <div class="two"><div><p class="k">Next ${s.dates.length} trading days</p><div class="scroll"><table class="dense"><thead><tr><th>Day</th><th>Price</th><th>Change</th><th>10 to 90% range</th></tr></thead><tbody>${rows}</tbody></table></div></div>
       <div><p class="k">Day ${s.dates.length} by model</p><div class="scroll"><table class="dense"><thead><tr><th>Model</th><th>Price</th><th>Change</th></tr></thead><tbody>${models}</tbody></table></div></div></div>
     ${rankTable(s)}
     <div class="cta"><button type="button" class="btn secondary sm" data-t="${esc(code)}">Open the Forecast page to run it again</button></div></div>`;
@@ -814,7 +818,7 @@ const item = fcItem;
 function rankTable(s) {
   const r = s.ranking || []; if (!r.length) return "";
   const e = v => v == null ? "–" : fmtN(v, 2);
-  return `<p class="k">Why these three: models ranked by past accuracy ${hint(GLOSS.rank)}</p><div class="scroll"><table class="dense"><thead><tr><th>#</th><th>Model</th><th>Backtest error</th><th>Past forecasts error</th><th>Graded forecasts</th><th>Weight of past forecasts</th><th>Score</th></tr></thead><tbody>${r.map((x, i) => `<tr><td class="t">${i + 1}</td><td class="t">${esc(x.model)}${x.member ? ` <span class="badge accent">best 3</span>` : ""}</td><td>${e(x.holdout_vs_naive)}</td><td>${e(x.live_vs_naive)}</td><td>${x.live_origins == null ? "0" : fmtN(x.live_origins)}</td><td>${fmtN((x.live_weight || 0) * 100)}%</td><td><b>${e(x.score)}</b></td></tr>`).join("")}</tbody></table></div><p class="src">Errors are relative to "no change" (below 1.00 beats it). Score = backtest error blended with the error of the model's own saved forecasts, which count more as more of them are graded; lowest score ranks first.</p>`;
+  return `<p class="k">Why these three: models ranked by past accuracy ${hint(GLOSS.rank)}</p><div class="scroll"><table class="dense"><thead><tr><th>Model</th><th>Backtest error</th><th>Past forecasts error</th><th>Graded forecasts</th><th>Weight of past forecasts</th><th>Score</th></tr></thead><tbody>${r.map((x, i) => `<tr><td class="t">${i + 1}. ${esc(x.model)}${x.member ? ` <span class="badge accent">best 3</span>` : ""}</td><td>${e(x.holdout_vs_naive)}</td><td>${e(x.live_vs_naive)}</td><td>${x.live_origins == null ? "0" : fmtN(x.live_origins)}</td><td>${fmtN((x.live_weight || 0) * 100)}%</td><td><b>${e(x.score)}</b></td></tr>`).join("")}</tbody></table></div><p class="src">Errors are relative to "no change" (below 1.00 beats it). Score = backtest error blended with the error of the model's own saved forecasts, which count more as more of them are graded; lowest score ranks first.</p>`;
 }
 function drawStockFc() {
   const h = $("#stk-fcchart"), s = h && X.stk.fcr[X.stk.code]; if (!s) return;
@@ -824,9 +828,16 @@ function drawStockFc() {
   const fc = labels.map((_, i) => i < m - 1 ? null : i === m - 1 ? hist[m - 1][1] : fp[i - m]);
   const band = s.band && savedMain(s) === "Reviewed" ? { lo: labels.map((_, i) => i < m ? null : s.band[i - m][0]), hi: labels.map((_, i) => i < m ? null : s.band[i - m][1]) } : null;
   const line = name => labels.map((_, i) => i < m - 1 ? null : i === m - 1 ? hist[m - 1][1] : s.paths[name][i - m]);
-  const series = [{ name: "Close", v: close, color: "var(--text)", w: 1.8 }, { name: savedMain(s) === "Reviewed" ? "Reviewed forecast" : savedMain(s), v: fc, color: "var(--accent-strong)", w: 2.8 }];
-  fcLines(s).forEach(l => series.push({ name: l.name, v: line(l.name), color: l.color, w: 1.5, dash: l.dash }));
-  lineChart(h, labels, series, { label: `${X.stk.code} price and forecast`, band, fmt: v => v.toFixed(2), axLab: X.stk.frange >= 252 ? dMonYr : dShort });
+  const mainName = savedMain(s) === "Reviewed" ? "Reviewed forecast" : savedMain(s);
+  lineChart(h, labels, [{ name: "Close", v: close, color: "var(--text)", w: 1.8 }, { name: mainName, v: fc, color: "var(--accent-strong)", w: 2.8 }],
+    { label: `${X.stk.code} price and forecast`, band, fmt: v => v.toFixed(2), axLab: X.stk.frange >= 252 ? dMonYr : dShort });
+  // zoom on the next days: the last close, then the reviewed forecast, the best three models and the Fusion, with the range
+  const z = $("#stk-fczoom"); if (!z) return;
+  const last = hist[m - 1], zl = [last[0], ...s.dates], zp = name => [last[1], ...s.paths[name]];
+  const zs = [{ name: mainName, v: zp(savedMain(s)), color: "var(--accent-strong)", w: 3 }, { name: "Last close", v: zl.map(() => last[1]), color: "var(--faint)", dash: true, w: 1 }];
+  fcLines(s).forEach(l => zs.push({ name: l.name, v: zp(l.name), color: l.color, w: 1.8, dash: l.dash }));
+  // no range band here: it is wider than the gaps between the models, which would flatten them; the band is on the chart above
+  lineChart(z, zl, zs, { label: `${X.stk.code} next ${s.dates.length} days by model`, fmt: v => v.toFixed(3) });
 }
 function stockRaem(d) {
   const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null, pan = X.stk.panel[code] || "";
