@@ -122,7 +122,10 @@ def export(t, models=None, out_path=None):
         table = fa.forecast_table(f, plan)
         out["agent"] = {"before_members": clean(plan0["members"]),
                         "plan": {k: clean(v) for k, v in plan.items() if not isinstance(v, (pd.DataFrame,)) or k == "log"},
-                        "table": clean(table)}
+                        "table": clean(table),
+                        # why these members: holdout error and live (graded forecast) error vs 'no change', and the blended score
+                        "ranking": [dict(r, member=r["model"] in plan["members"])
+                                    for r in clean(plan["ranked"].rename_axis("model").reset_index())]}
     except Exception as e:  # keep going
         out["agent"] = {"error": f"{type(e).__name__}: {e}"}
     # --- track record: grade the saved calls whose target day has arrived, and keep this run's own calls so a later run

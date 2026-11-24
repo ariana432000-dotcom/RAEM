@@ -4,6 +4,7 @@
     backend/data/forecasts/<T>_prices.csv    date,close  the whole price history the models used (up to 2 years)
     backend/data/forecasts/<T>_forecast.csv  model,day,date,price,low,high   every model's 7-day path; the row "Reviewed"
                                              is the main forecast with its 10-90% range in low / high
+    backend/data/forecasts/<T>_ranking.csv   the base models ranked by holdout and live accuracy; member = one of the best three
 
 write() is called by export_ticker.py after every run (a failure never stops the run); read() serves
 GET /api/forecast/saved/<T>. The newest run overwrites the files, so a reload shows the last run.
@@ -55,12 +56,18 @@ def write(t: str, out: dict, prices: list) -> None:
             rows.append(["Reviewed", i + 1, d, last * (1 + r), lo, hi])
     _atomic(_p(t, "forecast"), ["model", "day", "date", "price", "low", "high"], rows)
     _atomic(_p(t, "prices"), ["date", "close"], [[d, c] for d, c in prices])
+    rank = (out.get("agent") or {}).get("ranking") or []
+    if rank:
+        cols = ["model", "member", "mae_vs_naive", "live_mae_vs_naive", "live_origins", "live_calls", "live_weight", "score"]
+        _atomic(_p(t, "ranking"), cols, [[r.get(c, "") if r.get(c) is not None else "" for c in cols] for r in rank])
+    elif os.path.exists(_p(t, "ranking")):   # this run has no ranking: do not leave the last run's behind
+        os.remove(_p(t, "ranking"))
     run = out.get("run_info") or {}
     summary = [["ticker", t], ["company", f.get("company", "")], ["currency", f.get("currency", "")], ["last_close", last],
                ["last_date", f["last_date"]], ["daily_rows", f.get("n_rows", len(prices))], ["history_rows", len(prices)],
                ["models_fitted", sum(1 for m in f["paths"] if m not in ("Ensemble", "Fusion", "Fusion-Top3"))],
                ["failed_models", ",".join((f.get("failed_models") or {}).keys())], ["best_model", f.get("best_model", "")],
-               ["main_forecast", "Reviewed" if pr else "Ensemble"], ["direction", f.get("direction", "")],
+               ["main_forecast", "Reviewed" if pr else "Ensemble"], ["members", ",".join(plan.get("members") or [])], ["direction", f.get("direction", "")],
                ["total_return_pct", f.get("total_return_pct", "")], ["final_price", f.get("final_price", "")],
                ["signal", daily.get("final_signal", "")], ["run_models", ",".join(run.get("models") or [])],
                ["generated_at", run.get("generated_at", "")]]
@@ -123,4 +130,12 @@ def read(t: str) -> dict | None:
                 dates.append(r["date"])
     if band and any(b[0] is None for b in band):
         band = None
-    return {"summary": summary, "prices": prices, "dates": dates, "paths": paths, "band": band}
+    ranking = []
+    if os.path.exists(_p(t, "ranking")):
+        with open(_p(t, "ranking"), newline="", encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):
+                ranking.append({"model": r["model"], "member": r["member"] == "True", "holdout_vs_naive": _num(r["mae_vs_naive"]),
+                                "live_vs_naive": _num(r["live_mae_vs_naive"]), "live_origins": _num(r["live_origins"]),
+                                "live_calls": _num(r["live_calls"]), "live_weight": _num(r["live_weight"]), "score": _num(r["score"])})
+    members = [m for m in (summary.get("members") or "").split(",") if m]
+    return {"summary": summary, "prices": prices, "dates": dates, "paths": paths, "band": band, "members": members, "ranking": ranking}

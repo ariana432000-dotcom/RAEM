@@ -58,3 +58,19 @@ def test_route_loads_saved_csv_and_backfills_an_old_run(client, tmp_path, monkey
     body = r.json()
     assert body["summary"]["ticker"] == t and len(body["dates"]) == 7 and body["prices"]
     assert client.get(f"/api/forecast/saved/{t}").json() == body    # the second answer comes from the CSV files
+
+
+def test_members_and_ranking_are_saved_and_a_run_without_ranking_drops_the_old_one(tmp_path, monkeypatch, result):
+    monkeypatch.setattr(sf, "DIR", str(tmp_path))
+    result["agent"]["plan"]["members"] = ["Ridge", "Theta"]
+    result["agent"]["ranking"] = [{"model": "Ridge", "member": True, "mae_vs_naive": 0.9, "live_mae_vs_naive": None, "live_origins": None,
+                                   "live_calls": None, "live_weight": 0.0, "score": 0.9},
+                                  {"model": "LASSO", "member": False, "mae_vs_naive": 1.1, "live_mae_vs_naive": 1.3, "live_origins": 12,
+                                   "live_calls": 84, "live_weight": 0.545, "score": 1.2}]
+    sf.write("ZZZ", result, [("2026-11-23", 4.2)])
+    r = sf.read("ZZZ")
+    assert r["members"] == ["Ridge", "Theta"] and [x["model"] for x in r["ranking"]] == ["Ridge", "LASSO"]
+    assert r["ranking"][0]["member"] is True and r["ranking"][0]["live_vs_naive"] is None and r["ranking"][1]["live_origins"] == 12
+    del result["agent"]["ranking"]
+    sf.write("ZZZ", result, [("2026-11-23", 4.2)])
+    assert sf.read("ZZZ")["ranking"] == [] and not (tmp_path / "ZZZ_ranking.csv").exists()

@@ -491,6 +491,7 @@ const GLOSS = {
   aidec: ["Decision", "BUY, HOLD or SELL after the whole analysis has run: analysts, the bull vs bear debate, the trader, the risk debate and the portfolio manager. The decision verifier can override the signal when the text and the rating disagree. Overweight counts as BUY and Underweight as SELL."],
   aiadj: ["AI-adjusted forecast", "The 7-day forecast after the latest AI analysis (the AI analysis run with an LLM) has had its say. The AI rating (Buy +1, Overweight +½, Hold 0, Underweight −½, Sell −1) times the stock's typical 7-day move is its view; the adjusted move is 80% the models and 20% that view. Once the AI has five graded calls, its weight moves between 10% and 35% with how often it was right. A session more than 10 days older than the prices does not count."],
   runai: ["Run AI analysis", "Runs the whole AI analysis of the company on the server (analysts, debates, trader, risk, portfolio manager, verifier) with the LLM you choose, then shows the new session. Ollama models run on the server itself; OpenAI, Claude, Gemini and Groq models run with the server's API key, so no key is ever typed into this page. Each run is stored by company, date and model."],
+  rank: ["Best three models", "Each model is scored two ways: its error on the backtest (data it had not seen), and the error of the forecasts it actually saved, once the real closes arrived. Both are compared with 'no change' (below 1.00 is better). The score blends them: the more graded forecasts a model has, the more its real record counts, so a model that stops working loses its place and one that proves itself gains it. The best three are averaged into the reviewed forecast."],
   evwin: ["Window", "A call is judged on the closes of the next 1, 2 or 3 trading days. BUY is right if some close in that window is above the entry price, SELL if some close is below it, HOLD if some close is the same or higher. A longer window gives each call more chances, so accuracy rises with it. Only calls with three later closes are scored, the same calls for every window."],
   evacc: ["Accuracy", "The share of scored calls that were right under the window rule. With 30 to 40 calls per company it is uncertain: read it together with the 95% interval."],
   wilson: ["95% interval", "The range the true hit rate probably lies in, given how few calls there are (a Wilson interval). When two companies' intervals overlap a lot, the data do not show that one is better than the other."],
@@ -778,6 +779,12 @@ async function loadSavedFc(code) {
   } catch (e) { x.fcstate[code] = /No saved forecast|Unknown ticker/.test(e.message) ? "none" : "err"; x.fcerr[code] = e.message; }
   if ((S.page === "stock" && x.code === code) || (S.page === "tk" && S.t === code)) render();
 }
+/* The lines drawn next to the main forecast: the best three models (the reviewed forecast's members) and the Fusion. */
+function fcLines(s) {
+  const out = (s.members || []).filter(m => s.paths[m]).map((m, k) => ({ name: m, color: `var(${COLORS[k % COLORS.length]})`, dash: false }));
+  if (s.paths.Fusion) out.push({ name: "Fusion", color: `var(${COLORS[3]})`, dash: true });
+  return out;
+}
 function savedMain(s) { return s.paths.Reviewed ? "Reviewed" : s.paths.Ensemble ? "Ensemble" : Object.keys(s.paths)[0]; }
 function stockFcPanel(d) {
   const code = d.code, x = X.stk, s = x.fcr[code], st = x.fcstate[code];
@@ -794,10 +801,18 @@ function stockFcPanel(d) {
     <p class="sub">Run ${esc((m.generated_at || "").slice(0, 16) || "date unknown")} · loaded from the saved CSV files · main forecast: ${esc(main === "Reviewed" ? "reviewed forecast" : main)}</p>
     ${line}
     <div class="chead"><p class="k">Price and ${esc(main === "Reviewed" ? "reviewed forecast" : main.toLowerCase())}</p><div class="pills">${WIN_PILLS.map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-frange" data-v="${n}" aria-pressed="${x.frange === n}">${l}</button>`).join("")}</div></div>
-    <div class="chartbox fcchart" id="stk-fcchart"></div><p class="src">Solid line: closing prices. Dashed line: the next ${s.dates.length} trading days${main === "Reviewed" && s.band ? ", with the 10 to 90% range shaded" : ""}. Research output, not investment advice.</p>
+    <div class="chartbox fcchart" id="stk-fcchart"></div>
+    <div class="legend"><span><i style="background:var(--text)"></i>Close</span><span><i style="background:var(--accent-strong);height:4px"></i>${main === "Reviewed" ? "Reviewed forecast (average of the best 3)" : esc(main)}</span>${fcLines(s).map(l => `<span><i style="background:${l.color}"></i>${esc(l.name)}${l.name === "Fusion" ? "" : " (best 3)"}</span>`).join("")}${main === "Reviewed" && s.band ? `<span><i style="background:var(--text);opacity:.25;height:8px"></i>10 to 90% range</span>` : ""}</div>
+    <p class="src">The next ${s.dates.length} trading days. The best three models are the ones whose own saved forecasts did best against the real closes; until a model has a record, its backtest counts. Research output, not investment advice.</p>
     <div class="two"><div><p class="k">Next ${s.dates.length} trading days</p><div class="scroll"><table class="dense"><thead><tr><th>Day</th><th>Date</th><th>Price</th><th>Change</th><th>Range</th></tr></thead><tbody>${rows}</tbody></table></div></div>
       <div><p class="k">Day ${s.dates.length} by model</p><div class="scroll"><table class="dense"><thead><tr><th>Model</th><th>Price</th><th>Change</th></tr></thead><tbody>${models}</tbody></table></div></div></div>
+    ${rankTable(s)}
     <div class="cta"><button type="button" class="btn secondary sm" data-t="${esc(code)}">Open the Forecast page to run it again</button></div></div>`;
+}
+function rankTable(s) {
+  const r = s.ranking || []; if (!r.length) return "";
+  const e = v => v == null ? "–" : fmtN(v, 2);
+  return `<p class="k">Why these three: models ranked by past accuracy ${hint(GLOSS.rank)}</p><div class="scroll"><table class="dense"><thead><tr><th>#</th><th>Model</th><th>Backtest error</th><th>Past forecasts error</th><th>Graded forecasts</th><th>Weight of past forecasts</th><th>Score</th></tr></thead><tbody>${r.map((x, i) => `<tr><td class="t">${i + 1}</td><td class="t">${esc(x.model)}${x.member ? ` <span class="badge accent">best 3</span>` : ""}</td><td>${e(x.holdout_vs_naive)}</td><td>${e(x.live_vs_naive)}</td><td>${x.live_origins == null ? "0" : fmtN(x.live_origins)}</td><td>${fmtN((x.live_weight || 0) * 100)}%</td><td><b>${e(x.score)}</b></td></tr>`).join("")}</tbody></table></div><p class="src">Errors are relative to "no change" (below 1.00 beats it). Score = backtest error blended with the error of the model's own saved forecasts, which count more as more of them are graded; lowest score ranks first.</p>`;
 }
 function drawStockFc() {
   const h = $("#stk-fcchart"), s = h && X.stk.fcr[X.stk.code]; if (!s) return;
@@ -806,7 +821,10 @@ function drawStockFc() {
   const labels = hist.map(p => p[0]).concat(s.dates), close = hist.map(p => p[1]).concat(s.dates.map(() => null));
   const fc = labels.map((_, i) => i < m - 1 ? null : i === m - 1 ? hist[m - 1][1] : fp[i - m]);
   const band = s.band && savedMain(s) === "Reviewed" ? { lo: labels.map((_, i) => i < m ? null : s.band[i - m][0]), hi: labels.map((_, i) => i < m ? null : s.band[i - m][1]) } : null;
-  lineChart(h, labels, [{ name: "Close", v: close, color: "var(--text)", w: 1.8 }, { name: "Forecast", v: fc, color: "var(--accent-strong)", dash: true, w: 2.2 }], { label: `${X.stk.code} price and forecast`, band, fmt: v => v.toFixed(2), axLab: X.stk.frange >= 252 ? dMonYr : dShort });
+  const line = name => labels.map((_, i) => i < m - 1 ? null : i === m - 1 ? hist[m - 1][1] : s.paths[name][i - m]);
+  const series = [{ name: "Close", v: close, color: "var(--text)", w: 1.8 }, { name: savedMain(s) === "Reviewed" ? "Reviewed forecast" : savedMain(s), v: fc, color: "var(--accent-strong)", w: 2.8 }];
+  fcLines(s).forEach(l => series.push({ name: l.name, v: line(l.name), color: l.color, w: 1.5, dash: l.dash }));
+  lineChart(h, labels, series, { label: `${X.stk.code} price and forecast`, band, fmt: v => v.toFixed(2), axLab: X.stk.frange >= 252 ? dMonYr : dShort });
 }
 function stockRaem(d) {
   const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null, pan = X.stk.panel[code] || "";

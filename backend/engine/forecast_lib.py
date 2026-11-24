@@ -954,6 +954,55 @@ def run_fusion(results: dict, labeled: pd.DataFrame, split: int) -> tuple:
 
 
 # --------------------------------------------------------------------------
+# Ranking the base models by how their own saved forecasts did
+# --------------------------------------------------------------------------
+
+LIVE_WINDOW_ORIGINS = 30   # only a model's newest saved forecasts count: a model that was good a year ago and is poor now loses its place
+LIVE_PRIOR_ORIGINS = 10    # the holdout counts like this many forecasts of evidence; the live record gets weight n / (n + 10)
+
+
+def live_accuracy(ticker: str, models=None) -> pd.DataFrame:
+    """Per model: error of its saved forecasts (forecast_log, graded against the real close) relative to 'no change'.
+
+    live_mae_vs_naive = sum |predicted - actual| / sum |price when made - actual| over the model's newest
+    LIVE_WINDOW_ORIGINS forecasts. Below 1 the model beat 'no change', above 1 it did worse. Same scale as the holdout's
+    mae_vs_naive, so the two can be blended. Only graded rows count, so nothing here looks at the future."""
+    cols = ["live_mae_vs_naive", "live_calls", "live_origins"]
+    log = load_forecast_log(ticker)
+    if log.empty:
+        return pd.DataFrame(columns=cols)
+    done = log.dropna(subset=["actual_price"])
+    rows = {}
+    for m, g in done.groupby("model"):
+        if models is not None and m not in models:
+            continue
+        origins = sorted(g["made_on"].astype(str).unique())[-LIVE_WINDOW_ORIGINS:]
+        g = g[g["made_on"].astype(str).isin(origins)]
+        err = float((g["predicted_price"] - g["actual_price"]).abs().sum())
+        naive = float((g["price_when_made"] - g["actual_price"]).abs().sum())
+        if naive > 0 and np.isfinite(err):
+            rows[m] = {"live_mae_vs_naive": err / naive, "live_calls": len(g), "live_origins": len(origins)}
+    return pd.DataFrame.from_dict(rows, orient="index", columns=cols)
+
+
+def rank_by_track_record(ranking: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """Order the base models by a score that blends the holdout with the live record, best (lowest) first.
+
+    score = (1 - w) * holdout error vs naive + w * live error vs naive, w = n / (n + LIVE_PRIOR_ORIGINS) for a model with n
+    graded forecast origins. A model with no graded forecasts keeps its holdout score; as a model's forecasts are graded,
+    what it really did takes over from what the backtest said. Adds live_*, live_weight and score to the holdout columns."""
+    live = live_accuracy(ticker, list(ranking.index))
+    out = ranking.copy()
+    for c in ("live_mae_vs_naive", "live_calls", "live_origins"):
+        out[c] = live[c].reindex(out.index) if c in live else np.nan
+    n = out["live_origins"].fillna(0.0).astype(float)
+    w = (n / (n + LIVE_PRIOR_ORIGINS)).where(out["live_mae_vs_naive"].notna(), 0.0)
+    out["live_weight"] = w
+    out["score"] = (1 - w) * out["mae_vs_naive"] + w * out["live_mae_vs_naive"].fillna(out["mae_vs_naive"])
+    return out.sort_values(["score", "holdout_mae"]).rename_axis("model")
+
+
+# --------------------------------------------------------------------------
 # Orchestration
 # --------------------------------------------------------------------------
 
@@ -1081,6 +1130,10 @@ def forecast_ticker(ticker: str, verbose: bool = True, models: list | None = Non
     results.update(fusions)
     if "ensemble" in fusions:
         ensemble_members = list(fusions["ensemble"]["params"]["weights"])
+        try:   # the best models are those whose own saved forecasts did best against the real closes, not only the backtest
+            fusion_report.attrs["ranking"] = rank_by_track_record(fusion_report.attrs["ranking"], ticker)
+        except Exception as e:
+            failed["track_ranking"] = f"{type(e).__name__}: {e}"
         top_models = list(fusion_report.attrs["ranking"].index[:TOP_MODELS_SHOWN])
 
     # the bar every model has to clear: "no change" over the same holdout

@@ -195,3 +195,40 @@ def test_dse_archive_reads_the_day_end_table(monkeypatch):
     assert [str(d)[:10] for d in df.index] == ["2026-10-26", "2026-10-27"]
     assert df["close"].tolist() == [218.8, 218.8] and df["volume"].tolist() == [243592, 355398]
     assert df["value"].iloc[1] == 77.972 and df["trade"].iloc[1] == 1998
+
+
+# ---------------------------------------------------------------- the best models follow their own saved forecasts
+
+def _log(tmp_path, monkeypatch, rows):
+    monkeypatch.setattr(fl, "FORECAST_LOG_DIR", str(tmp_path))
+    fl_cols = fl.FORECAST_LOG_COLUMNS
+    pd.DataFrame(rows, columns=fl_cols).to_csv(fl.forecast_log_path("ZZZ"), index=False)
+
+
+def _calls(model, origins, err):
+    """One graded call per origin: made at 100, the price ended at 101, the model said 101 + err."""
+    return [[f"2026-10-{o:02d}", f"2026-10-{o + 1:02d}", 1, model, 100.0, 101.0 + err, 101.0, abs(err), True, True] for o in origins]
+
+
+def test_live_accuracy_is_error_relative_to_no_change(tmp_path, monkeypatch):
+    _log(tmp_path, monkeypatch, _calls("A", range(1, 6), 0.0) + _calls("B", range(1, 6), 2.0))
+    la = fl.live_accuracy("ZZZ")
+    assert la.loc["A", "live_mae_vs_naive"] == 0.0 and la.loc["A", "live_origins"] == 5     # perfect: no error
+    assert la.loc["B", "live_mae_vs_naive"] == pytest.approx(2.0)                          # error 2 vs 'no change' error 1: twice as bad
+
+
+def test_graded_forecasts_move_a_model_up_or_down(tmp_path, monkeypatch):
+    ranking = pd.DataFrame({"holdout_mae": [0.010, 0.011, 0.012], "mae_vs_naive": [0.90, 0.95, 1.00]},
+                           index=pd.Index(["A", "B", "C"], name="model"))
+    _log(tmp_path, monkeypatch, [])
+    assert list(fl.rank_by_track_record(ranking, "ZZZ").index) == ["A", "B", "C"]          # no record yet: the backtest order stands
+    # A (best on the backtest) was wrong in 30 real forecasts, C (worst) was right in 30
+    _log(tmp_path, monkeypatch, _calls("A", range(1, 31), 3.0) + _calls("C", range(1, 31), 0.0) + _calls("B", range(1, 3), 0.5))
+    r = fl.rank_by_track_record(ranking, "ZZZ")
+    assert list(r.index)[0] == "C" and list(r.index)[-1] == "A"
+    assert r.loc["C", "live_weight"] == pytest.approx(30 / 40) and r.loc["B", "live_weight"] == pytest.approx(2 / 12)
+    assert r.loc["C", "score"] == pytest.approx(0.25 * 1.0 + 0.75 * 0.0)
+    # only the newest LIVE_WINDOW_ORIGINS forecasts count: an old bad record is forgotten
+    _log(tmp_path, monkeypatch, _calls("A", range(1, 4), 3.0) + [[f"2026-11-{o:02d}", f"2026-11-{o + 1:02d}", 1, "A", 100.0, 101.0, 101.0, 0.0, True, True]
+                                                           for o in range(1, 1 + fl.LIVE_WINDOW_ORIGINS)])
+    assert fl.live_accuracy("ZZZ").loc["A", "live_mae_vs_naive"] == 0.0

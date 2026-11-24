@@ -350,7 +350,10 @@ function savedForecastNote(d) {
   const past = end && end < refDate();
   return `<div class="card ${past ? "warn" : ""}" style="margin-top:12px;padding:12px;font-size:12px;color:var(--muted)"><b>${past ? "Historical forecast" : "Saved forecast"}</b>${made ? ` · created ${dLong(made)}` : ""} · prices to ${dLong(f.last_date)}${f.dates && f.dates.length ? ` · covers ${dLong(f.dates[0])} to ${dLong(end)}` : ""}${past ? `. Its target dates are already past. ${LIVE && LIVE.ok ? "Run the forecast again for current prices." : "This copy only replays saved results and cannot fetch current prices."}` : "."}</div>`;
 }
-const defaultOverlays = d => new Set((d.forecast.top_models || []).filter(m => d.forecast.paths[m]).slice(0, 3));
+const defaultOverlays = d => {   // the three members of the reviewed forecast (best by past accuracy) and the Fusion
+  const pl = d.agent && d.agent.plan, ms = pl && pl.members && pl.members.length ? pl.members : (d.forecast.top_models || []).slice(0, 3);
+  return new Set([...ms.filter(m => d.forecast.paths[m]), ...(d.forecast.paths.Fusion ? ["Fusion"] : [])]);
+};
 S.overlays = defaultOverlays(D());
 
 /* ---------- primitives ---------- */
@@ -501,7 +504,7 @@ function renderTicker() {
   const form = card("Forecast options", `${esc(d.meta.name)} · ${esc(S.t)} · ${venue}${collapsed ? ` · ${esc((VIEWS.find(v => v[0] === S.view) || ["", S.view])[1])}, ${overlayList().length} models compared, ${S.win} days` : ""}`, ran ? `<button type="button" class="btn secondary sm" data-act="opt-toggle" aria-expanded="${!collapsed}">${collapsed ? "Edit options" : "Hide options"}</button>` : "", `
     <div class="formgrid" ${collapsed ? "hidden" : ""}>
       <div class="field"><span class="lbl">Forecast shown ${hint(GLOSS.views)}</span><div class="pills">${viewBtns}</div></div>
-      <div class="field"><span class="lbl">Compare models <button type="button" class="link" data-pick="top">top 3</button><button type="button" class="link" data-pick="all">all</button><button type="button" class="link" data-pick="none">none</button></span><div class="pills">${chips}</div>${missing.length ? `<p class="sub" style="margin-top:8px">Not available for this ticker: ${esc(missing.join(", "))}</p>` : ""}</div>
+      <div class="field"><span class="lbl">Compare models <button type="button" class="link" data-pick="top">best 3 + Fusion</button><button type="button" class="link" data-pick="all">all</button><button type="button" class="link" data-pick="none">none</button></span><div class="pills">${chips}</div>${missing.length ? `<p class="sub" style="margin-top:8px">Not available for this ticker: ${esc(missing.join(", "))}</p>` : ""}</div>
       <div class="field"><label for="win">History window</label><select id="win">${WIN_OPTS.map(([n, l]) => `<option value="${n}" ${S.win === n ? "selected" : ""}>${l}</option>`).join("")}</select>
         <div style="height:14px"></div><label for="unit">Chart units</label><select id="unit"><option value="price" ${S.unit === "price" ? "selected" : ""}>Price (${esc(d.meta.currency)})</option><option value="pct" ${S.unit === "pct" ? "selected" : ""}>Change from last close (%)</option></select></div>
       <div class="field"><span class="lbl">Chart layers</span><div class="checks">
@@ -511,7 +514,7 @@ function renderTicker() {
     </div>
     ${live ? tokenRow() : ""}
     <div class="runbar"><button type="button" class="btn primary" id="run" ${S.running || fcBusy ? "disabled" : ""}>${S.running || fcBusy ? "Running…" : live ? `Run ${nSel} models` : ran ? "Run again" : "Run forecast"}</button>
-      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three models with the lowest holdout error; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(savedOn(d))}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(savedOn(d))} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
+      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three best models: ranked by how their own saved forecasts did against the real closes, with the backtest counting until they have a record; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(savedOn(d))}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(savedOn(d))} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
