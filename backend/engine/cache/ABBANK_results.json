@@ -2,45 +2,45 @@
   "horizon": 7,
   "model_version": 2,
   "ticker": "ABBANK",
-  "data_end_date": "2026-10-27",
-  "n_rows": 502,
-  "cached_at": "2026-10-28 11:22:40",
+  "data_end_date": "2026-11-19",
+  "n_rows": 519,
+  "cached_at": "2026-11-24 22:23:46",
   "results": {
-    "xgb_ret": 0.18665078282356262,
-    "xgb_mae": 0.044300511920464324,
-    "xgb_dacc": 0.3880597014925373,
+    "xgb_ret": 0.016101954504847527,
+    "xgb_mae": 0.054024179635561595,
+    "xgb_dacc": 0.4142857142857143,
     "xgb_params": {
-      "max_depth": 4,
+      "max_depth": 2,
       "learning_rate": 0.02,
       "n_estimators": 300,
       "subsample": 0.8,
       "colsample_bytree": 0.8,
       "random_state": 42
     },
-    "lstm_ret": 0.0974576473236084,
-    "lstm_mae": 0.041675835847854614,
-    "lstm_dacc": 0.5846153846153846,
+    "lstm_ret": 0.07387768477201462,
+    "lstm_mae": 0.07116265594959259,
+    "lstm_dacc": 0.5671641791044776,
     "lstm_params": {
-      "hidden": 32,
+      "hidden": 64,
       "lr": 0.0005
     },
-    "arima_ret": 0.0,
-    "arima_mae": 0.029884415641691562,
-    "arima_dacc": 0.2835820895522388,
+    "arima_ret": -0.0012623307214517654,
+    "arima_mae": 0.02737441131474928,
+    "arima_dacc": 0.3142857142857143,
     "arima_order": [
       1,
       1,
       0
     ],
-    "ridge_ret": 0.011101351980009338,
-    "ridge_mae": 0.034725314737754344,
-    "ridge_dacc": 0.5223880597014925,
+    "ridge_ret": -0.004442571292603051,
+    "ridge_mae": 0.03326459727691579,
+    "ridge_dacc": 0.45714285714285713,
     "ridge_params": {
       "alpha": 100.0
     },
-    "kalman_ret": 1.5543122344752192e-15,
-    "kalman_mae": 0.02950192928320444,
-    "kalman_dacc": 0.29850746268656714,
+    "kalman_ret": 2.67054978131398e-09,
+    "kalman_mae": 0.026992548491390534,
+    "kalman_dacc": 0.32857142857142857,
     "kalman_level": "local level"
   }
 }

@@ -125,6 +125,16 @@ def export(t, models=None, out_path=None):
                         "table": clean(table)}
     except Exception as e:  # keep going
         out["agent"] = {"error": f"{type(e).__name__}: {e}"}
+    # --- track record: grade the saved calls whose target day has arrived, and keep this run's own calls so a later run
+    # can grade them. Without this nothing ever wrote forecast_log from the website, so the Track record stayed on the
+    # last notebook run. Only the site's own model set is saved: record_forecast replaces every row of an origin, so a
+    # run with fewer models would wipe the others' calls for that day.
+    try:
+        fl.grade_forecasts(t, close)
+        if sorted(models) == sorted(KEEP_MODELS):
+            fl.record_forecast(t, f)
+    except Exception as e:  # the track record is a bonus, never a reason to lose the forecast
+        print(f"  {t}: could not update forecast_log ({type(e).__name__}: {e})", flush=True)
     # --- hit rate ---
     h = fl.hit_rate_report(t)
     out["hitrate"] = {k: clean(h[k]) for k in ["per_model", "by_horizon", "recent_calls", "n_forecasts",

@@ -15,3 +15,6 @@ frontend/src/template3.html
 
 # price-file backups made by the first top-up
 backend/engine/data/*.bak
+
+# the last forecast run of each company as CSV (written by the server, rebuilt from the saved page data when missing)
+backend/data/forecasts/
