@@ -785,6 +785,8 @@ function fcLines(s) {
   if (s.paths.Fusion) out.push({ name: "Fusion", color: `var(${COLORS[3]})`, dash: true });
   return out;
 }
+/* One fact of the one-line strip above a forecast: label, value, small note (tone buy or hold colours the note). */
+const fcItem = (k, v, hint, tone) => `<div class="fci"><span class="k">${k}</span><b class="mono">${v}</b><span class="h ${tone || ""}">${hint}</span></div>`;
 function savedMain(s) { return s.paths.Reviewed ? "Reviewed" : s.paths.Ensemble ? "Ensemble" : Object.keys(s.paths)[0]; }
 function stockFcPanel(d) {
   const code = d.code, x = X.stk, s = x.fcr[code], st = x.fcstate[code];
@@ -793,7 +795,7 @@ function stockFcPanel(d) {
     : st === "err" ? `<p class="sigline">The saved forecast could not be loaded</p><p class="sub">${esc(x.fcerr[code] || "")}</p><div class="cta"><button type="button" class="btn secondary sm" data-act="stk-fc-reload" data-v="${esc(code)}">Try again</button></div>`
     : `<p class="sub">Loading the last saved forecast…</p>`}</div>`;
   const m = s.summary, cur = esc(m.currency || ""), age = Math.round((Date.parse(refDate()) - Date.parse(m.last_date)) / 864e5), main = savedMain(s), mp = s.paths[main], last = m.last_close;
-  const item = (k, v, hint, tone) => `<div class="fci"><span class="k">${k}</span><b class="mono">${v}</b><span class="h ${tone || ""}">${hint}</span></div>`;
+const item = fcItem;
   const line = `<div class="fcline">${item("Last close", fmtP(last), cur)}${item("Price data to", dShort(m.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy")}${item("Daily rows", fmtN(m.daily_rows), "price history used")}${item("Models fitted", fmtN(m.models_fitted), m.failed_models ? "failed: " + esc(m.failed_models) : "none failed")}</div>`;
   const rows = s.dates.map((ds, i) => `<tr><td class="t">${i + 1}</td><td class="t">${dShort(ds)}</td><td>${fmtP(mp[i])}</td><td class="${cls(mp[i] / last - 1)}">${fmtPct((mp[i] / last - 1) * 100)}</td><td>${s.band && main === "Reviewed" ? `${fmtP(s.band[i][0])} to ${fmtP(s.band[i][1])}` : "–"}</td></tr>`).join("");
   const models = Object.keys(s.paths).filter(k => k !== "Reviewed").map(k => { const v = s.paths[k][s.dates.length - 1]; return `<tr><td class="t">${esc(k)}</td><td>${fmtP(v)}</td><td class="${cls(v / last - 1)}">${fmtPct((v / last - 1) * 100)}</td></tr>`; }).join("");

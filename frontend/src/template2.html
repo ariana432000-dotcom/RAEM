@@ -492,7 +492,7 @@ function progressCard() {
 function renderTicker() {
   const d = D(), f = d.forecast, ran = !!S.ran[S.t], age = daysBetween(f.last_date, refDate());
   const venue = d.meta.source === "dse" ? "Dhaka Stock Exchange" : ({ "2222.SR": "Tadawul", "0300.HK": "HKEX" }[S.t] || "US market");
-  const chips = BASE.filter(m => f.paths[m]).map(m => {
+  const chips = [...BASE.filter(m => f.paths[m]), ...(f.paths.Fusion ? ["Fusion"] : [])].map(m => {   // the Fusion can be switched on and off like a model
     const on = S.overlays.has(m), k = overlayList().indexOf(m);
     return `<button type="button" class="pillbtn mdl" data-ov="${esc(m)}" aria-pressed="${on}"><i style="${on ? `background:var(${COLORS[k % COLORS.length]})` : ""}"></i>${esc(m)}</button>`;
   }).join("");
@@ -518,11 +518,11 @@ function renderTicker() {
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
-  <div class="stats">
-    ${statCard("Last close", fmtP(f.last_price), esc(d.meta.currency), "", "chart")}
-    ${statCard("Price data to", dShort(f.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy", "clock")}
-    ${statCard("Daily rows", f.n_rows, "price history used", "", "db")}
-    ${ran ? statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain") : statCard("Models fitted", "–", "open the saved forecast to see", "", "brain")}
+  <div class="fcline">
+    ${fcItem("Last close", fmtP(f.last_price), esc(d.meta.currency))}
+    ${fcItem("Price data to", dShort(f.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy")}
+    ${fcItem("Daily rows", f.n_rows, "price history used")}
+    ${ran ? fcItem("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run") : fcItem("Models fitted", "–", "open the saved forecast to see")}
   </div>
   ${live && LIVE.fc[S.t] ? "" : savedForecastNote(d)}
   ${form}

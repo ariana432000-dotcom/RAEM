@@ -501,7 +501,7 @@ table.lt th, table.lt td { text-align: left; }
 .fcline { display: flex; flex-wrap: nowrap; gap: 0; margin: 14px 0 6px; border: 1px solid var(--border-soft); background: var(--bg-raised); border-radius: 10px; overflow-x: auto; }
 .fci { flex: 1 0 auto; display: flex; align-items: baseline; gap: 8px; padding: 10px 16px; white-space: nowrap; border-left: 1px solid var(--border-soft); }
 .fci:first-child { border-left: 0; }
-.fci .k { margin: 0; }
+.fci .k { margin: 0; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 .fci b { font-size: 15px; }
 .fci .h { font-size: 12px; color: var(--muted); }
 .fci .h.buy { color: var(--buy); } .fci .h.hold { color: var(--hold); }
@@ -749,7 +749,7 @@ function progressCard() {
 function renderTicker() {
   const d = D(), f = d.forecast, ran = !!S.ran[S.t], age = daysBetween(f.last_date, refDate());
   const venue = d.meta.source === "dse" ? "Dhaka Stock Exchange" : ({ "2222.SR": "Tadawul", "0300.HK": "HKEX" }[S.t] || "US market");
-  const chips = BASE.filter(m => f.paths[m]).map(m => {
+  const chips = [...BASE.filter(m => f.paths[m]), ...(f.paths.Fusion ? ["Fusion"] : [])].map(m => {   // the Fusion can be switched on and off like a model
     const on = S.overlays.has(m), k = overlayList().indexOf(m);
     return `<button type="button" class="pillbtn mdl" data-ov="${esc(m)}" aria-pressed="${on}"><i style="${on ? `background:var(${COLORS[k % COLORS.length]})` : ""}"></i>${esc(m)}</button>`;
   }).join("");
@@ -775,11 +775,11 @@ function renderTicker() {
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
-  <div class="stats">
-    ${statCard("Last close", fmtP(f.last_price), esc(d.meta.currency), "", "chart")}
-    ${statCard("Price data to", dShort(f.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy", "clock")}
-    ${statCard("Daily rows", f.n_rows, "price history used", "", "db")}
-    ${ran ? statCard("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run", "accent", "brain") : statCard("Models fitted", "–", "open the saved forecast to see", "", "brain")}
+  <div class="fcline">
+    ${fcItem("Last close", fmtP(f.last_price), esc(d.meta.currency))}
+    ${fcItem("Price data to", dShort(f.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy")}
+    ${fcItem("Daily rows", f.n_rows, "price history used")}
+    ${ran ? fcItem("Models fitted", `${BASE.filter(m => f.paths[m]).length}`, Object.keys(f.failed_models || {}).length ? `failed: ${esc(Object.keys(f.failed_models).join(", "))}` : "none failed in this run") : fcItem("Models fitted", "–", "open the saved forecast to see")}
   </div>
   ${live && LIVE.fc[S.t] ? "" : savedForecastNote(d)}
   ${form}
@@ -1666,6 +1666,8 @@ function fcLines(s) {
   if (s.paths.Fusion) out.push({ name: "Fusion", color: `var(${COLORS[3]})`, dash: true });
   return out;
 }
+/* One fact of the one-line strip above a forecast: label, value, small note (tone buy or hold colours the note). */
+const fcItem = (k, v, hint, tone) => `<div class="fci"><span class="k">${k}</span><b class="mono">${v}</b><span class="h ${tone || ""}">${hint}</span></div>`;
 function savedMain(s) { return s.paths.Reviewed ? "Reviewed" : s.paths.Ensemble ? "Ensemble" : Object.keys(s.paths)[0]; }
 function stockFcPanel(d) {
   const code = d.code, x = X.stk, s = x.fcr[code], st = x.fcstate[code];
@@ -1674,7 +1676,7 @@ function stockFcPanel(d) {
     : st === "err" ? `<p class="sigline">The saved forecast could not be loaded</p><p class="sub">${esc(x.fcerr[code] || "")}</p><div class="cta"><button type="button" class="btn secondary sm" data-act="stk-fc-reload" data-v="${esc(code)}">Try again</button></div>`
     : `<p class="sub">Loading the last saved forecast…</p>`}</div>`;
   const m = s.summary, cur = esc(m.currency || ""), age = Math.round((Date.parse(refDate()) - Date.parse(m.last_date)) / 864e5), main = savedMain(s), mp = s.paths[main], last = m.last_close;
-  const item = (k, v, hint, tone) => `<div class="fci"><span class="k">${k}</span><b class="mono">${v}</b><span class="h ${tone || ""}">${hint}</span></div>`;
+const item = fcItem;
   const line = `<div class="fcline">${item("Last close", fmtP(last), cur)}${item("Price data to", dShort(m.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy")}${item("Daily rows", fmtN(m.daily_rows), "price history used")}${item("Models fitted", fmtN(m.models_fitted), m.failed_models ? "failed: " + esc(m.failed_models) : "none failed")}</div>`;
   const rows = s.dates.map((ds, i) => `<tr><td class="t">${i + 1}</td><td class="t">${dShort(ds)}</td><td>${fmtP(mp[i])}</td><td class="${cls(mp[i] / last - 1)}">${fmtPct((mp[i] / last - 1) * 100)}</td><td>${s.band && main === "Reviewed" ? `${fmtP(s.band[i][0])} to ${fmtP(s.band[i][1])}` : "–"}</td></tr>`).join("");
   const models = Object.keys(s.paths).filter(k => k !== "Reviewed").map(k => { const v = s.paths[k][s.dates.length - 1]; return `<tr><td class="t">${esc(k)}</td><td>${fmtP(v)}</td><td class="${cls(v / last - 1)}">${fmtPct((v / last - 1) * 100)}</td></tr>`; }).join("");
