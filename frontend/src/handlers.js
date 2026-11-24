@@ -42,6 +42,7 @@ document.addEventListener("click", e => {
   else if (a === "ev-more") X.ev.n += 25;
   else if (a === "more") S.more = !S.more;
   else if (a === "opt-toggle") S.optOpen = !S.optOpen;
+  else if (a === "win") S.win = +v;
   else if (a === "set-reset") { Object.assign(settings, { theme: "dark", win: 126, unit: "price", view: "Agent" }); lsDel("raem:set"); applySettings(true); }
   else return;
   render();

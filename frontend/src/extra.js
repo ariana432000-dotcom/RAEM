@@ -33,6 +33,7 @@ const X = {
 /* Chart windows in trading days: 1, 2, 3, 6, 12 months and 2 years. Used by the stock page, its forecast panel and the Forecast page. */
 const WIN_OPTS = [[21, "1 month"], [42, "2 months"], [63, "3 months"], [126, "6 months"], [252, "12 months"], [504, "2 years"]];
 const WIN_PILLS = [[21, "1M"], [42, "2M"], [63, "3M"], [126, "6M"], [252, "12M"], [504, "2Y"]];
+const WIN_QUICK = [[21, "30D"], [63, "3M"], [126, "6M"], [252, "1Y"], [504, "2Y"]];   // quick buttons on the Forecast chart
 const snapWin = n => (WIN_OPTS.find(w => w[0] >= n) || WIN_OPTS[WIN_OPTS.length - 1])[0];
 const winLabel = n => (WIN_OPTS.find(w => w[0] === n) || ["", n + " trading days"])[1];
 const histOf = d => (d.histFull && d.histFull.length > d.history.length ? d.histFull : d.history);   // the Forecast page shows more than the 180 saved rows once the CSV copy is loaded

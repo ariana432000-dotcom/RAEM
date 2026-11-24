@@ -528,7 +528,7 @@ function renderTicker() {
   ${form}
   <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
   ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}
-  ${card(ran ? "7-day price path" : "Price history", ran ? `Day 1 to day 7 after ${dLong(f.last_date)}. Hover or tap the chart for values.` : `Last ${winLabel(S.win)}.`, "", `<div class="chartwrap" id="chart"></div><div class="legend" id="legend"></div><p class="src">Source: data/ and daily_data/ price files${ran ? "; forecast_lib.forecast_ticker()" : ""}.</p>`)}
+  ${card(ran ? "7-day price path" : "Price history", ran ? `Day 1 to day 7 after ${dLong(f.last_date)}. Hover or tap the chart for values.` : `Last ${winLabel(S.win)}.`, `<div class="pills nw">${WIN_QUICK.map(([n, l]) => `<button type="button" class="pillbtn" data-act="win" data-v="${n}" aria-pressed="${S.win === n}">${l}</button>`).join("")}</div>`, `<div class="chartwrap" id="chart"></div><div class="legend" id="legend"></div><p class="src">Source: data/ and daily_data/ price files${ran ? "; forecast_lib.forecast_ticker()" : ""}.</p>`)}
   <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "Saved forecast not opened yet", "Press Run forecast to open the saved 7-day paths, the daily signal, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
 }
 
