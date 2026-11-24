@@ -26,6 +26,7 @@ os.chdir(ROOT)
 import forecast_agent as fa  # noqa: E402
 import forecast_lib as fl  # noqa: E402
 import predictor_lib as pl  # noqa: E402
+import saved_forecast as sf  # noqa: E402  (next to this file: the CSV copy of the last run)
 
 # The website shows only these five: the best average rank across the 8 tickers (error vs naive,
 # common holdout, export of 2026-10-20). Ensemble, Fusion and the reviewer are rebuilt from them.
@@ -126,6 +127,10 @@ def export(t, models=None, out_path=None):
     h = fl.hit_rate_report(t)
     out["hitrate"] = {k: clean(h[k]) for k in ["per_model", "by_horizon", "recent_calls", "n_forecasts",
                                                 "pending_calls", "verdict"]}
+    try:  # the last run as CSV files, so the page loads it again; a failure here never stops the run
+        sf.write(t, out, [(str(i.date()), round(float(v), 4)) for i, v in close.dropna().items()])
+    except Exception as e:
+        print(f"  {t}: could not save the CSV copy ({type(e).__name__}: {e})", flush=True)
     path = out_path or os.path.join(OUT, f"{t}.json")
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:

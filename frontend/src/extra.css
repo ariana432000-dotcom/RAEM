@@ -227,3 +227,23 @@ table.lt th, table.lt td { text-align: left; }
 .aiproc .tm { color: var(--faint); font-size: 11px; font-weight: 500; }
 .aiproc .scrollbox { padding: 0 14px 14px; }
 .aiproc .turns { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+
+/* stock page: the panels opened by "Open forecast" and "Open AI analysis" */
+.raempanel { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-soft); }
+.raempanel .sigline { margin-bottom: 4px; }
+.raempanel .k { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 8px; }
+.raempanel .cta { margin-top: 14px; }
+.raempanel .card { margin-top: 14px; }
+.raempanel .two { margin-top: 12px; }
+.detailsrow { display: flex; justify-content: flex-end; margin-top: 10px; }
+/* the saved forecast's facts on one line (scrolls sideways on a phone instead of wrapping) */
+.fcline { display: flex; flex-wrap: nowrap; gap: 0; margin: 14px 0 6px; border: 1px solid var(--border-soft); background: var(--bg-raised); border-radius: 10px; overflow-x: auto; }
+.fci { flex: 1 0 auto; display: flex; align-items: baseline; gap: 8px; padding: 10px 16px; white-space: nowrap; border-left: 1px solid var(--border-soft); }
+.fci:first-child { border-left: 0; }
+.fci .k { margin: 0; }
+.fci b { font-size: 15px; }
+.fci .h { font-size: 12px; color: var(--muted); }
+.fci .h.buy { color: var(--buy); } .fci .h.hold { color: var(--hold); }
+.chead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.chead .k { margin: 0; }
+.fcchart { margin-top: 8px; }

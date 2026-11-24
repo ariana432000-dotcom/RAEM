@@ -16,8 +16,10 @@ document.addEventListener("click", e => {
   else if (d.stk) { openStock(d.stk); return; }
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
   else if (a === "stk-more") X.stk.n += 100;
-  else if (a === "stk-range") X.stk.range = +v;
-  else if (a === "stk-detail") { X.stk.detail = X.stk.detail || {}; X.stk.detail[v] = !X.stk.detail[v]; }
+  else if (a === "stk-range") { X.stk.range = +v; saveStk(); }
+  else if (a === "stk-frange") { X.stk.frange = +v; saveStk(); }
+  else if (a === "stk-panel") { const c = X.stk.code; X.stk.panel[c] = X.stk.panel[c] === v ? "" : v; saveStk(); }
+  else if (a === "stk-fc-reload") { delete X.stk.fcstate[v]; delete X.stk.fcr[v]; }
   else if (a === "stk-reload") { if (v) { delete X.stk.dstate[v]; delete X.stk.det[v]; } else { X.stk.lstate = "idle"; } }
   else if (a === "stk-ai") { X.ai.extra = X.ai.extra || []; if (!DATA[v] && !X.ai.extra.includes(v)) X.ai.extra.push(v); X.ai.t = v; goPage("ai"); return; }
   else if (a === "mkt-refresh") { loadMarket(true); return; }
@@ -40,7 +42,7 @@ document.addEventListener("click", e => {
   else if (a === "ev-more") X.ev.n += 25;
   else if (a === "more") S.more = !S.more;
   else if (a === "opt-toggle") S.optOpen = !S.optOpen;
-  else if (a === "set-reset") { Object.assign(settings, { theme: "dark", win: 120, unit: "price", view: "Agent" }); lsDel("raem:set"); applySettings(true); }
+  else if (a === "set-reset") { Object.assign(settings, { theme: "dark", win: 126, unit: "price", view: "Agent" }); lsDel("raem:set"); applySettings(true); }
   else return;
   render();
 });

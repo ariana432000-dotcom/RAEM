@@ -19,7 +19,7 @@ from app.services import market
 
 CODE_RE = re.compile(r"^[A-Za-z0-9._&-]{1,20}$")
 DETAIL_TTL = 900
-CANDLE_DAYS = 400          # calendar days of candles (about 13 months)
+CANDLE_DAYS = 740          # calendar days of candles (about 2 years, for the 2Y chart window)
 _lock = threading.Lock()
 _detail: dict[str, tuple[float, dict]] = {}
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Header, HTTPException
 from app.api import deps
 from app.core import config
 from app.models.schemas import ForecastRequest
+from app.pipeline import saved_forecast
 
 router = APIRouter()
 
@@ -21,3 +22,16 @@ def run_forecast(req: ForecastRequest, authorization: str | None = Header(None))
     models = sorted(set(req.models), key=config.FORECAST_KEYS.index)
     run, reused = deps.submit("forecast", t, ",".join(models), {"models": models}, force=req.force)
     return deps.submitted(run, reused)
+
+
+@router.get("/api/forecast/saved/{ticker}")
+def saved_forecast_for(ticker: str):
+    """The company's last forecast run, loaded from its CSV files (summary, price history, 7-day paths with the reviewed range).
+    A run made before the CSV files existed is written out from its saved page data the first time it is asked for."""
+    t = deps.known(ticker)
+    data = saved_forecast.read(t)
+    if data is None and saved_forecast.backfill(t, deps.load_ticker(t)):
+        data = saved_forecast.read(t)
+    if data is None:
+        raise HTTPException(404, f"No saved forecast for {t} yet. Run the forecast first.")
+    return data

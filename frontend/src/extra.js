@@ -30,11 +30,17 @@ const X = {
   mem: { tab: "episodes", q: "", t: "" },
   wlMsg: "",
 };
-const settings = Object.assign({ theme: "dark", win: 120, unit: "price", view: "Agent" }, lsGet("raem:set", {}));
+/* Chart windows in trading days: 1, 2, 3, 6, 12 months and 2 years. Used by the stock page, its forecast panel and the Forecast page. */
+const WIN_OPTS = [[21, "1 month"], [42, "2 months"], [63, "3 months"], [126, "6 months"], [252, "12 months"], [504, "2 years"]];
+const WIN_PILLS = [[21, "1M"], [42, "2M"], [63, "3M"], [126, "6M"], [252, "12M"], [504, "2Y"]];
+const snapWin = n => (WIN_OPTS.find(w => w[0] >= n) || WIN_OPTS[WIN_OPTS.length - 1])[0];
+const winLabel = n => (WIN_OPTS.find(w => w[0] === n) || ["", n + " trading days"])[1];
+const histOf = d => (d.histFull && d.histFull.length > d.history.length ? d.histFull : d.history);   // the Forecast page shows more than the 180 saved rows once the CSV copy is loaded
+const settings = Object.assign({ theme: "dark", win: 126, unit: "price", view: "Agent" }, lsGet("raem:set", {}));
 const saveSettings = () => lsSet("raem:set", settings);
 function applySettings(initial) {
   if (settings.theme === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = settings.theme;
-  if (initial) { S.win = settings.win; S.unit = settings.unit; S.view = settings.view; }
+  if (initial) { S.win = snapWin(settings.win); S.unit = settings.unit; S.view = settings.view; }
 }
 const lastClose = t => DATA[t].forecast.last_price;
 const fxOf = t => EXTRA.fx[DATA[t].meta.currency] || 1;
@@ -232,7 +238,7 @@ function lineChart(host, labels, series, opts = {}) {
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.label || "chart")}">`;
   niceTicks(lo, hi, 5).filter(v => v >= lo && v <= hi).forEach(v => { s += `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border-soft)"/><text class="ax" x="${padL - 8}" y="${y(v) + 3}" text-anchor="end">${opts.fmt ? opts.fmt(v) : v.toFixed(2)}</text>`; });
   if (opts.base != null && opts.base > lo && opts.base < hi) s += `<line x1="${padL}" x2="${W - padR}" y1="${y(opts.base)}" y2="${y(opts.base)}" stroke="var(--faint)" stroke-dasharray="4 4"/>`;
-  [0, Math.floor((n - 1) / 2), n - 1].forEach((i, k) => { s += `<text class="ax" x="${x(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 2 ? "end" : "middle"}">${esc(opts.lab ? opts.lab(labels[i]) : dShort(labels[i]))}</text>`; });
+  [0, Math.floor((n - 1) / 2), n - 1].forEach((i, k) => { s += `<text class="ax" x="${x(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 2 ? "end" : "middle"}">${esc((opts.axLab || opts.lab || dShort)(labels[i]))}</text>`; });
   if (opts.band) {
     const ix = opts.band.lo.map((v, i) => (v != null && opts.band.hi[i] != null) ? i : -1).filter(i => i >= 0);
     if (ix.length) { const first = ix[0] > 0 ? ix[0] - 1 : ix[0], pts = [...(first < ix[0] ? [first] : []), ...ix], bandLo = i => (opts.band.lo[i] != null ? opts.band.lo[i] : series[1].v[i]), bandHi = i => (opts.band.hi[i] != null ? opts.band.hi[i] : series[1].v[i]);
@@ -393,7 +399,7 @@ function renderSet() {
     ${card("Preferences", "", "", `
       ${row("Theme", "Follow your system, or force one.", pillTabs([["system", "System"], ["dark", "Dark"], ["light", "Light"]], settings.theme, "data-set-theme"))}
       ${row("Default forecast view", "Which forecast the ticker pages show first.", pillTabs(VIEWS.map(v => [v[0], v[1]]), settings.view, "data-set-view"))}
-      ${row("Default history window", "Trading days of history on the price chart.", `<select data-bind="set-win" aria-label="History window">${[30, 60, 120, 180].map(n => `<option value="${n}" ${settings.win === n ? "selected" : ""}>${n} trading days</option>`).join("")}</select>`)}
+      ${row("Default history window", "How much price history the Forecast chart shows.", `<select data-bind="set-win" aria-label="History window">${WIN_OPTS.map(([n, l]) => `<option value="${n}" ${snapWin(settings.win) === n ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
       ${row("Default chart units", "Show price or change from the last close.", `<select data-bind="set-unit" aria-label="Chart units"><option value="price" ${settings.unit === "price" ? "selected" : ""}>Price</option><option value="pct" ${settings.unit === "pct" ? "selected" : ""}>Change from last close (%)</option></select>`)}`)}
     ${card("Saved data", "Stored in this browser only. Clearing site data removes it.", "", `
       ${row("Watchlist", `${X.wl.length} of ${ORDER.length} tickers pinned.`, `<button type="button" class="btn secondary sm" data-act="wl-reset">Pin all ${ORDER.length}</button>`)}
@@ -595,11 +601,16 @@ function drawEval() {
 }
 
 /* ----- router ----- */
-function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; }
+function goPage(p) {
+  if (S.running) return;
+  savePos();
+  if (p === "stocks" || p === "stock") { X.stk.sect = p; saveStk(); }
+  S.more = false; S.page = p; $("#app").classList.remove("open"); render(false); restorePos();
+}
 function renderExtra() {
   return ({ ai: renderAI, bt: renderBT, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock, eval: renderEval })[S.page]();
 }
-function afterRender() { if (S.page === "bt") drawBTPrice(); if (S.page === "eval") drawEval(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
+function afterRender() { if (S.page === "bt") drawBTPrice(); if (S.page === "eval") drawEval(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); if (X.stk.panel[X.stk.code] === "fc") ensureSavedFc(X.stk.code); drawStockChart(); drawStockFc(); } if (S.page === "tk") ensureSavedFc(S.t); markRows(); }
 
 /* ---------- top nav ---------- */
 const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["ai", "AI Analysis"], ["bt", "Backtest"], ["eval", "Evaluation"]];
@@ -608,10 +619,11 @@ function renderNav() {
   const cur = id => (S.page === id || (id === "stocks" && S.page === "stock") ? ' aria-current="page"' : "");
   const more = NAVS.filter(([id]) => !NAV_MAIN.some(m => m[0] === id));
   const moreOn = more.some(([id]) => S.page === id);
-  $("#nav").innerHTML = NAV_MAIN.map(([id, l]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${l}</button>`).join("") +
+  const to = id => id === "stocks" && X.stk.sect === "stock" && X.stk.code ? "stock" : id;   // the Stocks tab returns to the company you were reading
+  $("#nav").innerHTML = NAV_MAIN.map(([id, l]) => `<button type="button" class="nl" data-page="${to(id)}"${cur(id)}>${l}</button>`).join("") +
     `<span class="morewrap"><button type="button" class="nl" data-act="more" aria-haspopup="true" aria-expanded="${!!S.more}"${moreOn ? ' aria-current="true"' : ""}>More ${CHEV}</button>` +
     (S.more ? `<div class="pop">${more.map(([id, l, i]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${ic(i)}${l}</button>`).join("")}</div>` : "") + `</span>`;
-  $("#sheetnav").innerHTML = NAVS.map(([id, l, i]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${ic(i)}${id === "dash" ? "Market" : l}</button>`).join("") +
+  $("#sheetnav").innerHTML = NAVS.map(([id, l, i]) => `<button type="button" class="nl" data-page="${to(id)}"${cur(id)}>${ic(i)}${id === "dash" ? "Market" : l}</button>`).join("") +
     `<div class="navh">Forecast by stock</div>` +
     ORDER.map(t => { const sig = S.ran[t] ? (outlook(t) || {}).sig || "" : ""; return `<button type="button" class="nl" data-t="${esc(t)}"${S.page === "tk" && S.t === t ? ' aria-current="page"' : ""}><span class="sym">${esc(t)}</span><span class="nm">${esc(DATA[t].meta.name)}</span><span class="dot ${sig}" role="img" aria-label="${sig ? "signal " + sig : "not run"}"></span></button>`; }).join("");
 }
@@ -687,7 +699,17 @@ function renderDash() {
 
 
 /* ---------- stocks: the DSE list and one company's analysis page ---------- */
-X.stk = { list: null, lstate: "idle", lerr: "", q: "", sector: "", n: 100, code: "", det: {}, dstate: {}, derr: {}, range: 126 };
+/* The stock section keeps its state while you visit other tabs: the open company, its open panel ("fc" forecast or "ai" analysis), the
+   chart windows and the scroll position come back as you left them. code, panel, windows and section are also kept in localStorage. */
+X.stk = { list: null, lstate: "idle", lerr: "", q: "", sector: "", n: 100, code: "", det: {}, dstate: {}, derr: {}, range: 126, frange: 63, panel: {}, sect: "stocks", fcr: {}, fcstate: {}, fcerr: {} };
+Object.assign(X.stk, lsGet("raem:stk", {}));
+X.stk.range = snapWin(X.stk.range); X.stk.frange = snapWin(X.stk.frange);
+if (!X.stk.code) X.stk.sect = "stocks";
+const saveStk = () => lsSet("raem:stk", { code: X.stk.code, panel: X.stk.panel, range: X.stk.range, frange: X.stk.frange, sect: X.stk.sect });
+const POS = {};   // scroll position of every page the user left, by pageKey()
+const pageKey = () => S.page + ":" + (S.page === "stock" ? X.stk.code : S.page === "tk" ? S.t : S.page === "ai" ? X.ai.t : "");
+const savePos = () => { const sc = $("#scroller"); if (sc) POS[pageKey()] = sc.scrollTop; };
+const restorePos = () => { $("#scroller").scrollTop = POS[pageKey()] || 0; };
 const cr = mn => mn == null ? null : mn / 10;   // BDT millions to crore
 const taka = (v, d = 2) => v == null ? "–" : "৳" + fmtN(v, d);
 const takaCr = mn => mn == null ? "–" : "৳" + fmtN(cr(mn), 2) + " Cr";
@@ -695,7 +717,8 @@ function ensureStocks() { if (LIVE.ok && !X.stk.list && X.stk.lstate !== "loadin
 function ensureStock(code) { if (LIVE.ok && code && !X.stk.det[code] && X.stk.dstate[code] !== "loading" && X.stk.dstate[code] !== "err") loadStock(code, false); }
 function openStock(code) {
   if (S.running) return;
-  X.stk.code = String(code).toUpperCase(); S.more = false; S.page = "stock"; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0;
+  savePos();
+  X.stk.code = String(code).toUpperCase(); X.stk.sect = "stock"; saveStk(); S.more = false; S.page = "stock"; $("#app").classList.remove("open"); render(false); restorePos();
 }
 function resolveStock(v) {
   v = String(v || "").trim(); if (!v) return null;
@@ -728,44 +751,73 @@ function stockStats(d) {
   const chg = d.change == null ? "–" : `${d.change >= 0 ? "+" : "−"}${fmtN(Math.abs(d.change), 2)} <span>(${fmtPct(d.change_pct)})</span>`;
   return `<div class="card statone"><div class="statcells">${t("Last close", taka(d.last_close))}${t("Change", chg, cls(d.change))}${t("Day high", taka(d.day_high))}${t("Day low", taka(d.day_low))}${t("52W high", taka(d.week52_high))}${t("52W low", taka(d.week52_low))}${t("Volume", fmtN(d.volume))}${t("Market cap", takaCr(d.market_cap_mn))}</div></div>`;
 }
-function stockLastSession(code) {
-  const a = EXTRA.ai[code], L = a && a.latest; if (!L) return "";
-  const sig = aiSignal(L), d = DATA[code], cur = d ? d.meta.currency : "", fd = L.final_decision || "", v = L.verifier || {}, open = !!(X.stk.detail && X.stk.detail[code]);
-  const summ = mdField(fd, "Executive Summary") || (fd ? fd.replace(/\*\*/g, "").slice(0, 400) : ""), b = d ? aiBlend(code) : null;
-  const out = b && !b.stale ? `<p class="sub">7-day outlook with this decision: <b class="mono ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</b></p>` : "";
-  return `<div class="raemai"><p class="sigline">AI analysis, last saved session: ${sig ? sigBadge(sig) : ratingBadge(L.rating)}</p>
-    <p class="sub">${dLong(L.date)}${L.llm_model ? " · " + esc(L.llm_model) : ""} · portfolio manager rating ${esc(L.rating || "n/a")}${v.status ? ` · verifier ${esc(String(v.status).toLowerCase())}` : ""}</p>
-    ${summ ? `<p class="rsum">${esc(summ)}</p>` : ""}${out}
-    <div class="cta"><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">Open AI analysis</button>
-      <button type="button" class="btn secondary sm" data-act="stk-detail" data-v="${esc(code)}" aria-expanded="${open}">${open ? "Hide details" : "Details"}</button></div>${open ? stockProcess(L) : ""}</div>`;
+/* RAEM analysis card: the signal, and two buttons that open the last saved result inside the page. The open panel is remembered per company. */
+function stockAiPanel(code) {
+  const a = EXTRA.ai[code], L = a && a.latest;
+  if (!L) return `<div class="raempanel"><p class="sigline">No AI analysis saved for ${esc(code)} yet</p><p class="sub">Run it on the AI Analysis page with the model you choose; the last analysis and its decision then show here.</p>
+    <div class="cta"><button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">Go to AI analysis →</button></div></div>`;
+  const sig = aiSignal(L), v = L.verifier || {};
+  return `<div class="raempanel"><p class="sigline">Last analysis: ${sig ? sigBadge(sig) : ratingBadge(L.rating)}</p>
+    <p class="sub">${dLong(L.date)}${L.llm_model ? " · " + esc(L.llm_model) : ""} · portfolio manager rating ${esc(L.rating || "n/a")}${v.status ? ` · verifier ${esc(String(v.status).toLowerCase())}` : ""} · ${Object.keys(L.steps || {}).length} stages</p>
+    ${aiDecisionCard(code, L)}
+    <p class="detailsrow"><button type="button" class="link" data-act="stk-ai" data-v="${esc(code)}">Details →</button></p></div>`;
 }
-/* The full process behind a saved decision: every stage of the session in the order it ran, each one openable. The
-   debates use the complete turns when the session kept them (website runs), else the stage's saved text. */
-function stockProcess(L) {
-  const steps = Object.entries(L.steps || {}), dbg = L.debate && L.debate.complete ? L.debate : null, sig = aiSignal(L);
-  const turns = (list, fallback) => list && list.length ? `<ul class="turns">${list.map(turnHtml).join("")}</ul>` : `<div class="pre">${md(fallback)}</div>`;
-  const body = (name, st) => name === "Bull vs bear debate" && dbg ? turns(dbg.turns, st.text)
-    : name === "Risk debate" && dbg ? turns(dbg.risk_turns, st.text) : `<div class="pre">${md(st.text)}</div>`;
-  if (!steps.length) return `<p class="sub" style="margin-top:12px">This session did not keep its stage outputs.</p>`;
-  const last = steps.length - 1;
-  return `<div class="aiproc"><p class="sub">${steps.length} stages ran in this order; open any stage to read what it produced. Outputs are shortened where the session saved only an excerpt.</p>
-    <ol class="flow">${steps.map(([n], i) => `<li>${esc(n)}</li>`).join("")}<li class="end">${esc(sig || L.rating || "Decision")}</li></ol>
-    ${steps.map(([n, st], i) => `<details${i === last ? " open" : ""}><summary><span class="no mono">${i + 1}</span><span class="nm">${esc(n)}</span><span class="tm mono">${esc(st.time || "")}</span></summary><div class="scrollbox">${body(n, st)}</div></details>`).join("")}</div>`;
+/* The last saved forecast of a company, read from its CSV files by the server (GET /api/forecast/saved/<T>). */
+function ensureSavedFc(code) { const x = X.stk; if (LIVE.ok && code && !x.fcr[code] && !["loading", "err", "none"].includes(x.fcstate[code])) loadSavedFc(code); }
+async function loadSavedFc(code) {
+  const x = X.stk; x.fcstate[code] = "loading";
+  try {
+    const r = await api("forecast/saved/" + encodeURIComponent(code));
+    x.fcr[code] = r; x.fcstate[code] = "ok";
+    const d = DATA[code];   // the Forecast page gets the whole price history, not only the 180 saved rows
+    if (d && r.prices.length > d.history.length) d.histFull = r.prices.filter(p => p[0] <= d.forecast.last_date);
+  } catch (e) { x.fcstate[code] = /No saved forecast|Unknown ticker/.test(e.message) ? "none" : "err"; x.fcerr[code] = e.message; }
+  if ((S.page === "stock" && x.code === code) || (S.page === "tk" && S.t === code)) render();
+}
+function savedMain(s) { return s.paths.Reviewed ? "Reviewed" : s.paths.Ensemble ? "Ensemble" : Object.keys(s.paths)[0]; }
+function stockFcPanel(d) {
+  const code = d.code, x = X.stk, s = x.fcr[code], st = x.fcstate[code];
+  const add = `<button type="button" class="btn primary sm" data-add="${esc(code)}" data-market="dse" data-name="${esc(d.name || "")}"${LIVE.busy["co:" + code] ? " disabled" : ""}>${LIVE.busy["co:" + code] ? "Adding…" : "Run RAEM analysis"}</button>`;
+  if (!s) return `<div class="raempanel">${st === "none" ? `<p class="sigline">No saved forecast for ${esc(code)} yet</p><p class="sub">Adding the company fetches its prices and runs the seven-day forecast; the result is then saved as CSV and loaded here.</p><div class="cta">${add}</div>`
+    : st === "err" ? `<p class="sigline">The saved forecast could not be loaded</p><p class="sub">${esc(x.fcerr[code] || "")}</p><div class="cta"><button type="button" class="btn secondary sm" data-act="stk-fc-reload" data-v="${esc(code)}">Try again</button></div>`
+    : `<p class="sub">Loading the last saved forecast…</p>`}</div>`;
+  const m = s.summary, cur = esc(m.currency || ""), age = Math.round((Date.parse(refDate()) - Date.parse(m.last_date)) / 864e5), main = savedMain(s), mp = s.paths[main], last = m.last_close;
+  const item = (k, v, hint, tone) => `<div class="fci"><span class="k">${k}</span><b class="mono">${v}</b><span class="h ${tone || ""}">${hint}</span></div>`;
+  const line = `<div class="fcline">${item("Last close", fmtP(last), cur)}${item("Price data to", dShort(m.last_date), age > 5 ? `${age} days old` : "up to date", age > 5 ? "hold" : "buy")}${item("Daily rows", fmtN(m.daily_rows), "price history used")}${item("Models fitted", fmtN(m.models_fitted), m.failed_models ? "failed: " + esc(m.failed_models) : "none failed")}</div>`;
+  const rows = s.dates.map((ds, i) => `<tr><td class="t">${i + 1}</td><td class="t">${dShort(ds)}</td><td>${fmtP(mp[i])}</td><td class="${cls(mp[i] / last - 1)}">${fmtPct((mp[i] / last - 1) * 100)}</td><td>${s.band && main === "Reviewed" ? `${fmtP(s.band[i][0])} to ${fmtP(s.band[i][1])}` : "–"}</td></tr>`).join("");
+  const models = Object.keys(s.paths).filter(k => k !== "Reviewed").map(k => { const v = s.paths[k][s.dates.length - 1]; return `<tr><td class="t">${esc(k)}</td><td>${fmtP(v)}</td><td class="${cls(v / last - 1)}">${fmtPct((v / last - 1) * 100)}</td></tr>`; }).join("");
+  return `<div class="raempanel"><p class="sigline">Last saved forecast${m.signal ? ` · daily signal ${sigBadge(m.signal)}` : ""}</p>
+    <p class="sub">Run ${esc((m.generated_at || "").slice(0, 16) || "date unknown")} · loaded from the saved CSV files · main forecast: ${esc(main === "Reviewed" ? "reviewed forecast" : main)}</p>
+    ${line}
+    <div class="chead"><p class="k">Price and ${esc(main === "Reviewed" ? "reviewed forecast" : main.toLowerCase())}</p><div class="pills">${WIN_PILLS.map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-frange" data-v="${n}" aria-pressed="${x.frange === n}">${l}</button>`).join("")}</div></div>
+    <div class="chartbox fcchart" id="stk-fcchart"></div><p class="src">Solid line: closing prices. Dashed line: the next ${s.dates.length} trading days${main === "Reviewed" && s.band ? ", with the 10 to 90% range shaded" : ""}. Research output, not investment advice.</p>
+    <div class="two"><div><p class="k">Next ${s.dates.length} trading days</p><div class="scroll"><table class="dense"><thead><tr><th>Day</th><th>Date</th><th>Price</th><th>Change</th><th>Range</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+      <div><p class="k">Day ${s.dates.length} by model</p><div class="scroll"><table class="dense"><thead><tr><th>Model</th><th>Price</th><th>Change</th></tr></thead><tbody>${models}</tbody></table></div></div></div>
+    <div class="cta"><button type="button" class="btn secondary sm" data-t="${esc(code)}">Open the Forecast page to run it again</button></div></div>`;
+}
+function drawStockFc() {
+  const h = $("#stk-fcchart"), s = h && X.stk.fcr[X.stk.code]; if (!s) return;
+  const hist = s.prices.filter(p => p[0] <= s.summary.last_date).slice(-X.stk.frange), m = hist.length, fp = s.paths[savedMain(s)];
+  if (!m) return;
+  const labels = hist.map(p => p[0]).concat(s.dates), close = hist.map(p => p[1]).concat(s.dates.map(() => null));
+  const fc = labels.map((_, i) => i < m - 1 ? null : i === m - 1 ? hist[m - 1][1] : fp[i - m]);
+  const band = s.band && savedMain(s) === "Reviewed" ? { lo: labels.map((_, i) => i < m ? null : s.band[i - m][0]), hi: labels.map((_, i) => i < m ? null : s.band[i - m][1]) } : null;
+  lineChart(h, labels, [{ name: "Close", v: close, color: "var(--text)", w: 1.8 }, { name: "Forecast", v: fc, color: "var(--accent-strong)", dash: true, w: 2.2 }], { label: `${X.stk.code} price and forecast`, band, fmt: v => v.toFixed(2), axLab: X.stk.frange >= 252 ? dMonYr : dShort });
 }
 function stockRaem(d) {
-  const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null;
-  const sess = stockLastSession(code);
+  const code = d.code, inData = !!DATA[code], busy = LIVE.busy["co:" + code], o = inData ? outlook(code) : null, pan = X.stk.panel[code] || "";
+  const btns = (c1, c2) => `<button type="button" class="btn ${c1} sm" data-act="stk-panel" data-v="fc" aria-expanded="${pan === "fc"}">${pan === "fc" ? "Hide forecast" : "Open forecast"}</button><button type="button" class="btn ${c2} sm" data-act="stk-panel" data-v="ai" aria-expanded="${pan === "ai"}">${pan === "ai" ? "Hide AI analysis" : "Open AI analysis"}</button>`;
   let left, right;
   if (o) {
     left = `${ring(o.sig, Math.max(o.pGain || 0, o.pFall || 0), o.sig, 96)}`;
     right = `<p class="sigline">RAEM signal: ${sigBadge(o.sig)}</p><p class="sub">Expected 7-day move <b class="mono ${cls(o.m)}">${fmtPct(o.m * 100)}</b> from the reviewed forecast. ${esc(o.why ? o.why.charAt(0).toUpperCase() + o.why.slice(1) + "." : "")}</p>
-      <div class="cta"><button type="button" class="btn primary sm" data-t="${esc(code)}">Open full forecast</button>${sess ? "" : `<button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis</button>`}</div>`;
+      <div class="cta">${btns("primary", "secondary")}</div>`;
   } else {
     left = `<div class="ring0" aria-hidden="true">–</div>`;
     right = `<p class="sigline">No RAEM analysis for ${esc(code)} yet</p><p class="sub">Adding the company fetches its prices and runs the seven-day forecast with the models; the signal and the AI analysis then appear here.${busy ? " Adding it now…" : ""}</p>
-      <div class="cta"><button type="button" class="btn primary sm" data-add="${esc(code)}" data-market="dse" data-name="${esc(d.name || "")}"${busy ? " disabled" : ""}>${busy ? "Adding…" : "Run RAEM analysis"}</button>${sess ? "" : `<button type="button" class="btn secondary sm" data-act="stk-ai" data-v="${esc(code)}">AI analysis only</button>`}</div>`;
+      <div class="cta"><button type="button" class="btn primary sm" data-add="${esc(code)}" data-market="dse" data-name="${esc(d.name || "")}"${busy ? " disabled" : ""}>${busy ? "Adding…" : "Run RAEM analysis"}</button>${btns("secondary", "secondary")}</div>`;
   }
-  return card("RAEM analysis", "Seven-day model forecast and the BUY, HOLD or SELL signal.", "", `<div class="raemrow"><div>${left}</div><div>${right}</div></div>${sess}`);
+  return card("RAEM analysis", "Seven-day model forecast and the BUY, HOLD or SELL signal.", "", `<div class="raemrow"><div>${left}</div><div>${right}</div></div>${pan === "fc" ? stockFcPanel(d) : pan === "ai" ? stockAiPanel(code) : ""}`);
 }
 const HOLD_COL = { "Sponsor/Director": "var(--c7)", Institute: "var(--buy)", Public: "var(--faint)", Govt: "var(--hold)", Foreign: "var(--c3)" };
 function donut(sh) {
@@ -800,7 +852,7 @@ function renderStock() {
   return `${bc}
   <div class="pagehead"><div><h1>${esc(d.name || code)} <span class="stkcode">(${esc(code)})</span></h1><p class="sub">Dhaka Stock Exchange${d.sector ? ` · ${esc(d.sector)}` : ""}${d.category ? ` · Category ${esc(d.category)}` : ""} · As of ${dLong(d.as_of)}</p></div></div>
   <form class="stkjump" id="stk-jump" autocomplete="off"><input class="inp" id="stk-jump-q" placeholder="Search another DSE stock, e.g. IPDC, Renata, Robi" aria-label="Search another DSE stock" spellcheck="false"><button type="submit" class="btn secondary sm">Search</button></form>
-  <section class="mksec stkmain"><div class="stkside"><h2 class="stkh">${esc(code)} key statistics</h2>${stockStats(d)}</div>${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${[[63, "3M"], [126, "6M"], [252, "1Y"]].map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div><p class="src" id="stk-fcnote"></p>`)}</section>
+  <section class="mksec stkmain"><div class="stkside"><h2 class="stkh">${esc(code)} key statistics</h2>${stockStats(d)}</div>${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${WIN_PILLS.map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div><p class="src" id="stk-fcnote"></p>`)}</section>
   <section class="mksec">${stockRaem(d)}</section>
   <section class="mksec">${stockFundamentals(d)}</section>
   ${d.errors && d.errors.length ? `<p class="sub">Some parts could not be fetched: ${esc(d.errors.join(" · "))}</p>` : ""}`;
@@ -840,7 +892,7 @@ function drawStockChart() {
     fc.pts.slice(1).forEach(q => { s += `<circle cx="${x(q[0]).toFixed(1)}" cy="${y(q[1]).toFixed(1)}" r="2.5" fill="var(--accent-strong)"/>`; });
   }
   s += `<line x1="${padL}" x2="${W - padR}" y1="${y(last[4]).toFixed(1)}" y2="${y(last[4]).toFixed(1)}" stroke="${last[4] >= last[1] ? "var(--buy)" : "var(--sell)"}" stroke-dasharray="2 3"/><rect x="${W - padR + 2}" y="${(y(last[4]) - 9).toFixed(1)}" width="${padR - 4}" height="18" rx="3" fill="${last[4] >= last[1] ? "var(--buy)" : "var(--sell)"}"/><text x="${W - padR / 2}" y="${(y(last[4]) + 4).toFixed(1)}" text-anchor="middle" style="font:600 11px var(--font-mono);fill:var(--on-accent)">${fmtN(last[4], 2)}</text>`;
-  [0, 0.25, 0.5, 0.75, 1].forEach((f, k) => { const i = Math.min(nAx - 1, Math.round(f * (nAx - 1))); s += `<text class="ax" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}">${dShort(ax[i])}</text>`; });
+  [0, 0.25, 0.5, 0.75, 1].forEach((f, k) => { const i = Math.min(nAx - 1, Math.round(f * (nAx - 1))); s += `<text class="ax" x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === 4 ? "end" : "middle"}">${(X.stk.range >= 252 ? dMonYr : dShort)(ax[i])}</text>`; });
   s += `<line id="stk-cross" x1="0" x2="0" y1="${padT}" y2="${volTop + volH}" stroke="var(--faint)" stroke-dasharray="3 3" opacity="0"/><rect id="stk-hit" x="${padL}" y="${padT}" width="${W - padL - padR}" height="${H - padT}" fill="transparent"/></svg>`;
   h.innerHTML = s;
   const out = $("#stk-ohlc"), show = i => {

@@ -19,6 +19,7 @@ function applyForecastRun(t, run, onlyNewer) {
   if (!run || !run.result || !run.result.forecast || !DATA[t]) return;
   if (onlyNewer && run.result.forecast.last_date < DATA[t].forecast.last_date) return;  // the saved page already has newer prices
   DATA[t] = run.result;
+  if (X.stk) { delete X.stk.fcr[t]; delete X.stk.fcstate[t]; }   // a new run rewrites the CSV copy: load it again
   LIVE.fc[t] = { id: run.id, at: run.finished_at || "", date: run.run_date, models: (run.params || {}).models || [] };
 }
 function applyAnalysisRun(t, run, onlyNewer) {
