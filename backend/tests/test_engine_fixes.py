@@ -232,3 +232,12 @@ def test_graded_forecasts_move_a_model_up_or_down(tmp_path, monkeypatch):
     _log(tmp_path, monkeypatch, _calls("A", range(1, 4), 3.0) + [[f"2026-11-{o:02d}", f"2026-11-{o + 1:02d}", 1, "A", 100.0, 101.0, 101.0, 0.0, True, True]
                                                            for o in range(1, 1 + fl.LIVE_WINDOW_ORIGINS)])
     assert fl.live_accuracy("ZZZ").loc["A", "live_mae_vs_naive"] == 0.0
+
+
+def test_price_band_only_ever_widens_with_the_horizon():
+    for seed in range(1, 6):    # ragged per-day quantiles of a noisy holdout used to make the funnel narrow again on some days
+        fcast, plan = _fake_fcast(noise=0.05, seed=seed)
+        band = fa.reviewer_agent(fcast, plan)["band_ret"]
+        assert band is not None and band.shape == (fl.FORECAST_DAYS, 2)
+        assert np.all(np.diff(band[:, 0]) <= 1e-12) and np.all(np.diff(band[:, 1]) >= -1e-12)
+        assert np.all(band[:, 0] <= band[:, 1])

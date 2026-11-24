@@ -222,8 +222,10 @@ def reviewer_agent(fcast: dict, plan: dict) -> dict:
     band = None
     if pred is not None and len(pred) >= MIN_BAND_ORIGINS:
         resid = actual - shrink * pred
-        band = np.column_stack([np.percentile(resid, BAND_PCTL[0], axis=0),
-                                np.percentile(resid, BAND_PCTL[1], axis=0)])
+        # a range cannot get narrower the further ahead it looks: the per-day quantiles of a limited holdout are ragged, so
+        # each side only ever moves outward (running minimum below, running maximum above)
+        band = np.column_stack([np.minimum.accumulate(np.percentile(resid, BAND_PCTL[0], axis=0)),
+                                np.maximum.accumulate(np.percentile(resid, BAND_PCTL[1], axis=0))])
         note("Price band", "PASS", f"{BAND_PCTL[0]}-{BAND_PCTL[1]}% range built from {len(pred)} out-of-sample forecast errors.")
     else:
         note("Price band", "WARN", "too few holdout dates for a price range.")

@@ -407,7 +407,8 @@ function drawChart(host) {
   if (showBand) ms.band.forEach(b => allv.push(tr(b[0], last), tr(b[1], last)));
   if (F && S.naive) allv.push(tr(last, last));
   let lo = Math.min(...allv), hi = Math.max(...allv);
-  const core = [...hv, ...mv], cl = Math.min(...core), ch = Math.max(...core), cs = (ch - cl) || 1;
+  // the 10-90% band is part of what the chart must show: left out of the range it was cut off at the bottom or top of the plot
+  const core = [...hv, ...mv, ...(showBand ? ms.band.flatMap(b => [tr(b[0], last), tr(b[1], last)]) : [])], cl = Math.min(...core), ch = Math.max(...core), cs = (ch - cl) || 1;
   lo = Math.max(lo, cl - cs * 0.9); hi = Math.min(hi, ch + cs * 0.9);
   const pad = (hi - lo) * 0.06 || 1; lo -= pad; hi += pad;
   const ticks = niceTicks(lo, hi).filter(v => v >= lo && v <= hi);
