@@ -401,7 +401,8 @@ table.dense tr.tot td { font-weight: 700; border-top: 1px solid var(--border); b
 .stktable td.nm { max-width: 340px; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
 .stktable tr.click:hover td { background: var(--panel-hover); }
 .stkcode { font-size: 0.55em; font-weight: 600; color: var(--muted); }
-.stkjump { display: flex; gap: 10px; max-width: 560px; margin-bottom: 20px; }
+.stkjump { display: flex; gap: 10px; width: min(460px, 100%); margin-bottom: 20px; }
+.pagehead .stkjump { margin: 4px 0 0 auto; flex: 0 1 460px; }   /* on the stock page the search sits on the right of the company name, at the top */
 .statone { padding: 0; overflow: hidden; }
 .statcells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border-soft); }
 .statcells .statx { background: var(--panel); }
@@ -508,6 +509,8 @@ table.lt th, table.lt td { text-align: left; }
 .chead { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
 .chead .k { margin: 0; }
 .fcchart { margin-top: 8px; }
+
+@media (max-width: 560px) { .pagehead .stkjump { flex-wrap: nowrap; margin-left: 0; flex-basis: 100%; } }   /* phone: the search goes under the name, button beside the field */
 
 @media (max-width: 767px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1772,8 +1775,8 @@ function renderStock() {
   if (!d) return bc + card("", "", "", emptyState("chart", x.dstate[code] === "err" ? `${esc(code)} could not be loaded` : `Loading ${esc(code)}…`, x.dstate[code] === "err" ? esc(x.derr[code] || "") : "Fetching the company page and its price history.", x.dstate[code] === "err" ? `<button type="button" class="btn secondary sm" data-act="stk-reload" data-v="${esc(code)}">Try again</button>` : ""), "dashed");
   if (!d.ok) return bc + card("", "", "", emptyState("alert", `No price data for ${esc(code)}`, `The exchange returned no daily prices for this code. ${esc((d.errors || []).join(" · "))}`, `<button type="button" class="btn secondary sm" data-page="stocks">Back to the list</button>`), "dashed");
   return `${bc}
-  <div class="pagehead"><div><h1>${esc(d.name || code)} <span class="stkcode">(${esc(code)})</span></h1><p class="sub">Dhaka Stock Exchange${d.sector ? ` · ${esc(d.sector)}` : ""}${d.category ? ` · Category ${esc(d.category)}` : ""} · As of ${dLong(d.as_of)}</p></div></div>
-  <form class="stkjump" id="stk-jump" autocomplete="off"><input class="inp" id="stk-jump-q" placeholder="Search another DSE stock, e.g. IPDC, Renata, Robi" aria-label="Search another DSE stock" spellcheck="false"><button type="submit" class="btn secondary sm">Search</button></form>
+  <div class="pagehead"><div><h1>${esc(d.name || code)} <span class="stkcode">(${esc(code)})</span></h1><p class="sub">Dhaka Stock Exchange${d.sector ? ` · ${esc(d.sector)}` : ""}${d.category ? ` · Category ${esc(d.category)}` : ""} · As of ${dLong(d.as_of)}</p></div>
+    <form class="stkjump" id="stk-jump" autocomplete="off"><input class="inp" id="stk-jump-q" placeholder="Search another stock, e.g. IPDC, Renata" aria-label="Search another DSE stock" spellcheck="false"><button type="submit" class="btn secondary sm">Search</button></form></div>
   <section class="mksec stkmain"><div class="stkside"><h2 class="stkh">${esc(code)} key statistics</h2>${stockStats(d)}</div>${card(`${esc(code)} daily price and volume`, "Dhaka Stock Exchange", `<div class="pills">${WIN_PILLS.map(([n, l]) => `<button type="button" class="pillbtn" data-act="stk-range" data-v="${n}" aria-pressed="${x.range === n}">${l}</button>`).join("")}</div>`, `<div class="ohlc mono" id="stk-ohlc"></div><div class="chartbox candles" id="stk-chart"></div><p class="src" id="stk-fcnote"></p>`)}</section>
   <section class="mksec">${stockRaem(d)}</section>
   <section class="mksec">${stockFundamentals(d)}</section>
