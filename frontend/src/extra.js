@@ -627,7 +627,7 @@ function renderNav() {
     (S.more ? `<div class="pop">${more.map(([id, l, i]) => `<button type="button" class="nl" data-page="${id}"${cur(id)}>${ic(i)}${l}</button>`).join("")}</div>` : "") + `</span>`;
   $("#sheetnav").innerHTML = NAVS.map(([id, l, i]) => `<button type="button" class="nl" data-page="${to(id)}"${cur(id)}>${ic(i)}${id === "dash" ? "Market" : l}</button>`).join("") +
     `<div class="navh">Forecast by stock</div>` +
-    ORDER.map(t => { const sig = S.ran[t] ? (outlook(t) || {}).sig || "" : ""; return `<button type="button" class="nl" data-t="${esc(t)}"${S.page === "tk" && S.t === t ? ' aria-current="page"' : ""}><span class="sym">${esc(t)}</span><span class="nm">${esc(DATA[t].meta.name)}</span><span class="dot ${sig}" role="img" aria-label="${sig ? "signal " + sig : "not run"}"></span></button>`; }).join("");
+    ORDER.map(t => { const sig = S.ran[t] !== false ? (outlook(t) || {}).sig || "" : ""; return `<button type="button" class="nl" data-t="${esc(t)}"${S.page === "tk" && S.t === t ? ' aria-current="page"' : ""}><span class="sym">${esc(t)}</span><span class="nm">${esc(DATA[t].meta.name)}</span><span class="dot ${sig}" role="img" aria-label="${sig ? "signal " + sig : "not run"}"></span></button>`; }).join("");
 }
 
 /* ---------- home ---------- */
@@ -682,7 +682,7 @@ function mktNews(d) {
 function renderDash() {
   const m = X.mkt, d = m.data, s = d && d.summary;
   const rows = ORDER.map(t => {
-    const dd = DATA[t], f = dd.forecast, ran = S.ran[t], cl = dd.history.slice(-30).map(h => h[1]);
+    const dd = DATA[t], f = dd.forecast, ran = S.ran[t] !== false, cl = dd.history.slice(-30).map(h => h[1]);
     const ch = (cl[cl.length - 1] / cl[0] - 1) * 100, p = fcPath(t), ens = p ? (p[6] / f.last_price - 1) * 100 : null, age = daysBetween(f.last_date, refDate());
     return `<tr class="click" data-t="${esc(t)}"><td><span class="tkr">${esc(t)}</span><div class="sub">${esc(dd.meta.name)}</div></td><td>${fmtP(f.last_price)} <span class="sub">${esc(dd.meta.currency)}</span></td><td>${spark(cl)}</td><td class="${cls(ch)}">${fmtPct(ch)}</td><td style="${age > 5 ? "color:var(--hold)" : ""}">${dShort(f.last_date)}</td><td>${ran ? sigBadge((outlook(t) || {}).sig) : `<span class="badge">not run</span>`}</td><td class="${cls(ens)}">${fmtPct(ens)}</td><td>${(b => b && !b.stale ? `${ratingBadge(b.rating)} <span class="${cls(b.adj)}">${fmtPct(b.adj * 100)}</span>` : b ? `${ratingBadge(b.rating)} <span class="sub">old</span>` : "–")(aiBlend(t))}</td></tr>`;
   }).join("");

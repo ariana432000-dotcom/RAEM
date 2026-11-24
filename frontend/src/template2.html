@@ -392,7 +392,7 @@ function niceTicks(lo, hi, n = 5) {
   return out;
 }
 function drawChart(host) {
-  const d = D(), f = d.forecast, last = f.last_price, F = !!S.ran[S.t];
+  const d = D(), f = d.forecast, last = f.last_price, F = S.ran[S.t] !== false;   // the saved forecast shows at once; Run only makes a new one
   const hist = histOf(d).slice(-S.win), hn = hist.length, total = hn + (F ? 7 : 0);
   const W = Math.max(300, host.clientWidth || 700), H = W < 520 ? 270 : 340;
   const padL = 56, padR = F ? 64 : 58, padT = 14, padB = 26;
@@ -491,7 +491,7 @@ function progressCard() {
     <ol class="events">${p.events.map(e => `<li><span class="mono">${esc(e.ts)}</span><span>${esc(e.name)}</span></li>`).join("")}</ol></section>`;
 }
 function renderTicker() {
-  const d = D(), f = d.forecast, ran = !!S.ran[S.t], age = daysBetween(f.last_date, refDate());
+  const d = D(), f = d.forecast, ran = S.ran[S.t] !== false, age = daysBetween(f.last_date, refDate());
   const venue = d.meta.source === "dse" ? "Dhaka Stock Exchange" : ({ "2222.SR": "Tadawul", "0300.HK": "HKEX" }[S.t] || "US market");
   const chips = [...BASE.filter(m => f.paths[m]), ...(f.paths.Fusion ? ["Fusion"] : [])].map(m => {   // the Fusion can be switched on and off like a model
     const on = S.overlays.has(m), k = overlayList().indexOf(m);
