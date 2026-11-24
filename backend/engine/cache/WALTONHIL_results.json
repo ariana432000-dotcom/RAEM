@@ -2,13 +2,13 @@
   "horizon": 7,
   "model_version": 2,
   "ticker": "WALTONHIL",
-  "data_end_date": "2026-10-27",
-  "n_rows": 500,
-  "cached_at": "2026-10-28 11:23:24",
+  "data_end_date": "2026-11-24",
+  "n_rows": 520,
+  "cached_at": "2026-11-25 00:03:14",
   "results": {
-    "xgb_ret": -0.005244843196123838,
-    "xgb_mae": 0.02665616967020974,
-    "xgb_dacc": 0.5522388059701493,
+    "xgb_ret": 0.009764277376234531,
+    "xgb_mae": 0.026246660859223152,
+    "xgb_dacc": 0.5285714285714286,
     "xgb_params": {
       "max_depth": 2,
       "learning_rate": 0.02,
@@ -17,30 +17,30 @@
       "colsample_bytree": 0.8,
       "random_state": 42
     },
-    "lstm_ret": 0.008726388216018677,
-    "lstm_mae": 0.032710954546928406,
-    "lstm_dacc": 0.5625,
+    "lstm_ret": 0.009103894233703613,
+    "lstm_mae": 0.02823399379849434,
+    "lstm_dacc": 0.6119402985074627,
     "lstm_params": {
       "hidden": 64,
       "lr": 0.0005
     },
-    "arima_ret": -1.534516844747813e-05,
-    "arima_mae": 0.027162036740395575,
-    "arima_dacc": 0.43283582089552236,
+    "arima_ret": 0.00020126009079413087,
+    "arima_mae": 0.026207185914022504,
+    "arima_dacc": 0.4714285714285714,
     "arima_order": [
       1,
       1,
       1
     ],
-    "ridge_ret": -0.007113831290484344,
-    "ridge_mae": 0.026613705683620894,
-    "ridge_dacc": 0.582089552238806,
+    "ridge_ret": 0.000897665869496897,
+    "ridge_mae": 0.025259930950514518,
+    "ridge_dacc": 0.6428571428571429,
     "ridge_params": {
       "alpha": 100.0
     },
-    "kalman_ret": 4.790559060552368e-10,
-    "kalman_mae": 0.027206338548025406,
-    "kalman_dacc": 0.4925373134328358,
+    "kalman_ret": 1.9237411663652892e-10,
+    "kalman_mae": 0.026221109578904306,
+    "kalman_dacc": 0.5285714285714286,
     "kalman_level": "local level"
   }
 }

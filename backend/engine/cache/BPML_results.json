@@ -2,45 +2,45 @@
   "horizon": 7,
   "model_version": 2,
   "ticker": "BPML",
-  "data_end_date": "2026-10-27",
-  "n_rows": 502,
-  "cached_at": "2026-10-28 11:23:08",
+  "data_end_date": "2026-11-24",
+  "n_rows": 521,
+  "cached_at": "2026-11-25 00:02:29",
   "results": {
-    "xgb_ret": 0.015301360748708248,
-    "xgb_mae": 0.06446315693191183,
-    "xgb_dacc": 0.3283582089552239,
+    "xgb_ret": 0.04106542840600014,
+    "xgb_mae": 0.061607395516046964,
+    "xgb_dacc": 0.38571428571428573,
     "xgb_params": {
-      "max_depth": 2,
+      "max_depth": 4,
       "learning_rate": 0.02,
       "n_estimators": 300,
       "subsample": 0.8,
       "colsample_bytree": 0.8,
       "random_state": 42
     },
-    "lstm_ret": 0.07008513808250427,
-    "lstm_mae": 0.07583402097225189,
-    "lstm_dacc": 0.23076923076923078,
+    "lstm_ret": -0.02765074372291565,
+    "lstm_mae": 0.07139546424150467,
+    "lstm_dacc": 0.3880597014925373,
     "lstm_params": {
       "hidden": 16,
       "lr": 0.0005
     },
-    "arima_ret": -0.0029810065348375714,
-    "arima_mae": 0.03978819414911068,
-    "arima_dacc": 0.44776119402985076,
+    "arima_ret": 0.0004909323738369054,
+    "arima_mae": 0.046195697776271735,
+    "arima_dacc": 0.4714285714285714,
     "arima_order": [
       1,
       1,
       0
     ],
-    "ridge_ret": 0.0035555641365850807,
-    "ridge_mae": 0.04011997873428676,
-    "ridge_dacc": 0.5223880597014925,
+    "ridge_ret": -0.004229391954591596,
+    "ridge_mae": 0.04688777363596464,
+    "ridge_dacc": 0.5428571428571428,
     "ridge_params": {
       "alpha": 100.0
     },
-    "kalman_ret": 1.5502004124812174e-09,
-    "kalman_mae": 0.03967645620407026,
-    "kalman_dacc": 0.43283582089552236,
+    "kalman_ret": -1.2634426838076251e-10,
+    "kalman_mae": 0.04620906999445518,
+    "kalman_dacc": 0.4,
     "kalman_level": "local level"
   }
 }

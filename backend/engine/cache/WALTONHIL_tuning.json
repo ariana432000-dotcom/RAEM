@@ -1,7 +1,7 @@
 {
   "ticker": "WALTONHIL",
-  "tuned_on": "2026-10-20",
-  "data_end_date": "2026-09-17",
+  "tuned_on": "2026-11-25",
+  "data_end_date": "2026-11-24",
   "xgb": {
     "max_depth": 2,
     "learning_rate": 0.02,

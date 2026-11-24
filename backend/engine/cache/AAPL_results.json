@@ -2,13 +2,13 @@
   "horizon": 7,
   "model_version": 2,
   "ticker": "AAPL",
-  "data_end_date": "2026-10-27",
-  "n_rows": 530,
-  "cached_at": "2026-10-28 11:20:43",
+  "data_end_date": "2026-11-23",
+  "n_rows": 549,
+  "cached_at": "2026-11-25 00:03:35",
   "results": {
-    "xgb_ret": 0.010503245517611504,
-    "xgb_mae": 0.032110869093623276,
-    "xgb_dacc": 0.4305555555555556,
+    "xgb_ret": 0.022152528166770935,
+    "xgb_mae": 0.02532142530453026,
+    "xgb_dacc": 0.5405405405405406,
     "xgb_params": {
       "max_depth": 2,
       "learning_rate": 0.02,
@@ -17,30 +17,30 @@
       "colsample_bytree": 0.8,
       "random_state": 42
     },
-    "lstm_ret": -0.005453363060951233,
-    "lstm_mae": 0.042356666177511215,
-    "lstm_dacc": 0.4057971014492754,
+    "lstm_ret": 0.03405874967575073,
+    "lstm_mae": 0.0326361246407032,
+    "lstm_dacc": 0.4722222222222222,
     "lstm_params": {
       "hidden": 32,
       "lr": 0.001
     },
-    "arima_ret": -0.001955992204154655,
-    "arima_mae": 0.028796629354480883,
-    "arima_dacc": 0.375,
+    "arima_ret": 0.0017928084100788944,
+    "arima_mae": 0.02245070136835037,
+    "arima_dacc": 0.43243243243243246,
     "arima_order": [
       5,
       1,
       0
     ],
-    "ridge_ret": 0.003449096977714434,
-    "ridge_mae": 0.026270544720741012,
-    "ridge_dacc": 0.6388888888888888,
+    "ridge_ret": 0.006016077776734744,
+    "ridge_mae": 0.01937462908135421,
+    "ridge_dacc": 0.7162162162162162,
     "ridge_params": {
       "alpha": 10.0
     },
-    "kalman_ret": -7.071072616327001e-10,
-    "kalman_mae": 0.026936816273189237,
-    "kalman_dacc": 0.4583333333333333,
+    "kalman_ret": -1.1326362070462892e-09,
+    "kalman_mae": 0.021284272486116335,
+    "kalman_dacc": 0.527027027027027,
     "kalman_level": "local level"
   }
 }
