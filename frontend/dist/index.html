@@ -856,7 +856,7 @@ function resultsHtml() {
 }
 
 /* ---------- extra pages ---------- */
-const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["watch", "Watchlist", "star"], ["bt", "Backtest", "chart"], ["eval", "Evaluation", "check"], ["data", "Dataset Explorer", "db"], ["news", "News", "news"], ["fund", "Fundamentals Check", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
+const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["bt", "Backtest", "chart"], ["eval", "Evaluation", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
 Object.assign(ICONS, {
   star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
@@ -1012,22 +1012,6 @@ function aiSessionHistoryCard(t, a) {
   const sub = `${finished} finished session${finished === 1 ? "" : "s"}${interrupted.length ? ` and ${interrupted.length} interrupted` : ""} for ${esc(t)} · showing ${shown.length}.`;
   const btns = `${rows.length > 15 ? `<button type="button" class="link" data-act="ai-hist-all">${X.ai.histAll ? "Show newest 15" : `Show all ${rows.length}`}</button>` : ""}${interrupted.length ? `<button type="button" class="link" data-act="ai-hist-int">${X.ai.histInt ? "Hide interrupted" : `Show interrupted (${interrupted.length})`}</button>` : ""}`;
   return card("Session history", sub, btns, `<div class="scroll"><table><thead><tr><th>Date</th><th>Started</th><th>Source</th><th>Signal</th><th>Rating</th></tr></thead><tbody>${shown.map(s => `<tr><td class="t">${dShort(s.date)}</td><td>${esc((s.start || "").slice(11, 16))}</td><td>${src(s)}</td><td>${s.signal && s.signal !== "nan" ? esc(s.signal) : "–"}</td><td>${s.finished === false ? `<span class="badge">interrupted</span>` : ratingBadge(s.rating)}</td></tr>`).join("")}</tbody></table></div><p class="src">An interrupted run stopped before its final decision, so it has no rating. Source: notebooks/trading_log_*.json, the session archive and website runs.</p>`);
-}
-
-/* ----- watchlist ----- */
-function renderWatch() {
-  const rows = X.wl.map(t => {
-    const rowsAll = EXTRA.dataset[t], c = rowsAll.map(r => r[4]), last = c[c.length - 1], prev = c[c.length - 2];
-    const win = c.slice(-250), lo = Math.min(...win), hi = Math.max(...win), vol = rowsAll[rowsAll.length - 1][5];
-    const ch1 = (last / prev - 1) * 100, ch30 = (last / c[c.length - 31] - 1) * 100;
-    return `<tr class="click" data-t="${esc(t)}"><td><span class="tkr">${esc(t)}</span><div class="sub">${esc(DATA[t].meta.name)}</div></td><td>${fmtP(last)} <span class="sub">${esc(DATA[t].meta.currency)}</span></td><td class="${cls(ch1)}">${fmtPct(ch1)}</td><td class="${cls(ch30)}">${fmtPct(ch30)}</td>
-      <td>${vol ? vol.toLocaleString() : "–"}</td><td><span class="rangebar"><u style="left:${Math.max(0, Math.min(96, (last - lo) / ((hi - lo) || 1) * 100))}%"></u></span><div class="sub" style="font-size:10px">${fmtP(lo)} – ${fmtP(hi)}</div></td>
-      <td><button type="button" class="x" data-act="wl-del" data-v="${esc(t)}" aria-label="Remove ${esc(t)}">×</button></td></tr>`;
-  }).join("");
-  const missing = ORDER.filter(t => !X.wl.includes(t));
-  return `<div class="page-h"><h1>Watchlist</h1><p>Your pinned tickers with the latest close. Saved in this browser.</p></div>
-    ${card("Add ticker", `This site has ${ORDER.length} companies. Add back any you removed; to add a new company use the search box at the top.`, "", `<form class="toolbar" id="wlform"><input class="inp grow" id="wlq" placeholder="Ticker (e.g. IBM)" aria-label="Ticker to add" style="text-transform:uppercase"><button class="btn primary" type="submit">Add</button>${missing.length ? `<span class="sub">Removed: ${missing.map(m => `<button type="button" class="link" data-act="wl-add" data-v="${esc(m)}">${esc(m)}</button>`).join(" ")}</span>` : ""}</form>${X.wlMsg ? `<p class="err" role="alert" style="margin-top:8px">${esc(X.wlMsg)}</p>` : ""}`)}
-    ${X.wl.length ? card("Quotes", "Last close per ticker. Click a row to open the forecast.", "", `<div class="scroll"><table><thead><tr><th>Ticker</th><th>Last close</th><th>1 day</th><th>30 days</th><th>Volume</th><th>1-year range</th><th></th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: data/ and daily_data/ price files. Closes are as of the last saved bar, not live quotes.</p>`) : nonEmpty("inbox", "Your watchlist is empty", "Add a ticker above to see its quote here.")}`;
 }
 
 /* ----- price helpers ----- */
@@ -1233,65 +1217,6 @@ document.addEventListener("pointermove", ev => {
   if (d) btpSet(a + d, b + d);
 });
 document.addEventListener("pointerup", () => { btpDrag = null; });
-
-/* ----- dataset explorer ----- */
-const PAGE_N = 20;
-function renderData() {
-  const t = X.ds.t, all = EXTRA.dataset[t];
-  let rows = all.map((r, i) => ({ r, ch: i ? (r[4] / all[i - 1][4] - 1) * 100 : null }));
-  if (X.ds.from) rows = rows.filter(x => x.r[0] >= X.ds.from);
-  if (X.ds.to) rows = rows.filter(x => x.r[0] <= X.ds.to);
-  rows.reverse();
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE_N)); X.ds.page = Math.min(X.ds.page, pages - 1);
-  const cl = rows.map(x => x.r[4]), vols = rows.map(x => x.r[5]).filter(v => v), view = rows.slice(X.ds.page * PAGE_N, X.ds.page * PAGE_N + PAGE_N);
-  return `<div class="page-h"><h1>Dataset Explorer</h1><p>The daily price table the models train on: the data snapshot plus closes logged by the AI analysis.</p></div>
-    ${card("", "", "", `<div class="field"><span class="lbl">Ticker</span>${tkrPills(t, "data-ds")}</div><div class="toolbar" style="margin-top:16px"><div class="field"><label for="ds-from">From</label><input class="inp" type="date" id="ds-from" data-bind="ds-from" value="${esc(X.ds.from)}"></div><div class="field"><label for="ds-to">To</label><input class="inp" type="date" id="ds-to" data-bind="ds-to" value="${esc(X.ds.to)}"></div><button type="button" class="btn secondary sm" data-act="ds-clear" style="align-self:flex-end">Clear dates</button></div>`)}
-    <div class="stats">
-      ${statCard("Rows", rows.length.toLocaleString(), `${all.length} in full file`, "", "db")}
-      ${statCard("Range", rows.length ? dShort(rows[rows.length - 1].r[0]) : "–", rows.length ? "to " + dShort(rows[0].r[0]) : "", "", "clock")}
-      ${statCard("Close low / high", rows.length ? fmtP(Math.min(...cl)) : "–", rows.length ? "high " + fmtP(Math.max(...cl)) : "", "", "chart")}
-      ${statCard("Avg volume", vols.length ? Math.round(vols.reduce((a, b) => a + b, 0) / vols.length).toLocaleString() : "–", `${esc(DATA[t].meta.currency)} prices`, "", "pulse")}
-    </div>
-    ${card("Daily prices", "Newest first.", "", rows.length ? `<div class="scroll"><table><thead><tr><th>Date</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Change</th><th>Volume</th><th>Source</th></tr></thead><tbody>${view.map(({ r, ch }) => `<tr><td class="t">${esc(r[0])}</td><td>${fmtP(r[1])}</td><td>${fmtP(r[2])}</td><td>${fmtP(r[3])}</td><td>${fmtP(r[4])}</td><td class="${cls(ch)}">${ch == null ? "–" : fmtPct(ch)}</td><td>${r[5] ? r[5].toLocaleString() : "–"}</td><td><span class="badge ${r[6] === "snapshot" ? "" : "accent"}">${esc(r[6] || "–")}</span></td></tr>`).join("")}</tbody></table></div>
-      <div class="pager"><button type="button" class="btn secondary sm" data-act="ds-prev" ${X.ds.page === 0 ? "disabled" : ""}>Prev</button><span class="mono">page ${X.ds.page + 1} / ${pages}</span><button type="button" class="btn secondary sm" data-act="ds-next" ${X.ds.page >= pages - 1 ? "disabled" : ""}>Next</button></div>
-      <p class="src">Source: data/*_2y.csv plus daily_data/*_daily.csv through forecast_lib.load_combined_history(). Change is the close-to-close return.</p>` : emptyState("inbox", "No rows in this range", "Clear the dates to see the full table."))}`;
-}
-
-/* ----- news ----- */
-function renderNews() {
-  const t = X.news.t, a = EXTRA.ai[t];
-  const head = `<div class="page-h"><h1>News</h1><p>What the news and sentiment analysts saw in their latest session, plus the news text stored for retrieval.</p></div>${card("", "", "", `<div class="field"><span class="lbl">Ticker</span>${tkrPills(t, "data-news", AI_T)}</div>`)}`;
-  if (!a) return head + nonEmpty("inbox", "No news session", "This ticker has no saved LLM session, so there is no news report.");
-  const L = a.latest, sm = L.summary || {}, na = sm.news_analyst || {}, se = sm.sentiment_analyst || {};
-  const chunks = EXTRA.news_corpus.filter(c => c.meta.company === t);
-  const byDate = {}; chunks.forEach(c => { (byDate[c.meta.trade_date] = byDate[c.meta.trade_date] || []).push(c); });
-  const dates = Object.keys(byDate).sort().reverse();
-  return head + `
-    <div class="stats">
-      ${statCard("Overall sentiment", esc(na.overall_sentiment || "–"), "news analyst", na.overall_sentiment === "POSITIVE" ? "buy" : na.overall_sentiment === "NEGATIVE" ? "sell" : "hold", "news")}
-      ${statCard("Positive", esc(na.positive_count ?? "–"), "as counted by the analyst", "buy", "line")}
-      ${statCard("Negative", esc(na.negative_count ?? "–"), "as counted by the analyst", "sell", "line")}
-      ${statCard("News-flow sentiment", esc(se.overall || "–"), `score ${esc(se.score ?? "N/A")}/10 · ${se.source === "RULE_BASED" ? `scored in code from ${esc(se.n_items ?? "–")} stored news items` : "read by the LLM"}`, "", "brain")}
-    </div>
-    ${card("News analyst report", `${esc(t)} · session of ${dLong(L.date)}`, "", `<div class="scrollbox"><div class="pre">${md((L.steps.News || {}).text || "No news report.")}</div></div><p class="src">Source: notebooks/trading_log_*.json, News Analyst step (shortened).</p>`)}
-    ${card("Stored news text", `${chunks.length} chunks for ${esc(t)} in the retrieval store.`, "", dates.length ? dates.slice(0, 4).map(d => `<div class="memcard" style="margin-bottom:10px"><div class="hd"><span class="badge accent">${esc(d)}</span><span class="sub">${byDate[d].length} chunks</span></div><p>${esc(byDate[d][0].doc)}</p></div>`).join("") : emptyState("inbox", "No stored news", "Nothing for this ticker in raem_news_corpus."))}`;
-}
-
-/* ----- fundamentals ----- */
-function renderFund() {
-  const t = X.fund.t;
-  const rows = ORDER.map(tk => {
-    const f = ((EXTRA.ai[tk] || {}).latest || { summary: {} }).summary.fundamentals_analyst;
-    if (!f) return `<tr><td><span class="tkr">${esc(tk)}</span></td><td colspan="8" class="sub" style="text-align:left">No analyst session</td></tr>`;
-    const lo = num(f["52w_low"]), hi = num(f["52w_high"]), last = lastClose(tk), pos = lo != null && hi != null && hi > lo ? Math.max(0, Math.min(96, (last - lo) / (hi - lo) * 100)) : null;
-    const v = k => esc(f[k] ?? "N/A");
-    return `<tr class="click ${tk === t ? "sel" : ""}" data-act="fund-t" data-v="${esc(tk)}"><td><span class="tkr">${esc(tk)}</span></td><td>${v("market_cap")}</td><td>${v("pe_ratio")}</td><td>${v("eps_ttm")}</td><td>${v("revenue_ttm")}</td><td>${v("beta")}</td><td>${v("dividend_yield")}</td><td>${pos == null ? "–" : `<span class="rangebar"><u style="left:${pos}%"></u></span><div class="sub" style="font-size:10px">${fmtP(lo)} – ${fmtP(hi)}</div>`}</td><td>${v("net_debt")}</td></tr>`;
-  }).join("");
-  const a = EXTRA.ai[t], ft = a && a.latest.steps.Fundamentals;
-  return `<div class="page-h"><h1>Fundamentals Check</h1><p>Company figures the fundamentals analyst pulled in its latest session. "N/A" means the data source had no value.</p></div>
-    ${card("All tickers", "Click a row to read that analyst's write-up below. The marker shows the last close inside its 52-week range.", "", `<div class="scroll"><table class="fund-grid"><thead><tr><th>Ticker</th><th>Market cap</th><th>P/E</th><th>EPS (TTM)</th><th>Revenue (TTM)</th><th>Beta</th><th>Div. yield</th><th>52-week range</th><th>Net debt</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: notebooks/trading_log_*.json, summary_table.fundamentals_analyst. Values are shown as the source wrote them, in each company's currency.</p>`)}
-    ${a ? card(`${esc(t)} analyst write-up`, `Session of ${dLong(a.latest.date)}.`, "", `<div class="scrollbox"><div class="pre">${md(ft ? ft.text : "No fundamentals text.")}</div></div>`) : ""}`;
-}
 
 /* ----- memory ----- */
 function renderMem() {
@@ -1529,7 +1454,7 @@ function drawEval() {
 /* ----- router ----- */
 function goPage(p) { if (S.running) return; S.more = false; S.page = p; $("#app").classList.remove("open"); render(false); $("#scroller").scrollTop = 0; }
 function renderExtra() {
-  return ({ ai: renderAI, watch: renderWatch, bt: renderBT, data: renderData, news: renderNews, fund: renderFund, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock, eval: renderEval })[S.page]();
+  return ({ ai: renderAI, bt: renderBT, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock, eval: renderEval })[S.page]();
 }
 function afterRender() { if (S.page === "bt") drawBTPrice(); if (S.page === "eval") drawEval(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); drawStockChart(); } markRows(); }
 
@@ -2305,8 +2230,6 @@ document.addEventListener("click", e => {
   else if (a === "ai-runall") { aiRun(AI_T.slice()); return; }
   else if (d.stage) X.ai.stage = d.stage;
   else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); X.bt.win = null; }
-  else if (d.ds) { X.ds.t = d.ds; X.ds.page = 0; }
-  else if (d.news) X.news.t = d.news;
   else if (d.mkt) X.mkt.sort = d.mkt;
   else if (d.stk) { openStock(d.stk); return; }
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
@@ -2333,12 +2256,8 @@ document.addEventListener("click", e => {
   else if (a === "ev-w") X.ev.w = +v;
   else if (a === "ev-t") { X.ev.t = v; X.ev.n = 25; }
   else if (a === "ev-more") X.ev.n += 25;
-  else if (a === "fund-t") X.fund.t = v;
   else if (a === "more") S.more = !S.more;
   else if (a === "opt-toggle") S.optOpen = !S.optOpen;
-  else if (a === "ds-clear") { X.ds.from = ""; X.ds.to = ""; X.ds.page = 0; }
-  else if (a === "ds-prev") X.ds.page = Math.max(0, X.ds.page - 1);
-  else if (a === "ds-next") X.ds.page++;
   else if (a === "set-reset") { Object.assign(settings, { theme: "dark", win: 120, unit: "price", view: "Agent" }); lsDel("raem:set"); applySettings(true); }
   else return;
   render();
@@ -2346,8 +2265,7 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => {
   const b = e.target.dataset.bind; if (!b) return;
   const v = e.target.value;
-  if (b === "ds-from") { X.ds.from = v; X.ds.page = 0; } else if (b === "ds-to") { X.ds.to = v; X.ds.page = 0; }
-  else if (b === "mem-t") X.mem.t = v;
+  if (b === "mem-t") X.mem.t = v;
   else if (b === "ai-model") X.ai.model = v;
   else if (b === "ai-force") X.ai.force = e.target.checked;
   else if (b === "set-token") return;  // saved on input; a re-render here would swallow the click that caused the blur
@@ -2361,16 +2279,6 @@ document.addEventListener("input", e => {
   if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
   else if (b === "stk-q") { X.stk.q = e.target.value; X.stk.n = 100; render(); const i = $("#stk-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
   else if (b === "mem-q") { X.mem.q = e.target.value; render(); const i = $("#mem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
-});
-document.addEventListener("submit", e => {
-  if (e.target.id !== "wlform") return;
-  e.preventDefault();
-  const q = $("#wlq").value.trim().toUpperCase(); if (!q) return;
-  const hit = ORDER.find(x => x === q);
-  if (!hit) X.wlMsg = `${q} is not in this export. Available: ${ORDER.join(", ")}.`;
-  else if (X.wl.includes(hit)) X.wlMsg = `${hit} is already on your watchlist.`;
-  else { X.wl.push(hit); lsSet("raem:wl", X.wl); X.wlMsg = ""; }
-  render();
 });
 
 document.addEventListener("keydown", e => {

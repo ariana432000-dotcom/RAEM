@@ -12,8 +12,6 @@ document.addEventListener("click", e => {
   else if (a === "ai-runall") { aiRun(AI_T.slice()); return; }
   else if (d.stage) X.ai.stage = d.stage;
   else if (d.bt) { X.bt.t = d.bt; X.bt.sel = new Set(["Ensemble"]); X.bt.win = null; }
-  else if (d.ds) { X.ds.t = d.ds; X.ds.page = 0; }
-  else if (d.news) X.news.t = d.news;
   else if (d.mkt) X.mkt.sort = d.mkt;
   else if (d.stk) { openStock(d.stk); return; }
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
@@ -40,12 +38,8 @@ document.addEventListener("click", e => {
   else if (a === "ev-w") X.ev.w = +v;
   else if (a === "ev-t") { X.ev.t = v; X.ev.n = 25; }
   else if (a === "ev-more") X.ev.n += 25;
-  else if (a === "fund-t") X.fund.t = v;
   else if (a === "more") S.more = !S.more;
   else if (a === "opt-toggle") S.optOpen = !S.optOpen;
-  else if (a === "ds-clear") { X.ds.from = ""; X.ds.to = ""; X.ds.page = 0; }
-  else if (a === "ds-prev") X.ds.page = Math.max(0, X.ds.page - 1);
-  else if (a === "ds-next") X.ds.page++;
   else if (a === "set-reset") { Object.assign(settings, { theme: "dark", win: 120, unit: "price", view: "Agent" }); lsDel("raem:set"); applySettings(true); }
   else return;
   render();
@@ -53,8 +47,7 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => {
   const b = e.target.dataset.bind; if (!b) return;
   const v = e.target.value;
-  if (b === "ds-from") { X.ds.from = v; X.ds.page = 0; } else if (b === "ds-to") { X.ds.to = v; X.ds.page = 0; }
-  else if (b === "mem-t") X.mem.t = v;
+  if (b === "mem-t") X.mem.t = v;
   else if (b === "ai-model") X.ai.model = v;
   else if (b === "ai-force") X.ai.force = e.target.checked;
   else if (b === "set-token") return;  // saved on input; a re-render here would swallow the click that caused the blur
@@ -68,16 +61,6 @@ document.addEventListener("input", e => {
   if (b === "set-token") { LIVE.token = e.target.value.trim(); lsSet("raem:token", LIVE.token); }
   else if (b === "stk-q") { X.stk.q = e.target.value; X.stk.n = 100; render(); const i = $("#stk-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
   else if (b === "mem-q") { X.mem.q = e.target.value; render(); const i = $("#mem-q"); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
-});
-document.addEventListener("submit", e => {
-  if (e.target.id !== "wlform") return;
-  e.preventDefault();
-  const q = $("#wlq").value.trim().toUpperCase(); if (!q) return;
-  const hit = ORDER.find(x => x === q);
-  if (!hit) X.wlMsg = `${q} is not in this export. Available: ${ORDER.join(", ")}.`;
-  else if (X.wl.includes(hit)) X.wlMsg = `${hit} is already on your watchlist.`;
-  else { X.wl.push(hit); lsSet("raem:wl", X.wl); X.wlMsg = ""; }
-  render();
 });
 
 document.addEventListener("keydown", e => {
