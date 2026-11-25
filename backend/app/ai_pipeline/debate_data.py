@@ -281,3 +281,47 @@ EVIDENCE_RULE = (
     "Evidence rule: do not just restate the RSI/MACD/SMA numbers already in the debate. Support your case with specific "
     "facts from at least TWO other categories (fundamentals incl. the per-year dividend history, news, macro, memory) "
     "that the opponent has not already used, and never cite a number you cannot find in the data above.")
+
+
+# ---- every agent reads the reports of the agents before it (RAEM_SHARE_ALL_REPORTS, default on) ----
+# (stage key, label, state key, characters kept).  The order is the pipeline order, so "before" means "earlier in the run".
+REPORT_STAGES = [
+    ("fundamentals", "Fundamentals Analyst", "fundamentals_report", 2500),   # code-extracted numbers first, then the LLM report
+    ("market", "Market Analyst", "market_report", 1500),
+    ("news", "News Analyst", "news_report", 1500),
+    ("sentiment", "Sentiment Analyst", "sentiment_report", 1500),
+    ("macro", "Macro Regime Analyst", "macro_report", 1200),
+    ("graph", "Graph Analyst", "graph_report", 1200),
+]
+
+
+def share_all_reports() -> bool:
+    import os
+    return os.environ.get("RAEM_SHARE_ALL_REPORTS", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def format_prior_reports(state: dict, before: str | None = None, only=None, scale: float = 1.0) -> str:
+    """The reports written so far, as one block to append to a prompt.
+    before="market": only the stages that ran before the Market analyst.  only=("macro", "graph"): just those stages
+    (for agents that already carry the other reports).  Empty when the switch is off or nothing is there yet.
+    A report is cut at its own limit (RAEM_REPORT_CAP_SCALE, e.g. 0.5, shrinks all limits for a small local model)."""
+    if not share_all_reports():
+        return ""
+    import os
+    try:
+        scale = float(os.environ.get("RAEM_REPORT_CAP_SCALE") or scale)
+    except ValueError:
+        pass
+    keys = [k for k, *_ in REPORT_STAGES]
+    cut = keys.index(before) if before in keys else len(keys)
+    parts = []
+    for i, (k, label, skey, cap) in enumerate(REPORT_STAGES):
+        if i >= cut or (only is not None and k not in only):
+            continue
+        txt = str(state.get(skey) or "").strip()
+        if txt:
+            parts.append(f"### {label}\n{txt[:max(200, int(cap * scale))]}")
+    if not parts:
+        return ""
+    return ("\n\nANALYST REPORTS FROM THE AGENTS BEFORE YOU (their wording is not authoritative: where a figure here differs "
+            "from the HARD DATA / code-extracted numbers, the code-extracted number is right):\n" + "\n\n".join(parts) + "\n")

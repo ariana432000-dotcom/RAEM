@@ -147,7 +147,7 @@ class PipelineRunner:
                               {"metrics": out.get("fund_metrics", {}),
                                "report": out.get("fundamentals_report_llm", out.get("fundamentals_report", "")),
                                "facts_sent_to_other_agents": out.get("fundamentals_facts", ""),
-                               "llm_verdict_hidden_from_agents": (out.get("fund_verdict", "") if agents.FUND_NUMBERS_ONLY else "NOT HIDDEN")})
+                               "llm_verdict_hidden_from_agents": (out.get("fund_verdict", "") if (agents.FUND_NUMBERS_ONLY and not agents.FUND_SHARE_BOTH) else "NOT HIDDEN")})
         yield {"type": "stage_done", "stage": "fundamentals",
                "html": md_to_html(out.get("fundamentals_report_llm", out["fundamentals_report"])),
                "meta": {"metrics": out.get("fund_metrics", {}),
@@ -271,9 +271,17 @@ class PipelineRunner:
         gmetrics = gres.get("metrics", {})
         self.state["graph_context"] = gres.get("graph_context", "")
         self.state["graph_metrics"] = gmetrics
+        # the peer graph is code; its written report reads every earlier analyst report (RAEM_GRAPH_LLM_REPORT=0 turns it off)
+        graph_llm_report = ""
+        try:
+            gout = agents.create_graph_report_agent(llm, log=logs.append)(self.state)
+            self.state.update(gout)
+            graph_llm_report = gout.get("graph_report", "")
+        except Exception as e:  # noqa: BLE001 -- secondary evidence: never stop the run
+            logs.append(f"graph analyst report skipped: {e}")
         sector_peers, corr_peers = list(gmetrics.get("sector_peers") or []), list(gmetrics.get("corr_peers") or [])
         today_regime_now = mem.classify_regime(indicators)
-        self.session.log_step("Graph Analyst", graph_input, {"metrics": gmetrics, "report": gres.get("report", "")})
+        self.session.log_step("Graph Analyst", graph_input, {"metrics": gmetrics, "report": gres.get("report", ""), "llm_report": graph_llm_report})
         try:
             memory.connect()
             pe_stats = peer_episodes.store_peer_episodes(memory, self.company, self.trade_date, sector_peers + corr_peers,
@@ -296,7 +304,8 @@ class PipelineRunner:
         for ln in logs:
             yield {"type": "log", "stage": "graph_analyst", "line": ln}
         graph_md = (f"**Peer graph:** {gres.get('report') or 'not available'}\n\n"
-                    f"**Peer episodes:** {pe_stats.get('stored', 0)} new stored for {pe_stats.get('peers') or 'no peers'}\n\n"
+                    + (f"**Graph analyst report:** {graph_llm_report}\n\n" if graph_llm_report else "")
+                    + f"**Peer episodes:** {pe_stats.get('stored', 0)} new stored for {pe_stats.get('peers') or 'no peers'}\n\n"
                     f"**Graph-linked news:** {ng_result.get('items', 0)} item(s), {ng_result.get('peer_episodes', 0)} peer episode line(s)"
                     + (f", topics {ng_result.get('today_topics')}" if ng_result.get("today_topics") else ""))
         yield {"type": "stage_done", "stage": "graph_analyst", "html": md_to_html(graph_md),
