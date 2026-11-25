@@ -112,6 +112,19 @@ def _len_rule(name: str) -> str:
 FUND_NUMBERS_ONLY = os.environ.get("RAEM_FUND_NUMBERS_ONLY", "1") != "0"
 FUND_LLM_REPORT = os.environ.get("RAEM_FUND_LLM_REPORT", "1") != "0"   # 0 = skip the analyst's own LLM call (nothing downstream reads it)
 FUND_FACTS_MARK = "FUNDAMENTALS - NUMBERS ONLY"
+# RAEM_FUND_SHARE_BOTH (default on): the other agents get the code-extracted numbers block FIRST (authoritative) and the
+# analyst's own LLM report (narrative, table and verdict) AFTER it.  0 = fall back to RAEM_FUND_NUMBERS_ONLY (numbers only
+# when 1, the LLM report only when 0).
+FUND_SHARE_BOTH = os.environ.get("RAEM_FUND_SHARE_BOTH", "1") != "0"
+FUND_REPORT_MARK = "FUNDAMENTALS - ANALYST REPORT (LLM-written; if it disagrees with the numbers above, the numbers above are right)"
+FUND_SHARED_CAP = 3200   # characters of fundamentals_report a debater / trader prompt keeps (numbers block + report)
+
+
+def shared_fundamentals(facts_block: str, report: str) -> str:
+    """What the other agents read as `fundamentals_report`."""
+    if FUND_SHARE_BOTH:
+        return facts_block + "\n\n" + FUND_REPORT_MARK + "\n" + str(report)
+    return facts_block if FUND_NUMBERS_ONLY else report
 
 # The Market analyst describes the stock's OWN price and indicators, so it must not say "bullish" / "bearish".  The
 # prompt asks for neutral wording and the code enforces it, because a small model does not always obey.
@@ -489,8 +502,8 @@ RULES:
         if _is_dse:
             fund_metrics["_debug_raw_balance_sheet"] = str(bs)[:250]
         return {
-            # the other agents get only the numbers; the narrative and its verdict stay available here and in the log
-            "fundamentals_report": facts_block if FUND_NUMBERS_ONLY else report,
+            # the other agents get the numbers block and (RAEM_FUND_SHARE_BOTH) the analyst's report after it; the report also stays in the log
+            "fundamentals_report": shared_fundamentals(facts_block, report),
             "fundamentals_report_llm": report,
             "fundamentals_facts": facts_block,
             "fund_verdict": extract_final_proposal(report),
@@ -575,6 +588,7 @@ In the Signal column use only: UPWARD, DOWNWARD, NEUTRAL, OVERBOUGHT, OVERSOLD.
 {indicators_str}
 """ + U["get_language_instruction"]()
 
+        prompt += dd.format_prior_reports(state, before="market")
         messages = [
             SystemMessage(content="You are a senior trading analyst. Write reports based only on provided data. Always end with the required Markdown table."),
             HumanMessage(content=prompt),
@@ -706,6 +720,7 @@ see rule above, not a fixed target.)
 {global_news}
 """ + U["get_language_instruction"]()
 
+        prompt += dd.format_prior_reports(state, before="news")
         messages = [
             SystemMessage(content="You are a senior news analyst. Write reports based only on provided data. Always end with the required Markdown table."),
             HumanMessage(content=prompt),
@@ -803,6 +818,7 @@ At the very end, output a Markdown table with EXACTLY these columns:
 === NEWS CONTEXT ===
 {news_context}
 """ + U["get_language_instruction"]()
+        prompt += dd.format_prior_reports(state, only=("fundamentals", "market"))   # the news report is already in the prompt
         messages = [
             SystemMessage(content="You are a senior sentiment analyst. Be specific about data sources. Always end with the required Markdown table."),
             HumanMessage(content=prompt),
@@ -863,6 +879,33 @@ At the very end, output a Markdown table with EXACTLY these columns:
 
 
 # ==========================================================================
+# Graph analyst's written report (the peer graph itself is code; this agent reads every earlier report and explains it)
+# ==========================================================================
+GRAPH_LLM_REPORT = os.environ.get("RAEM_GRAPH_LLM_REPORT", "1") != "0"
+
+
+def create_graph_report_agent(llm, log=print):
+    def node(state):
+        gm = state.get("graph_metrics") or {}
+        ctx = str(state.get("graph_context") or "").strip()
+        if not (GRAPH_LLM_REPORT and dd.share_all_reports()) or gm.get("status") != "OK" or not ctx:
+            return {}
+        U = _ta_utils()
+        prompt = f"""You are a peer-graph analyst. Today is {state['trade_date']}.
+Write at most 150 words on what the peer-graph evidence below means for {state['company_of_interest']}, using ONLY the data given.
+Do not give a BUY/SELL/HOLD call and do not invent any number. Say which earlier analyst reports agree or disagree with the graph.
+
+PEER-GRAPH EVIDENCE (computed in code): {ctx[:1200]}
+{dd.format_hard_indicators(state)}
+""" + dd.format_prior_reports(state, before="graph") + U["get_language_instruction"]()
+        report = invoke_llm_with_retry(llm, prompt).content
+        log("graph analyst report ready")
+        return {"graph_report": report}
+
+    return node
+
+
+# ==========================================================================
 # Investment debate (bull / bear / facilitator)
 # ==========================================================================
 from . import debate_data as dd  # noqa: E402
@@ -889,7 +932,7 @@ def _reports(state):
     # small for Sonnet/Kimi's context windows).
     return (
         str(state["market_report"])[:1800], str(state["sentiment_report"])[:1800],
-        str(state["news_report"])[:1800] + _rag_tail(state), str(state["fundamentals_report"])[:1800],
+        str(state["news_report"])[:1800] + _rag_tail(state), str(state["fundamentals_report"])[:FUND_SHARED_CAP],
     )
 
 
@@ -923,6 +966,7 @@ Last bear argument: {last_bear_argument}
 {dd.EVIDENCE_RULE}
 Present a compelling bull argument with specific growth opportunities and strengths.
 """ + U["get_language_instruction"]()
+        prompt += dd.format_prior_reports(state, only=("macro", "graph"))
         argument = f"Bull Analyst: {invoke_llm_with_retry(llm, prompt).content}"
         return {"investment_debate_state": {
             "history": ds.get("history", "") + "\n" + argument,
@@ -959,6 +1003,7 @@ Last bull argument: {last_bull_argument}
 {dd.EVIDENCE_RULE}
 Present a compelling bear argument with specific risks and weaknesses.
 """ + U["get_language_instruction"]()
+        prompt += dd.format_prior_reports(state, only=("macro", "graph"))
         argument = f"Bear Analyst: {invoke_llm_with_retry(llm, prompt).content}"
         return {"investment_debate_state": {
             "history": ds.get("history", "") + "\n" + argument,
@@ -1004,6 +1049,7 @@ Total arguments made: {ds.get('count', 0)}
 Declare: BULL WINS / BEAR WINS / DRAW
 Then give your final recommendation: BUY / SELL / HOLD with confidence level (High/Medium/Low).
 """ + U["get_language_instruction"]()
+        prompt += dd.format_prior_reports(state)
         decision = invoke_llm_with_retry(llm, prompt).content
         return {"investment_facilitator_decision": decision,
                 "investment_debate_state": {**ds, "facilitator_decision": decision}}
@@ -1045,6 +1091,7 @@ def create_trader(llm):
                 f"Leverage these insights to make an informed and strategic decision.")},
         ]
 
+        messages[1]["content"] += dd.format_prior_reports(state)
         trader_plan = None
         for attempt in range(3):
             try:
@@ -1076,7 +1123,7 @@ def _risk_reports(state):
     # needing the same expansion.
     return (
         str(state["market_report"])[:1800], str(state["sentiment_report"])[:1800],
-        str(state["news_report"])[:1800] + _rag_tail(state), str(state["fundamentals_report"])[:1800],
+        str(state["news_report"])[:1800] + _rag_tail(state), str(state["fundamentals_report"])[:FUND_SHARED_CAP],
         str(state["trader_investment_plan"])[:800],
     )
 
@@ -1103,6 +1150,7 @@ Conservative argument: {rd.get('current_conservative_response', '')}
 Neutral argument: {rd.get('current_neutral_response', '')}
 Make a compelling case for high-risk high-reward approach. Speak conversationally.
 """ + U["get_language_instruction"]()
+        prompt += dd.format_prior_reports(state, only=("macro", "graph"))
         argument = f"Aggressive Analyst: {invoke_llm_with_retry(llm, prompt).content}"
         return {"risk_debate_state": {**rd,
             "history": rd.get("history", "") + "\n" + argument,
@@ -1136,6 +1184,7 @@ Aggressive argument: {rd.get('current_aggressive_response', '')}
 Neutral argument: {rd.get('current_neutral_response', '')}
 Make a compelling case for low-risk conservative approach. Speak conversationally.
 """ + U["get_language_instruction"]()
+        prompt += dd.format_prior_reports(state, only=("macro", "graph"))
         argument = f"Conservative Analyst: {invoke_llm_with_retry(llm, prompt).content}"
         return {"risk_debate_state": {**rd,
             "history": rd.get("history", "") + "\n" + argument,
@@ -1169,6 +1218,7 @@ Aggressive argument: {rd.get('current_aggressive_response', '')}
 Conservative argument: {rd.get('current_conservative_response', '')}
 Provide a balanced moderate view. Speak conversationally.
 """ + U["get_language_instruction"]()
+        prompt += dd.format_prior_reports(state, only=("macro", "graph"))
         argument = f"Neutral Analyst: {invoke_llm_with_retry(llm, prompt).content}"
         return {"risk_debate_state": {**rd,
             "history": rd.get("history", "") + "\n" + argument,
@@ -1231,6 +1281,7 @@ to whichever perspective you read most recently.
 
 Be specific and data-driven in your assessment.
 """ + U["get_language_instruction"]()
+        prompt += dd.format_prior_reports(state)
         decision = invoke_llm_with_retry(llm, prompt).content
         return {"risk_facilitator_decision": decision,
                 "risk_debate_state": {**rd, "facilitator_decision": decision}}
@@ -1332,6 +1383,7 @@ def create_portfolio_manager(llm):
             {"role": "system", "content": "You are a senior portfolio manager. Issue a final decision."},
             {"role": "user", "content": prompt_text},
         ]
+        messages[1]["content"] += dd.format_prior_reports(state)
         final_decision = None
         for attempt in range(3):
             try:
@@ -1536,6 +1588,7 @@ Realized volatility: {snapshot.get('dsex_volatility_pct')}% (daily, over the loo
 Rule-based macro regime tag: {macro_regime}
 """ + U["get_language_instruction"]()
 
+                prompt += dd.format_prior_reports(state, before="macro")
                 messages = [
                     SystemMessage(content="You are a senior DSE market strategist. Base your report only on the data given."),
                     HumanMessage(content=prompt),
@@ -1564,6 +1617,7 @@ US Dollar Index (DXY): latest={snapshot.get('dxy', {}).get('latest')}, 30d avg={
 Rule-based macro regime tag: {macro_regime}
 """ + U["get_language_instruction"]()
 
+        prompt += dd.format_prior_reports(state, before="macro")
         messages = [
             SystemMessage(content="You are a senior macro strategist. Base your report only on the data given."),
             HumanMessage(content=prompt),

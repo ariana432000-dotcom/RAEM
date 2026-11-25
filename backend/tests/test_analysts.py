@@ -119,6 +119,7 @@ class _LLM:
 def test_dse_fundamentals_follow_the_notebook_and_hide_the_verdict(monkeypatch):
     pytest.importorskip("langchain_core")
     from app.ai_pipeline import agents, config
+    monkeypatch.setattr(agents, "FUND_SHARE_BOTH", False)   # the old numbers-only mode
     config.ensure_tradingagents_on_path()
     import tradingagents.dataflows.symbol_utils as su
     monkeypatch.setattr(su, "is_dse_ticker", lambda s: True)
@@ -148,6 +149,22 @@ def test_dse_fundamentals_follow_the_notebook_and_hide_the_verdict(monkeypatch):
     assert "FINAL TRANSACTION" in out2["fundamentals_report"]
 
 
+def test_shared_fundamentals_gives_numbers_first_then_the_report(monkeypatch):
+    pytest.importorskip("langchain_core")
+    from app.ai_pipeline import agents
+    facts = "FUNDAMENTALS - NUMBERS ONLY (code) -- AAA\nP/E: 9.4"
+    report = "Long narrative...\nFINAL TRANSACTION PROPOSAL: **BUY**"
+    monkeypatch.setattr(agents, "FUND_SHARE_BOTH", True)
+    both = agents.shared_fundamentals(facts, report)
+    assert both.startswith(facts) and both.endswith(report) and agents.FUND_REPORT_MARK in both
+    assert both.index("P/E: 9.4") < both.index("FINAL TRANSACTION")      # numbers survive any later cut
+    monkeypatch.setattr(agents, "FUND_SHARE_BOTH", False)
+    monkeypatch.setattr(agents, "FUND_NUMBERS_ONLY", True)
+    assert agents.shared_fundamentals(facts, report) == facts
+    monkeypatch.setattr(agents, "FUND_NUMBERS_ONLY", False)
+    assert agents.shared_fundamentals(facts, report) == report
+
+
 def test_news_analyst_reads_web_coverage_and_returns_the_full_texts(monkeypatch):
     pytest.importorskip("langchain_core")
     from app.ai_pipeline import agents, config
@@ -166,3 +183,140 @@ def test_news_analyst_reads_web_coverage_and_returns_the_full_texts(monkeypatch)
     assert len(out["news_raw"]["company_news"]) == 3000 and len(out["news_raw_full"]["company_news"]) > 3000   # prompt copy capped, corpus copy whole
     assert out["sector_news_full"].startswith("- [2026-10-20]") and "WEB-SOURCED COMPANY COVERAGE" in llm.prompts[0]
     assert "DSE MARKET-WIDE NOTICES" in llm.prompts[0] and "[2 days ago] AAA signs" in llm.prompts[0]
+
+
+# ---- every agent reads the reports of the agents before it ----
+def _state_with_reports():
+    return {"trade_date": "2026-11-25", "company_of_interest": "AAA", "asset_type": "stock", "messages": [],
+            "fundamentals_report": "FUND-REPORT-TEXT", "market_report": "MARKET-REPORT-TEXT",
+            "news_report": "NEWS-REPORT-TEXT", "sentiment_report": "SENT-REPORT-TEXT",
+            "macro_report": "MACRO-REPORT-TEXT", "graph_report": "GRAPH-REPORT-TEXT"}
+
+
+def test_prior_reports_before_only_off_and_cap(monkeypatch):
+    from app.ai_pipeline import debate_data as dd
+    st = _state_with_reports()
+    monkeypatch.delenv("RAEM_SHARE_ALL_REPORTS", raising=False)
+    monkeypatch.delenv("RAEM_REPORT_CAP_SCALE", raising=False)
+    blk = dd.format_prior_reports(st, before="news")                      # stages that ran before the News analyst
+    assert "FUND-REPORT-TEXT" in blk and "MARKET-REPORT-TEXT" in blk and "NEWS-REPORT-TEXT" not in blk
+    assert "SENT-REPORT-TEXT" not in blk and "MACRO-REPORT-TEXT" not in blk
+    only = dd.format_prior_reports(st, only=("macro", "graph"))
+    assert "MACRO-REPORT-TEXT" in only and "GRAPH-REPORT-TEXT" in only and "FUND-REPORT-TEXT" not in only
+    full = dd.format_prior_reports(st)
+    assert all(t in full for t in ("FUND-REPORT-TEXT", "MARKET-REPORT-TEXT", "NEWS-REPORT-TEXT",
+                                   "SENT-REPORT-TEXT", "MACRO-REPORT-TEXT", "GRAPH-REPORT-TEXT"))
+    assert full.index("FUND-REPORT") < full.index("MARKET-REPORT") < full.index("GRAPH-REPORT")
+    assert dd.format_prior_reports({"messages": []}) == ""                # nothing written yet
+    st["market_report"] = "M" * 5000
+    assert len(dd.format_prior_reports(st, only=("market",))) < 1800     # a report is cut at its own limit
+    monkeypatch.setenv("RAEM_SHARE_ALL_REPORTS", "0")
+    assert dd.format_prior_reports(st) == ""
+
+
+class _Recorder:
+    """A chat model that records what it is asked and answers with a fixed verdict."""
+    def __init__(self):
+        self.prompts = []
+
+    def invoke(self, msgs):
+        self.prompts.append(msgs if isinstance(msgs, str) else "\n".join(str(getattr(m, "content", m)) for m in msgs))
+        return type("R", (), {"content": "ok BUY"})()
+
+
+def test_debaters_facilitators_and_graph_agent_get_the_other_reports(monkeypatch):
+    pytest.importorskip("langchain_core")
+    from app.ai_pipeline import agents, config, fact_guard
+    config.ensure_tradingagents_on_path()
+    monkeypatch.setenv("RAEM_FACT_GUARD", "0")
+    monkeypatch.delenv("RAEM_SHARE_ALL_REPORTS", raising=False)
+    monkeypatch.setattr(agents, "_ta_utils", lambda *a, **k: {"get_language_instruction": lambda: "", "build_instrument_context": lambda *a, **k: "ctx"})
+    st = _state_with_reports()
+    st.update({"investment_debate_state": {"history": "", "bull_history": "", "bear_history": "", "current_response": "", "count": 0},
+               "risk_debate_state": {"history": "", "aggressive_history": "", "conservative_history": "", "neutral_history": "",
+                                     "latest_speaker": "", "current_aggressive_response": "", "current_conservative_response": "",
+                                     "current_neutral_response": "", "count": 0},
+               "trader_investment_plan": "plan", "investment_facilitator_decision": "x", "risk_facilitator_decision": "y",
+               "graph_context": "peer graph says X", "graph_metrics": {"status": "OK"}})
+    for factory in (agents.create_bull_researcher, agents.create_bear_researcher, agents.create_investment_facilitator,
+                    agents.create_aggressive_debator, agents.create_conservative_debator, agents.create_neutral_debator,
+                    agents.create_risk_facilitator):
+        rec = _Recorder()
+        factory(rec)(dict(st))
+        p = rec.prompts[0]
+        assert "MACRO-REPORT-TEXT" in p and "GRAPH-REPORT-TEXT" in p, factory.__name__
+    for factory in (agents.create_investment_facilitator, agents.create_risk_facilitator):   # these two carry no reports of their own
+        rec = _Recorder()
+        factory(rec)(dict(st))
+        assert all(t in rec.prompts[0] for t in ("FUND-REPORT-TEXT", "MARKET-REPORT-TEXT", "NEWS-REPORT-TEXT", "SENT-REPORT-TEXT")), factory.__name__
+    rec = _Recorder()                                                   # the graph analyst reads the five reports before it
+    out = agents.create_graph_report_agent(rec, log=lambda *a: None)(dict(st))
+    assert out == {"graph_report": "ok BUY"} and all(t in rec.prompts[0] for t in ("FUND-REPORT-TEXT", "MACRO-REPORT-TEXT"))
+    assert "GRAPH-REPORT-TEXT" not in rec.prompts[0]                    # it does not read its own old report
+    skipped = dict(st, graph_metrics={"status": "SKIPPED"})             # non-DSE ticker: no graph, no report
+    assert agents.create_graph_report_agent(_Recorder(), log=lambda *a: None)(skipped) == {}
+    monkeypatch.setenv("RAEM_SHARE_ALL_REPORTS", "0")
+    rec = _Recorder()
+    agents.create_bull_researcher(rec)(dict(st))
+    assert "MACRO-REPORT-TEXT" not in rec.prompts[0]
+
+
+def test_trader_and_portfolio_manager_get_all_reports(monkeypatch):
+    pytest.importorskip("langchain_core")
+    from app.ai_pipeline import agents, config
+    config.ensure_tradingagents_on_path()
+    monkeypatch.setenv("RAEM_FACT_GUARD", "0")
+    monkeypatch.delenv("RAEM_SHARE_ALL_REPORTS", raising=False)
+    seen = []
+
+    def fake_invoke(structured_llm, llm, messages, render, who):
+        seen.append((who, "\n".join(str(m["content"]) for m in messages)))
+        return "FINAL TRANSACTION PROPOSAL: **HOLD**"
+
+    import tradingagents.agents.utils.structured as structured
+    monkeypatch.setattr(structured, "invoke_structured_or_freetext", fake_invoke)
+    monkeypatch.setattr(structured, "bind_structured", lambda llm, schema, who: None)
+    st = _state_with_reports()
+    st.update({"investment_plan": "plan", "trader_investment_plan": "t", "risk_facilitator_decision": "r",
+               "risk_debate_state": {"history": "h"}, "investor_profile": "Aggressive", "indicators_parsed": {}, "fund_metrics": {}})
+    agents.create_trader(object())(dict(st))
+    agents.create_portfolio_manager(object())(dict(st))
+    assert [w for w, _ in seen] == ["Trader", "PortfolioManager"]
+    for who, text in seen:
+        assert all(t in text for t in ("FUND-REPORT-TEXT", "MARKET-REPORT-TEXT", "NEWS-REPORT-TEXT", "SENT-REPORT-TEXT",
+                                       "MACRO-REPORT-TEXT", "GRAPH-REPORT-TEXT")), who
+
+
+def test_later_analysts_read_the_earlier_analysts_reports(monkeypatch):
+    pytest.importorskip("langchain_core")
+    from app.ai_pipeline import agents, config
+    config.ensure_tradingagents_on_path()
+    import tradingagents.dataflows.symbol_utils as su
+    monkeypatch.setattr(su, "is_dse_ticker", lambda s: False)
+    monkeypatch.delenv("RAEM_SHARE_ALL_REPORTS", raising=False)
+    prompts = {}
+
+    def fake_analyst_invoke(kind, llm, messages, company, date, log):
+        prompts[kind] = "\n".join(str(getattr(m, "content", m)) for m in messages)
+        return type("R", (), {"content": "report text"})()
+
+    monkeypatch.setattr(agents, "analyst_invoke", fake_analyst_invoke)
+
+    class Tool:
+        def __init__(self, text): self.text = text
+        def invoke(self, *a, **k): return self.text
+
+    tools = {"build_instrument_context": lambda c, *a: "ctx", "get_language_instruction": lambda: "",
+             "get_stock_data": Tool("Date,Open,High,Low,Close,Volume\n2026-11-24,1,2,1,2,100\n"),
+             "get_indicators": Tool("2026-11-24: 50.0\n"), "get_news": Tool("- AAA news item about earnings\n"),
+             "get_global_news": Tool("- global item\n"), "get_fundamentals": Tool(""), "get_balance_sheet": Tool(""),
+             "get_cashflow": Tool(""), "get_income_statement": Tool("")}
+    monkeypatch.setattr(agents, "_ta_utils", lambda *a, **k: tools)
+    st = _state_with_reports()
+    st["news_raw"] = {}
+    try:
+        agents.create_market_analyst(object(), ["rsi"], log=lambda *a: None)(dict(st))
+    except Exception:
+        pass   # only the prompt matters here
+    assert "market" in prompts and "FUND-REPORT-TEXT" in prompts["market"]
+    assert "MARKET-REPORT-TEXT" not in prompts["market"]                # it does not read its own old report
