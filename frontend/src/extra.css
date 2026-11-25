@@ -189,7 +189,9 @@ table.stktable th:last-child, table.stktable td:last-child { text-align: right; 
 .evleg i.a { width: 0; height: 14px; border-radius: 0; border-left: 2px dashed var(--faint); }
 .evmore { margin-top: 12px; }
 .evtabs { margin-bottom: 16px; }
-.acsum { font-size: 15px; line-height: 1.55; color: var(--text); }
+.evtop { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
+.evtop .evtabs { margin-bottom: 0; }
+.acname { font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; }
 .acmixrow { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 10px; }
 .acmixrow b { font-size: 13px; color: var(--text); }
 .acmix { display: flex; height: 30px; border-radius: 6px; overflow: hidden; background: var(--bg-raised); }

@@ -557,7 +557,7 @@ function renderEval() {
   const ev = EV();
   const head = `<div class="page-h"><h1>Evaluation</h1><p>How often the AI analysis' BUY, HOLD and SELL calls were right, judged on the closes of the next trading days. Every refresh merges the trading logs, the session archive and the files in <span class="mono">backend/data/evaluation_inputs</span> and scores them again.</p></div>`;
   const tabs = evTabs();
-  if (X.ev.tab === "agents") return head + tabs + renderAgents();
+  if (X.ev.tab === "agents") { const a0 = acSel(); return head + `<div class="evtop">${tabs}${a0 ? `<span class="acname">${esc(a0.co.name)}</span>` : ""}</div>` + renderAgents(); }
   if (!ev || !ev.scored) return head + tabs + card("", "", "", emptyState("chart", "No evaluation saved yet", "Run <span class='mono'>python backend/app/pipeline/export_evaluation.py</span> (or <span class='mono'>python backend/refresh.py</span>), then rebuild the page."));
   const w = X.ev.w, W = String(w), o = ev.overall[W], diff = o.acc - o.base, pend = ev.pending;
   const co = ev.companies.map(c => ({ c, s: c.w[W] })), sg = ev.signals[W];
@@ -675,8 +675,7 @@ function renderAgents() {
   const callRows = shown.map(r => { const ch = i => { const v = (r[3][i] - r[2]) / r[2] * 100; return `<td class="${cls(v)}">${fmtPct(v)}</td>`; };
     const res = who => `<span class="${acRight(r, who) ? "up" : "down"}">${acRight(r, who) ? "Right" : "Wrong"}</span>`;
     return `<tr><td class="t"><span class="mono">${dShort(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${sigBadge(r[4])} ${res("multi")}</td><td class="t">${sigBadge(r[5])} ${res("single")}</td></tr>`; }).join("");
-  return `${card("", "", "", `<p class="acsum">${esc(co.name)}: the multi agent was right on <b>${o.multi.k} of ${n}</b> calls (${evA(o.multi.acc)}), the single agent on <b>${o.single.k} of ${n}</b> (${evA(o.single.acc)}).</p>`)}
-    ${stats}
+  return `${stats}
     <div class="two">
       ${card("Accuracy", `Share of calls judged right. The whisker is the 95% interval ${hint(GLOSS.wilson)}; the amber mark is always HOLD.`, "", `${accBars}<p class="evleg"><span><i style="background:${AC_COL.multi}"></i>Multi agent</span><span><i style="background:${AC_COL.single}"></i>Single agent</span><span><i class="w"></i>95% interval</span><span><i class="h"></i>Always HOLD</span></p>`)}
       ${card("What each agent said", "How the calls split over BUY, HOLD and SELL.", "", acMix(sg, n))}
