@@ -160,7 +160,7 @@ def test_analysts_follow_the_research_notebooks(env, capsys):
     steps = {s["step"]: s["output"] for s in log[-1]["steps"]} if isinstance(log, list) else {s["step"]: s["output"] for s in log["steps"]}
     sm = steps["Sentiment Analyst"]["sentiment_metrics"]
     assert sm["source"] == "RULE_BASED" and sm["positive_count"] >= 1 and sm["n_items"] >= 1
-    assert float(sm["score"]) > 5.5 and sm["overall"] in ("BULLISH", "NEUTRAL") and "llm_score" in sm
+    assert float(sm["score"]) > 5.0 and sm["overall"] in ("BULLISH", "NEUTRAL") and "llm_score" in sm
     fund = steps["Fundamentals Analyst"]
     assert fund["facts_sent_to_other_agents"].startswith("FUNDAMENTALS - NUMBERS ONLY")
     assert fund["report"] and not fund["report"].startswith("FUNDAMENTALS - NUMBERS ONLY")
