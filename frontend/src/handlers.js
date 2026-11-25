@@ -39,6 +39,11 @@ document.addEventListener("click", e => {
   else if (a === "btp-zout") { btpZoom(1 / 0.6); return; }
   else if (a === "btp-reset") { btpReset(); return; }
   else if (a === "ev-w") X.ev.w = +v;
+  else if (a === "ev-tab") X.ev.tab = v;
+  else if (a === "ac-t") { X.ac.t = v; X.ac.n = 15; }
+  else if (a === "ac-d") { X.ac.d = v; X.ac.n = 15; }
+  else if (a === "ac-w") X.ac.w = +v;
+  else if (a === "ac-more") X.ac.n += 25;
   else if (a === "ev-t") { X.ev.t = v; X.ev.n = 25; }
   else if (a === "ev-more") X.ev.n += 25;
   else if (a === "more") S.more = !S.more;

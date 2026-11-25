@@ -526,7 +526,7 @@ function renderHelp() {
 }
 
 /* ----- evaluation (accuracy of the AI analysis' BUY / HOLD / SELL calls; data: backend/data/evaluation.json) ----- */
-X.ev = { w: 3, t: "", n: 25 };
+X.ev = { w: 3, t: "", n: 25, tab: "overall" };   // tab: "overall" (the AI analysis' accuracy) or "agents" (single vs multi agent)
 const EV = () => EXTRA.evaluation || null;
 const EV_W = [[1, "1 day"], [2, "2 days"], [3, "3 days"]];
 const evA = v => v == null ? "–" : v.toFixed(1) + "%";
@@ -556,7 +556,9 @@ function evBars(items, avg, baseLabel) {
 function renderEval() {
   const ev = EV();
   const head = `<div class="page-h"><h1>Evaluation</h1><p>How often the AI analysis' BUY, HOLD and SELL calls were right, judged on the closes of the next trading days. Every refresh merges the trading logs, the session archive and the files in <span class="mono">backend/data/evaluation_inputs</span> and scores them again.</p></div>`;
-  if (!ev || !ev.scored) return head + card("", "", "", emptyState("chart", "No evaluation saved yet", "Run <span class='mono'>python backend/app/pipeline/export_evaluation.py</span> (or <span class='mono'>python backend/refresh.py</span>), then rebuild the page."));
+  const tabs = evTabs();
+  if (X.ev.tab === "agents") return head + tabs + renderAgents();
+  if (!ev || !ev.scored) return head + tabs + card("", "", "", emptyState("chart", "No evaluation saved yet", "Run <span class='mono'>python backend/app/pipeline/export_evaluation.py</span> (or <span class='mono'>python backend/refresh.py</span>), then rebuild the page."));
   const w = X.ev.w, W = String(w), o = ev.overall[W], diff = o.acc - o.base, pend = ev.pending;
   const co = ev.companies.map(c => ({ c, s: c.w[W] })), sg = ev.signals[W];
   const byCo = co.slice().sort((p, q) => (q.s.acc == null ? -1 : q.s.acc) - (p.s.acc == null ? -1 : p.s.acc));
@@ -579,7 +581,7 @@ function renderEval() {
     ["Input files", (sc.files || []).join(", ") || "backend/data/evaluation_inputs", `${fmtN(ss.input_files || 0)} sessions, ${fmtN(sc.signal_rows_from_files || 0)} signal rows`],
     ["Closes logged by sessions", "price window of each session", `${fmtN(cl.logged_windows || 0)} closes`], ["Closes from input files", "ticker, date, close", `${fmtN(cl.input_files || 0)} closes`],
     ["Closes from the engine CSVs", "only days after the last logged close", `${fmtN(cl.engine_csv || 0)} closes`]];
-  return `${head}
+  return `${head}${tabs}
     ${card("", "", "", `<div class="field"><span class="lbl">Window ${hint(GLOSS.evwin)}</span>${windowPills}</div>`)}
     <div class="stats">${statCard(`Accuracy ${hint(GLOSS.evacc)}`, evA(o.acc), `${o.k} of ${o.n} · ${evI(o)}`, "accent", "check")}${statCard(`Always HOLD ${hint(GLOSS.evbase)}`, evA(o.base), `agent is ${Math.abs(diff).toFixed(1)} pts ${diff >= 0 ? "above" : "below"} this bar`, "hold", "pulse")}${statCard("Calls scored", fmtN(ev.scored), `${fmtN(ev.calls)} calls · ${fmtN(pend)} waiting`, "", "chart")}${statCard("Companies", fmtN(ev.companies.length), `${dShort(ev.first)} to ${dLong(ev.asof)}`, "", "db")}</div>
     ${card("Accuracy by company", `Share of calls judged right within the next ${w} trading day${w > 1 ? "s" : ""}, best first. The whisker is the 95% interval ${hint(GLOSS.wilson)}.`, "", `${coBars}<p class="evleg"><span><i class="b"></i>Accuracy</span><span><i class="w"></i>95% interval</span><span><i class="h"></i>Always HOLD</span><span><i class="a"></i>All stocks ${evA(o.acc)}</span></p><p class="src">Source: backend/data/evaluation.json, written by backend/app/pipeline/export_evaluation.py.</p>`)}
@@ -601,6 +603,105 @@ function drawEval() {
   if (pts.length < 2) { h.innerHTML = ""; return; }
   const pct = (a, b) => b >= MIN ? 100 * a / b : null;
   lineChart(h, pts.map(p => p[0]), [{ name: "Agent", v: pts.map(p => pct(p[2], p[1])), color: "var(--accent)", w: 2.4 }, { name: "Always HOLD", v: pts.map(p => pct(p[3], p[1])), color: "var(--hold)", dash: true, w: 1.8 }], { label: "Running accuracy of all scored calls", fmt: v => v.toFixed(0) + "%" });
+}
+
+/* ----- single agent vs multi agent: the second tab of the Evaluation page (data: EXTRA.agent_comparison, written by app/pipeline/export_agent_comparison.py) ----- */
+X.ac = { t: "", d: "merged", w: 3, n: 15 };   // company ("" = BPML or the first one), data ("merged" or "all"), window (3 or 5 days), rows shown
+const AC = () => EXTRA.agent_comparison || null;
+const AC_COL = { multi: "var(--accent)", single: "#a78bfa" };
+const AC_SIG = { BUY: "var(--buy)", HOLD: "var(--hold)", SELL: "var(--sell)" };
+const AC_W = [[3, "3 days"], [5, "5 days"]];
+const evTabs = () => `<div class="tabs evtabs" role="tablist" aria-label="Evaluation view">${[["overall", "Overall accuracy"], ["agents", "Single vs multi agent"]].map(([id, l]) =>
+  `<button type="button" class="tab" role="tab" data-act="ev-tab" data-v="${id}" aria-selected="${X.ev.tab === id}">${l}</button>`).join("")}</div>`;
+const acPills = (label, act, cur, items) => `<div class="field"><span class="lbl">${label}</span><div class="pills" role="group" aria-label="${esc(label)}">${items.map(([v, l]) =>
+  `<button type="button" class="pillbtn" data-act="${act}" data-v="${esc(v)}" aria-pressed="${String(cur) === String(v)}"><i></i>${esc(l)}</button>`).join("")}</div></div>`;
+/* the selected company, data group and window: {co, w, d, o (overall block), sg (by-signal block), rows (the dates of the group)} */
+function acSel() {
+  const a = AC();
+  if (!a || !a.companies || !a.companies.length) return null;
+  const co = a.companies.find(c => c.ticker === X.ac.t) || a.companies.find(c => c.ticker === "BPML") || a.companies[0];
+  X.ac.t = co.ticker;
+  const w = String(X.ac.w), groups = Object.keys(co.overall[w] || {});
+  if (!groups.includes(X.ac.d)) X.ac.d = groups.includes("merged") ? "merged" : "all";
+  const rows = co.rows.filter(r => X.ac.d === "all" || r[1] === X.ac.d);
+  return { a, co, w, d: X.ac.d, o: co.overall[w][X.ac.d], sg: co.signals[w][X.ac.d], rows };
+}
+const acRight = (r, who) => !!(X.ac.w === 5 ? r[who === "multi" ? 8 : 9] : r[who === "multi" ? 6 : 7]);
+const acMark = (shape, cx0, cy, r, fill, cx = +cx0) => shape === "BUY" ? `<polygon points="${cx},${cy - r} ${cx + r},${cy + r * 0.8} ${cx - r},${cy + r * 0.8}" fill="${fill}"/>`
+  : shape === "SELL" ? `<polygon points="${cx},${cy + r} ${cx + r},${cy - r * 0.8} ${cx - r},${cy - r * 0.8}" fill="${fill}"/>` : `<circle cx="${cx}" cy="${cy}" r="${r * 0.82}" fill="${fill}"/>`;
+/* the price of the stock over the dates, and under it what each agent said that day: shape = BUY (up) / HOLD (dot) / SELL (down), colour = right (green) or wrong (red) */
+function acTimeline(rows) {
+  const n = rows.length;
+  if (n < 2) return "";
+  const W0 = 1000, L = 92, R = 16, T = 14, ph = 150, laneH = 36, gap = 30, H0 = T + ph + gap + 2 * laneH + 34;
+  const PADX = 16, step = (W0 - L - R - 2 * PADX) / (n - 1), xs = i => L + PADX + i * step;
+  const ps = rows.map(r => r[2]), lo = Math.min(...ps), hi = Math.max(...ps), pad = (hi - lo) * 0.1 || 1, y0 = lo - pad, y1 = hi + pad;
+  const y = v => T + ph - (v - y0) / (y1 - y0) * ph;
+  const rad = Math.max(3, Math.min(9, step * 0.42));
+  const grid = [lo, (lo + hi) / 2, hi].map(v => `<line x1="${L}" x2="${W0 - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="var(--border-soft)"/><text x="${L - 8}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${esc(fmtP(v))}</text>`).join("");
+  const price = `<polyline points="${rows.map((r, i) => `${xs(i).toFixed(1)},${y(r[2]).toFixed(1)}`).join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2"/>`;
+  const lane = (k, name, who) => {
+    const cy = T + ph + gap + k * laneH + laneH / 2;
+    return `<text x="${L - 8}" y="${cy + 4}" text-anchor="end" style="fill:var(--text);font-weight:700">${name}</text><line x1="${L}" x2="${W0 - R}" y1="${cy}" y2="${cy}" stroke="var(--border-soft)"/>`
+      + rows.map((r, i) => acMark(r[who === "multi" ? 4 : 5], xs(i).toFixed(1), cy, rad, acRight(r, who) ? "var(--buy)" : "var(--sell)")).join("");
+  };
+  const mid = Math.floor(n / 2), yl = H0 - 8;
+  const axis = [[0, "start"], [mid, "middle"], [n - 1, "end"]].map(([i, a]) => `<text x="${xs(i).toFixed(1)}" y="${yl}" text-anchor="${a}">${esc(dShort(rows[i][0]))}</text>`).join("");
+  return `<svg class="actl" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Price of the stock on each date, and for each date the call of the multi agent and of the single agent, marked right or wrong">${grid}${price}${lane(0, "Multi", "multi")}${lane(1, "Single", "single")}${axis}</svg>`;
+}
+function acMix(sg, n) {
+  const row = (lab, who) => `<div class="acmixrow"><b>${lab}</b><div class="acmix" role="img" aria-label="${esc(lab)}: ${["BUY", "HOLD", "SELL"].map(s => `${s} ${sg[who][s].n}`).join(", ")}">${["BUY", "HOLD", "SELL"].map(s => sg[who][s].n
+    ? `<span style="width:${(100 * sg[who][s].n / n).toFixed(2)}%;background:${AC_SIG[s]}" title="${s}: ${sg[who][s].n} of ${n} dates">${sg[who][s].n / n >= 0.08 ? `${s} ${sg[who][s].n}` : ""}</span>` : "").join("")}</div></div>`;
+  return `${row("Multi agent", "multi")}${row("Single agent", "single")}<p class="evleg"><span><i style="background:var(--buy)"></i>BUY</span><span><i style="background:var(--hold)"></i>HOLD</span><span><i style="background:var(--sell)"></i>SELL</span></p>`;
+}
+function renderAgents() {
+  const S0 = acSel();
+  if (!S0) return card("", "", "", emptyState("chart", "No single vs multi data saved yet", "Run <span class='mono'>python backend/app/pipeline/export_agent_comparison.py</span> (or <span class='mono'>python backend/refresh.py</span>), then rebuild the page. The input files are described in README.md."));
+  const { a, co, w, d, o, sg, rows } = S0, n = o.n;
+  const both = rows.filter(r => acRight(r, "multi") && acRight(r, "single")).length, neither = rows.filter(r => !acRight(r, "multi") && !acRight(r, "single")).length;
+  const diff = o.multi.k - o.single.k, overlap = o.multi.lo <= o.single.hi && o.single.lo <= o.multi.hi;
+  const sgn = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
+  const group = d === "merged" ? "merged data" : "all data";
+  const pills = card("", "", "", `<div class="acsel">${acPills("Company", "ac-t", co.ticker, a.companies.map(c => [c.ticker, c.ticker]))}${acPills("Data", "ac-d", d,
+    [...(co.overall[w].merged ? [["merged", `Merged data (${co.n.merged} dates)`]] : []), ["all", `All data (${co.n.all} dates)`]])}${acPills("Window", "ac-w", X.ac.w, AC_W)}</div>`);
+  const stats = `<div class="stats">${statCard("Multi agent", evA(o.multi.acc), `${o.multi.k} of ${n} right · ${evI(o.multi)}`, "accent", "check")}${statCard("Single agent", evA(o.single.acc), `${o.single.k} of ${n} right · ${evI(o.single)}`, "", "pulse")}`
+    + `${statCard(`Always HOLD ${hint(["Always HOLD", "What you would score by answering HOLD on every one of these dates. The single agent says HOLD almost every day, so its score sits on this bar."])}`, evA(o.hold.acc), `${o.hold.k} of ${n} right`, "hold", "line")}`
+    + `${statCard("Dates compared", fmtN(n), `${dShort(rows[0][0])} to ${dShort(rows[rows.length - 1][0])} · ${esc(group)}`, "", "chart")}</div>`;
+  const accBars = evBars([{ label: "Multi agent", sub: `${o.multi.k}/${n}`, k: o.multi.k, n, acc: o.multi.acc, lo: o.multi.lo, hi: o.multi.hi, base: o.hold.acc, color: AC_COL.multi },
+    { label: "Single agent", sub: `${o.single.k}/${n}`, k: o.single.k, n, acc: o.single.acc, lo: o.single.lo, hi: o.single.hi, base: o.hold.acc, color: AC_COL.single }], null, "always HOLD");
+  const sigItems = [];
+  [["multi", "Multi"], ["single", "Single"]].forEach(([who, lab]) => ["BUY", "HOLD", "SELL"].forEach(s => { const b = sg[who][s]; if (b.n) sigItems.push({ label: `${lab} ${s}`, sub: `${b.n} calls · ${b.k} right`, k: b.k, n: b.n, acc: b.acc, lo: b.lo, hi: b.hi, base: sg.every[s].acc, color: AC_SIG[s] }); }));
+  const nm = sg.multi.BUY.n + sg.multi.SELL.n, km = sg.multi.BUY.k + sg.multi.SELL.k, ns = sg.single.BUY.n + sg.single.SELL.n;
+  const title = diff > 0 ? "Why the multi agent scores higher on these dates" : diff < 0 ? "Why the single agent scores higher on these dates" : "How the two agents compare on these dates";
+  const reading = `<ul class="plain">`
+    + `<li>The single agent answered HOLD on <b>${sg.single.HOLD.n} of ${n}</b> dates${ns ? ` (and took a side on ${ns})` : ""}, so its score is the always-HOLD score, ${evA(o.hold.acc)}: it hardly ever takes a side.</li>`
+    + (nm ? `<li>The multi agent took a side (BUY or SELL) on <b>${nm} of ${n}</b> dates and was right on <b>${km}</b> of them (${evA(100 * km / nm)}). Its HOLD calls were right ${sg.multi.HOLD.k} of ${sg.multi.HOLD.n}.</li>` : `<li>The multi agent answered HOLD on every one of these dates too.</li>`)
+    + `<li>For reference, answering the same signal on every date scores BUY ${evA(sg.every.BUY.acc)}, HOLD ${evA(sg.every.HOLD.acc)}, SELL ${evA(sg.every.SELL.acc)} here (the amber marks in the signal chart). Part of any gap comes from where the price went in this window.</li>`
+    + `<li>The agents differ on ${o.only_multi + o.only_single} of ${n} dates: only the multi agent was right on <b>${o.only_multi}</b>, only the single agent on <b>${o.only_single}</b> (exact paired test p = ${o.p < 0.001 ? "&lt; 0.001" : o.p.toFixed(3)}). ${n < 30 || o.p >= 0.05 ? `The data do not show that one agent is better${overlap ? ": the 95% intervals overlap" : ""}${n < 30 ? `, and ${n} dates are few` : ""}.` : "The difference is larger than chance would usually give."}</li></ul>`;
+  const pair = `<div class="acpair"><div><b>${both}</b><span>both right</span></div><div style="border-color:${AC_COL.multi}"><b>${o.only_multi}</b><span>only the multi agent right</span></div><div style="border-color:${AC_COL.single}"><b>${o.only_single}</b><span>only the single agent right</span></div><div><b>${neither}</b><span>neither right</span></div></div>`;
+  const shown = rows.slice().reverse().slice(0, X.ac.n);
+  const callRows = shown.map(r => { const ch = i => { const v = (r[3][i] - r[2]) / r[2] * 100; return `<td class="${cls(v)}">${fmtPct(v)}</td>`; };
+    const res = who => `<span class="${acRight(r, who) ? "up" : "down"}">${acRight(r, who) ? "Right" : "Wrong"}</span>`;
+    return `<tr><td class="t"><span class="mono">${dShort(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${sigBadge(r[4])} ${res("multi")}</td><td class="t">${sigBadge(r[5])} ${res("single")}</td></tr>`; }).join("");
+  const lo = co.left_out || {};
+  return `${pills}
+    ${card("", "", "", `<p class="acsum">${esc(co.name)}, ${esc(group)}, judged on the next ${w} trading days: the multi agent was right on <b>${o.multi.k} of ${n}</b> dates (${evA(o.multi.acc)}), the single agent on <b>${o.single.k} of ${n}</b> (${evA(o.single.acc)}); that is ${sgn(diff)} date${Math.abs(diff) === 1 ? "" : "s"} for the multi agent. ${n < 30 || o.p >= 0.05 ? "With so few dates this is not a proven difference." : ""}</p>`)}
+    ${stats}
+    <div class="two">
+      ${card("Accuracy", `Share of the ${n} dates judged right. The whisker is the 95% interval ${hint(GLOSS.wilson)}; the amber mark is always HOLD.`, "", `${accBars}<p class="evleg"><span><i style="background:${AC_COL.multi}"></i>Multi agent</span><span><i style="background:${AC_COL.single}"></i>Single agent</span><span><i class="w"></i>95% interval</span><span><i class="h"></i>Always HOLD</span></p>`)}
+      ${card("What each agent said", "How the calls split over BUY, HOLD and SELL on these dates.", "", acMix(sg, n))}
+    </div>
+    ${card(title, "Read from the numbers on this page.", "", reading)}
+    <div class="two">
+      ${card("Accuracy by signal", "Calls of each kind and how many were right. The amber mark is what answering that signal on every date would have scored.", "", `${evBars(sigItems, null, "if always this signal")}<p class="evleg"><span><i class="h"></i>If always this signal</span><span><i class="w"></i>95% interval</span></p>`)}
+      ${card("Same dates, who was right", "Every date the agents were compared on, by which of them was right.", "", pair)}
+    </div>
+    ${card("Day by day", `The stock's close on each date, and under it the call of each agent. ▲ BUY, ● HOLD, ▼ SELL; green = right, red = wrong (${w}-day window).`, "", (rows.length > 1 ? `<div class="scroll">${acTimeline(rows)}</div>` : `<p class="src">Fewer than two dates.</p>`))}
+    ${card("Dates", `Newest first. Change = the next three closes against the entry (the close of the call's day); Right or Wrong uses the ${w}-day window above.`, "", `<div class="scroll"><table><thead><tr><th>Date</th><th>Entry</th><th>+1d</th><th>+2d</th><th>+3d</th><th>Multi agent</th><th>Single agent</th></tr></thead><tbody>${callRows}</tbody></table></div>${rows.length > shown.length ? `<p class="evmore"><button type="button" class="btn secondary sm" data-act="ac-more">Show more (${rows.length - shown.length} left)</button></p>` : ""}`)}
+    ${card("How this is scored", "", "", `<ul class="plain"><li>Both agents are scored on exactly the same dates: only dates on which both made a call and five later closes exist. Left out for ${esc(co.ticker)}: ${fmtN(lo.multi_only || 0)} multi-agent dates the single agent has no call for, ${fmtN(lo.single_only || 0)} single-agent dates the multi agent has none for, ${fmtN((lo.waiting || []).length)} dates waiting for later closes.</li>`
+      + `<li><b>BUY</b> is right if some close within the window is above the entry, <b>SELL</b> if some close is below it. <b>HOLD</b> is wrong only if the closes of day 1 and day 2 are both below the entry (day 3 and later are not looked at, in either window). Returns are rounded to 0.01% first.</li>`
+      + `<li>Merged data is the part of the dates whose multi-agent call comes from the merged dataset of live runs; the rest comes from the replay of the multi agent. The two agents did not see the same inputs: the single agent gets one prompt with price indicators, fundamentals and news; the multi agent runs the analysts, a debate, a risk check and the memory, and the live runs also had the market backdrop, the disclosures and web search.</li>`
+      + `<li class="src">Source: backend/data/agent_comparison.json, written by backend/app/pipeline/export_agent_comparison.py from the files in backend/data/evaluation_inputs/agent_comparison/ and the merged dataset.</li></ul>`)}`;
 }
 
 /* ----- router ----- */

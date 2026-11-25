@@ -25,6 +25,11 @@ try:
     extra["evaluation"] = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "evaluation.json"), encoding="utf-8"))
 except (OSError, ValueError):
     extra.pop("evaluation", None)
+# Single vs multi agent tab of the Evaluation page: written by app/pipeline/export_agent_comparison.py on each refresh. Optional and fail-soft like the above.
+try:
+    extra["agent_comparison"] = json.load(open(os.path.join(HERE, "..", "..", "backend", "data", "agent_comparison.json"), encoding="utf-8"))
+except (OSError, ValueError):
+    extra.pop("agent_comparison", None)
 # "Data as of" date: written by export_extra.py on each refresh; the newest price date is the fallback for older exports
 asof = max(extra.get("asof") or "", max(d["forecast"]["last_date"] for d in data.values()))   # never older than the prices themselves
 assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", asof), asof

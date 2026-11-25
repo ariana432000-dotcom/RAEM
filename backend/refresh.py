@@ -8,7 +8,8 @@
     python backend/refresh.py --no-evaluation  # leave the Evaluation page's data (backend/data/evaluation.json) as it is
 
 The Evaluation step (merge trading logs + archive + backend/data/evaluation_inputs, score the calls, write evaluation.json) is offline,
-fast and never fails the refresh, so it also runs with --build-only.
+fast and never fails the refresh, so it also runs with --build-only. The Agent comparison step next to it (single agent vs multi agent on the same
+dates, from backend/data/evaluation_inputs/agent_comparison/, writes agent_comparison.json) follows the same rules and the same flag.
 
 Each step runs as its own Python process, so a crash in one model does not take the
 web server down when the backend calls this. The backend imports `steps()` and `run()`.
@@ -47,6 +48,7 @@ def steps(tickers: list[str] | None = None, extra: bool = True, top_up: bool = T
             out.append(("Extra pages", [PY, "-W", "ignore", os.path.join(WEB, "app", "pipeline", "export_extra.py")]))
     if evaluation:
         out.append(("Evaluation", [PY, os.path.join(WEB, "app", "pipeline", "export_evaluation.py")]))
+        out.append(("Agent comparison", [PY, os.path.join(WEB, "app", "pipeline", "export_agent_comparison.py")]))   # single vs multi agent, same dates; fail-soft too
     out.append(("Merge page sources", [PY, os.path.join(FRONTEND, "src", "merge.py")]))
     out.append(("Build page", [PY, os.path.join(FRONTEND, "src", "build.py")]))
     return out
