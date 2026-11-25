@@ -77,9 +77,67 @@ def test_rule_based_sentiment_uses_company_news_only_and_never_looks_ahead():
                 {"company": "AAA", "scope": "company", "pub_date": day(-3)},
                 {"company": "AAA", "scope": "web", "pub_date": day(60)}])                         # older than 30 days
     rs = news_rag.rule_based_news_sentiment(col, "AAA", today)
-    assert rs["n"] == 2 and rs["pos"] == 1 and rs["neg"] == 1 and rs["score"] == 5.5 and rs["overall"] == "NEUTRAL"
+    assert rs["n"] == 2 and rs["pos"] == 1 and rs["neg"] == 1 and rs["score"] == 5.0 and rs["overall"] == "NEUTRAL"
     assert rs["confidence"] == "Low" and "RULE-BASED" in rs["text"]
     assert news_rag.rule_based_news_sentiment(col, "ZZZ", today) == {"n": 0}
+
+
+def _sent_col(*texts):
+    col = FakeCollection()
+    today = day()
+    col.upsert([f"s{i}" for i in range(len(texts))], list(texts),
+               [{"company": "AAA", "scope": "company", "pub_date": today} for _ in texts])
+    return col, today
+
+
+POS_TXT = "AAA declared a cash dividend and profit rose 12% this year."
+NEG_TXT = "AAA reported a net loss and faces an investigation by the regulator."
+NEU_TXT = "AAA published a routine notice for its shareholders."
+
+
+def test_sentiment_levels_8_2_5(monkeypatch):
+    monkeypatch.delenv("RAEM_SENT_SCORING", raising=False)
+    monkeypatch.delenv("RAEM_SENT_SHRINK_K", raising=False)
+    # one positive, one negative, one neutral, all today: (8 + 2 + 5) / 3 = 5.0, the middle of the 4 / 6 cut-offs
+    col, today = _sent_col(POS_TXT, NEG_TXT, NEU_TXT)
+    rs = news_rag.rule_based_news_sentiment(col, "AAA", today)
+    assert rs["score"] == 5.0 and rs["overall"] == "NEUTRAL" and rs["scoring"] == "levels"
+    # all neutral stays at 5, not above it
+    col, today = _sent_col(NEU_TXT, "AAA published another routine notice for its shareholders.")
+    assert news_rag.rule_based_news_sentiment(col, "AAA", today)["score"] == 5.0
+    # a positive and a neutral item: (8 + 5) / 2 = 6.5 -> BULLISH; a negative with two neutrals: (2 + 5 + 5) / 3 = 4.0 -> BEARISH
+    col, today = _sent_col(POS_TXT, NEU_TXT)
+    rs = news_rag.rule_based_news_sentiment(col, "AAA", today)
+    assert rs["score"] == 6.5 and rs["overall"] == "BULLISH"
+    col, today = _sent_col(NEG_TXT, NEU_TXT, "AAA published another routine notice for its shareholders.")
+    rs = news_rag.rule_based_news_sentiment(col, "AAA", today)
+    assert rs["score"] == 4.0 and rs["overall"] == "BEARISH"
+
+
+def test_sentiment_levels_are_recency_weighted():
+    col = FakeCollection()
+    today = day()
+    col.upsert(["a", "b"], [POS_TXT, NEG_TXT],
+               [{"company": "AAA", "scope": "company", "pub_date": today},
+                {"company": "AAA", "scope": "company", "pub_date": day(10)}])      # half the weight of today's item
+    rs = news_rag.rule_based_news_sentiment(col, "AAA", today)
+    assert rs["score"] == 6.0 and rs["overall"] == "BULLISH"                         # (1 * 8 + 0.5 * 2) / 1.5
+
+
+def test_sentiment_legacy_and_shrink_switches(monkeypatch):
+    col, today = _sent_col(POS_TXT)
+    monkeypatch.delenv("RAEM_SENT_SHRINK_K", raising=False)
+    monkeypatch.delenv("RAEM_SENT_SCORING", raising=False)
+    assert news_rag.rule_based_news_sentiment(col, "AAA", today)["score"] == 8.0      # one item, no shrinkage
+    monkeypatch.setenv("RAEM_SENT_SHRINK_K", "5")
+    rs = news_rag.rule_based_news_sentiment(col, "AAA", today)
+    assert rs["score"] == 5.5 and rs["shrink_k"] == 5.0                               # 5 + 3 * 1/6
+    monkeypatch.setenv("RAEM_SENT_SCORING", "legacy")                                 # the earlier rule: 5.5 + 4.5 * net
+    monkeypatch.delenv("RAEM_SENT_SHRINK_K", raising=False)
+    rs = news_rag.rule_based_news_sentiment(col, "AAA", today)
+    assert rs["score"] == 10.0 and rs["scoring"] == "legacy"
+    col, today = _sent_col(NEU_TXT)
+    assert news_rag.rule_based_news_sentiment(col, "AAA", today)["score"] == 5.5
 
 
 def test_company_name_and_aliases(monkeypatch):

@@ -31,6 +31,23 @@ USE_RULE_SENTIMENT = os.environ.get("RAEM_RULE_SENTIMENT", "1") != "0"   # 0 = t
 SENT_MAX_AGE_DAYS = 30
 SENT_HALF_LIFE_DAYS = 10.0
 SENT_BULL_AT, SENT_BEAR_AT = 6.0, 4.0          # score >= 6 BULLISH, <= 4 BEARISH, else NEUTRAL
+# How one news item becomes a number.  "levels" (default): POSITIVE = 8, NEGATIVE = 2, NEUTRAL = 5, then the recency-weighted
+# mean, so the score is centred on 5 (the middle of the 4 / 6 cut-offs) and never goes past 2 or 8.  "legacy" (RAEM_SENT_SCORING=legacy)
+# is the earlier rule 5.5 + 4.5 * net, kept for the thesis ablation.  RAEM_SENT_SHRINK_K > 0 pulls a score from few items toward 5:
+# score = 5 + (mean - 5) * n / (n + k); 0 (default) = off.  Both are read at call time.
+SENT_LEVELS = {"POSITIVE": 8.0, "NEGATIVE": 2.0, "NEUTRAL": 5.0}
+SENT_NEUTRAL = 5.0
+
+
+def sentiment_scoring() -> str:
+    return "legacy" if os.environ.get("RAEM_SENT_SCORING", "levels").strip().lower() == "legacy" else "levels"
+
+
+def sentiment_shrink_k() -> float:
+    try:
+        return max(0.0, float(os.environ.get("RAEM_SENT_SHRINK_K", "0") or 0))
+    except ValueError:
+        return 0.0
 
 # Names the research companies are known by in the press; any other company uses its registered name.
 RESEARCH_NAMES = {
@@ -447,20 +464,27 @@ def rule_based_news_sentiment(collection, company: str, as_of: str) -> dict:
     if not items:
         return {"n": 0}
     pos = neg = neu = 0
-    num = den = 0.0
+    num = den = lnum = 0.0
     for doc, age in items:
         label, _p, _n = score_text_sentiment(doc)
         w = 0.5 ** (age / SENT_HALF_LIFE_DAYS)
         s = 1.0 if label == "POSITIVE" else (-1.0 if label == "NEGATIVE" else 0.0)
         pos, neg, neu = pos + (label == "POSITIVE"), neg + (label == "NEGATIVE"), neu + (label == "NEUTRAL")
-        num, den = num + w * s, den + w
-    net = num / den if den else 0.0                              # -1 .. +1
-    score = round(min(10.0, max(1.0, 5.5 + 4.5 * net)), 1)
+        num, den, lnum = num + w * s, den + w, lnum + w * SENT_LEVELS[label]
     n = len(items)
+    scoring, k = sentiment_scoring(), sentiment_shrink_k()
+    if scoring == "legacy":
+        net = num / den if den else 0.0                          # -1 .. +1
+        score = round(min(10.0, max(1.0, 5.5 + 4.5 * net)), 1)
+    else:
+        mean = lnum / den if den else SENT_NEUTRAL               # weighted mean of the 8 / 2 / 5 levels
+        shrink = n / (n + k) if k > 0 else 1.0
+        score = round(min(10.0, max(1.0, SENT_NEUTRAL + (mean - SENT_NEUTRAL) * shrink)), 1)
     overall = "BULLISH" if score >= SENT_BULL_AT else ("BEARISH" if score <= SENT_BEAR_AT else "NEUTRAL")
     confidence = "High" if n >= 8 else ("Medium" if n >= 3 else "Low")
     text = (f"RULE-BASED NEWS SENTIMENT (computed in code from {n} company news item(s) in the last {SENT_MAX_AGE_DAYS} days; "
             f"keyword lexicon, recency weighted): {pos} positive, {neg} negative, {neu} neutral. "
             f"Sentiment score {score}/10 ({overall}), data confidence {confidence}. "
             f"Use exactly this score for the company-news row of the table; do not invent other scores.")
-    return {"n": n, "pos": pos, "neg": neg, "neu": neu, "score": score, "overall": overall, "confidence": confidence, "text": text}
+    return {"n": n, "pos": pos, "neg": neg, "neu": neu, "score": score, "overall": overall, "confidence": confidence, "text": text,
+            "scoring": scoring, "shrink_k": k}
