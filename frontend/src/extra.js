@@ -675,7 +675,7 @@ function renderAgents() {
   const callRows = shown.map(r => { const ch = i => { const v = (r[3][i] - r[2]) / r[2] * 100; return `<td class="${cls(v)}">${fmtPct(v)}</td>`; };
     const res = who => `<span class="${acRight(r, who) ? "up" : "down"}">${acRight(r, who) ? "Right" : "Wrong"}</span>`;
     return `<tr><td class="t"><span class="mono">${dShort(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${sigBadge(r[4])} ${res("multi")}</td><td class="t">${sigBadge(r[5])} ${res("single")}</td></tr>`; }).join("");
-  return `${card("", "", "", `<p class="acsum">${esc(co.name)}: the multi agent was right on <b>${o.multi.k} of ${n}</b> calls (${evA(o.multi.acc)}), the single agent on <b>${o.single.k} of ${n}</b> (${evA(o.single.acc)}); that is ${sgn(diff)} call${Math.abs(diff) === 1 ? "" : "s"} for the multi agent. ${n < 30 || o.p >= 0.05 ? "This is not a proven difference." : ""}</p>`)}
+  return `${card("", "", "", `<p class="acsum">${esc(co.name)}: the multi agent was right on <b>${o.multi.k} of ${n}</b> calls (${evA(o.multi.acc)}), the single agent on <b>${o.single.k} of ${n}</b> (${evA(o.single.acc)}).</p>`)}
     ${stats}
     <div class="two">
       ${card("Accuracy", `Share of calls judged right. The whisker is the 95% interval ${hint(GLOSS.wilson)}; the amber mark is always HOLD.`, "", `${accBars}<p class="evleg"><span><i style="background:${AC_COL.multi}"></i>Multi agent</span><span><i style="background:${AC_COL.single}"></i>Single agent</span><span><i class="w"></i>95% interval</span><span><i class="h"></i>Always HOLD</span></p>`)}
