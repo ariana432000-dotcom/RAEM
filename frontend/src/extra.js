@@ -271,17 +271,33 @@ const BT_VL_MIN = 8;   // fewer trades than this are not shown
 function btVsLong(t) {
   const r = ((EXTRA.backtest || {})[t] || {}).Ensemble;
   if (!r || !r.trades) return null;
-  let from = "", last = "", n = 0, called = 0, win = 0, model = 1, long_ = 1;
+  let from = "", last = "", n = 0, called = 0, win = 0, short_ = 0, model = 1, long_ = 1;
   r.trades.slice().sort((a, b) => a[0] < b[0] ? -1 : 1).forEach(([d0, d1, s, p0, p1]) => {
     if (d0 <= last) return;                     // the previous trade has not ended yet
     const move = p1 / p0 - 1;
     from = from || d0; last = d1; n++; model *= 1 + s * move; long_ *= 1 + move;
     if (s) { called++; if (Math.sign(move) === s) win++; }
+    if (s < 0) short_++;
   });
-  return n < BT_VL_MIN ? null : { t, n, from, to: last, win: called ? 100 * win / called : null, model: 100 * (model - 1), long: 100 * (long_ - 1) };
+  return n < BT_VL_MIN ? null : { t, n, from, to: last, short: short_, win: called ? 100 * win / called : null, model: 100 * (model - 1), long: 100 * (long_ - 1) };
 }
 const btVerdict = x => x.model > 0 ? (x.model > x.long ? "Profit, more" : "Profit, but less") : (x.model > x.long ? "Loss, but smaller" : "Loss");
 const btNum = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
+/* the reading under the table: every sentence is written from the rows, so it follows the data */
+function btReading(rows) {
+  const of = f => rows.filter(f), sum = (a, k) => a.reduce((s, x) => s + x[k], 0), co = n => n === 1 ? "company" : "companies";
+  const ahead = of(x => x.model > x.long), gain = of(x => x.model > 0).length, fell = of(x => x.long < 0), rose = of(x => x.long > 0);
+  const won = a => a.filter(x => x.model > x.long).length;
+  const missed = of(x => x.model <= x.long && x.win > 50).sort((a, b) => b.win - a.win)[0];
+  const dseShort = of(x => ((DATA[x.t] || {}).meta || {}).currency === "BDT" && x.short);
+  const li = [`<b>Profit or loss:</b> the model ended with a profit on ${gain} of ${rows.length} companies and beat buying every time on ${ahead.length}.`];
+  if (fell.length && rose.length) li.push(`<b>Falling and rising shares:</b> where buying every time lost money, the model was ahead on ${won(fell)} of ${fell.length} ${co(fell.length)}; where buying every time made money, it was ahead on ${won(rose)} of ${rose.length}.`);
+  if (ahead.length) li.push(`<b>Short trades:</b> on the ${co(ahead.length)} where the model was ahead, ${sum(ahead, "short")} of ${sum(ahead, "n")} trades were short, which gain when the price falls.`);
+  if (missed) li.push(`<b>Win rate is not return:</b> on ${esc(missed.t)} the model was right on ${missed.win.toFixed(1)}% of trades and still did not beat buying every time.`);
+  const ns = rows.map(x => x.n), lo = Math.min(...ns), hi = Math.max(...ns);
+  li.push(`<b>Caution:</b> ${lo === hi ? lo : `${lo} to ${hi}`} trades a company, with no trading costs, are not enough to show skill beyond luck.${dseShort.length ? " The AI analysis treats DSE shares as long-only, so the short trades on them are on paper only." : ""}`);
+  return `<div class="subcard btread"><p class="k">What this table shows</p><ul class="plain">${li.map(x => `<li>${x}</li>`).join("")}</ul></div>`;
+}
 function btVsLongCard() {
   const rows = ORDER.map(btVsLong).filter(Boolean).sort((a, b) => (b.model > b.long) - (a.model > a.long) || (b.model > 0) - (a.model > 0) || (b.model - b.long) - (a.model - a.long));
   if (!rows.length) return "";
@@ -289,7 +305,7 @@ function btVsLongCard() {
   const from = rows.map(x => x.from).sort()[0], to = rows.map(x => x.to).sort().pop();
   const body = rows.map(x => `<tr class="click ${x.t === X.bt.t ? "sel" : ""}" data-bt="${esc(x.t)}"><td class="t"><span class="tkr">${esc(x.t)}</span></td><td>${x.n}</td><td>${x.win == null ? "–" : x.win.toFixed(1)}</td><td class="${cls(x.model)}">${btNum(x.model)}</td><td class="${cls(x.long)}">${btNum(x.long)}</td><td class="t">${btVerdict(x)}</td></tr>`).join("");
   return card(`Return against always long (buy every time) ${hint(GLOSS.btvl)}`, `Ahead of always long on ${ahead} of ${rows.length} companies. Trades from ${dMonYr(from)} to ${dMonYr(to)}. No trading costs.`, "",
-    `<div class="scroll"><table><thead><tr><th>Company</th><th>Trades</th><th>Win rate %</th><th>Model return %</th><th>Always long %</th><th>Model result</th></tr></thead><tbody>${body}</tbody></table></div>`);
+    `<div class="scroll"><table><thead><tr><th>Company</th><th>Trades</th><th>Win rate %</th><th>Model return %</th><th>Always long %</th><th>Model result</th></tr></thead><tbody>${body}</tbody></table></div>${btReading(rows)}`);
 }
 function renderBT() {
   const t = X.bt.t, res = EXTRA.backtest[t] || {}, models = Object.keys(res);
@@ -297,10 +313,10 @@ function renderBT() {
   if (!X.bt.sel.size && models.length) X.bt.sel.add(models.includes("Ensemble") ? "Ensemble" : models[0]);
   const first = [...X.bt.sel][0], hasPrice = !!(first && res[first].trades && res[first].trades.length && (EXTRA.dataset || {})[t]);
   return `<div class="page-h"><h1>Backtest</h1><p>How each model's saved day-7 calls would have done: long when it predicted up, short when down. Built from graded rows in the forecast log.</p></div>
-    ${btVsLongCard()}
     ${card("", "", "", `<div class="field"><span class="lbl">Ticker</span>${tkrPills(t, "data-bt")}</div>`)}
     ${hasPrice ? card("Trades on the price chart", `Every call of the ${esc(first)} model on the price. ▲ long entry, ▼ short entry; the line runs from entry to exit, green if the call made money and red if it lost. The dots above show each call's return.`, `<div class="pills nw"><button type="button" class="pillbtn" data-act="btp-zin" aria-label="Zoom in">+</button><button type="button" class="pillbtn" data-act="btp-zout" aria-label="Zoom out">−</button><button type="button" class="pillbtn" data-act="btp-reset">Reset</button></div>`, `<div class="ohlc" id="btp-ohlc"></div><div class="chartbox btpchart" id="btprice"></div><p class="src">One forecast a week. Each trade lasts 7 trading days, so trades overlap. No trading costs. ${hint(GLOSS.bttr)}</p>`) : ""}
-    ${models.length ? "" : nonEmpty("inbox", "Not enough graded calls", "This ticker has fewer than 8 non-overlapping graded day-7 calls for any model.")}`;
+    ${models.length ? "" : nonEmpty("inbox", "Not enough graded calls", "This ticker has fewer than 8 non-overlapping graded day-7 calls for any model.")}
+    ${btVsLongCard()}`;
 }
 /* Trades of the first selected model on the price (Backtest page): a row of dots with each call's return above candles and volume,
    on one shared x axis. A triangle marks each entry (up = long, down = short); a line runs from entry to exit, green when the call

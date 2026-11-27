@@ -160,6 +160,7 @@ table.dense tr.tot td { font-weight: 700; border-top: 1px solid var(--border); b
 .subcard { border: 1px solid var(--border-soft); background: var(--bg-raised); border-radius: 10px; padding: 16px; min-width: 0; }
 .subcard > .k { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 10px; }
 .holdrow { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.btread { margin-top: 16px; }
 .donut { width: 150px; height: 150px; flex: none; } .donut .dn { font: 700 17px var(--font-mono); fill: var(--text); } .donut .dl { font: 500 9px var(--font-sans); fill: var(--muted); }
 .legend2 { list-style: none; margin: 0; padding: 0; flex: 1 1 160px; display: flex; flex-direction: column; gap: 8px; }
 .legend2 li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
