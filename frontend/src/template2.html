@@ -332,6 +332,7 @@ const fmtPct = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(
 const cls = v => v == null ? "flat" : v > 0.0005 ? "up" : v < -0.0005 ? "down" : "flat";
 const tone = sig => ({ BUY: "buy", SELL: "sell", HOLD: "hold" }[sig] || "");
 const dShort = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const dDay = s => `${dShort(s)} (${new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })})`;   // "Nov 12 (Thu)": the Evaluation tables, so weekends and holidays stand out
 const dMonYr = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });   // axis labels of 12-month and 2-year windows
 const dLong = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 const daysBetween = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);

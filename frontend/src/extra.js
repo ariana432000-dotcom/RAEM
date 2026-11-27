@@ -569,7 +569,7 @@ function renderEval() {
   const callRows = shown.map(r => {
     const [d, t, sig, entry, rets, carried, filled, scored] = r;
     const res = scored ? (evRight(sig, rets.slice(0, w)) ? `<span class="up">Right</span>` : `<span class="down">Wrong</span>`) : `<span class="flat">Waiting</span>`;
-    return `<tr><td class="t"><span class="mono">${dShort(d)}</span>${carried ? " †" : ""}${filled ? " ‡" : ""}</td><td class="t"><span class="tkr">${esc(t)}</span></td><td class="t">${sigBadge(sig)}</td><td>${entry == null ? "–" : fmtP(entry)}</td>${[0, 1, 2].map(i => `<td class="${cls(rets[i])}">${rets[i] == null ? "–" : fmtPct(rets[i])}</td>`).join("")}<td class="t">${res}</td></tr>`;
+    return `<tr><td class="t"><span class="mono">${dDay(d)}</span>${carried ? " †" : ""}${filled ? " ‡" : ""}</td><td class="t"><span class="tkr">${esc(t)}</span></td><td class="t">${sigBadge(sig)}</td><td>${entry == null ? "–" : fmtP(entry)}</td>${[0, 1, 2].map(i => `<td class="${cls(rets[i])}">${rets[i] == null ? "–" : fmtPct(rets[i])}</td>`).join("")}<td class="t">${res}</td></tr>`;
   }).join("");
   const sc = ev.sources || {}, ss = sc.sessions || {}, cl = sc.closes || {};
   const srcRows = [["Trading logs", "backend/engine/notebooks", `${fmtN(ss.logs || 0)} sessions`], ["Session archive", "backend/data/session_archive.json.gz", `${fmtN(ss.archive || 0)} sessions`],
@@ -660,7 +660,7 @@ function renderAgents() {
   const shown = bsRows.slice().reverse().slice(0, X.ac.n);
   const res = (r, who) => { const v = r[who === "multi" ? 4 : 5]; return side(v) ? `${sigBadge(v)} <span class="${acRight(r, who) ? "up" : "down"}">${acRight(r, who) ? "Right" : "Wrong"}</span>` : `<span class="src">–</span>`; };
   const callRows = shown.map(r => { const ch = i => { const v = (r[3][i] - r[2]) / r[2] * 100; return `<td class="${cls(v)}">${fmtPct(v)}</td>`; };
-    return `<tr><td class="t"><span class="mono">${dShort(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${res(r, "multi")}</td><td class="t">${res(r, "single")}</td></tr>`; }).join("");
+    return `<tr><td class="t"><span class="mono">${dDay(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${res(r, "multi")}</td><td class="t">${res(r, "single")}</td></tr>`; }).join("");
   return `${acPicker(S0)}${stats}
     <div class="two">
       ${card("Accuracy of BUY and SELL calls", `Share of BUY and SELL calls judged right. The whisker is the 95% interval ${hint(GLOSS.wilson)}.`, "", `${accBars}<p class="evleg"><span><i style="background:var(--buy)"></i>BUY</span><span><i style="background:var(--sell)"></i>SELL</span><span><i class="w"></i>95% interval</span></p>`)}
