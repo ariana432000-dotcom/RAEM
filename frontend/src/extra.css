@@ -267,6 +267,7 @@ table.lt th, table.lt td { text-align: left; }
 .backbtn { flex: none; width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--ctl); background: var(--bg-raised); color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .backbtn:hover { background: var(--panel-hover); border-color: var(--accent); }
 .backbtn svg { width: 20px; height: 20px; }
+.navback[hidden] { display: none; }   /* the header's back arrow: only when there is a previous page */
 /* the stock page: one even, small gap between its parts (the page's own 28px gap plus each section's 28px margin made 56px) */
 .stkpage { display: flex; flex-direction: column; gap: 16px; }
 .stkpage > .mksec { margin-bottom: 0; }

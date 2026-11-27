@@ -528,6 +528,7 @@ table.lt th, table.lt td { text-align: left; }
 .backbtn { flex: none; width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--ctl); background: var(--bg-raised); color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .backbtn:hover { background: var(--panel-hover); border-color: var(--accent); }
 .backbtn svg { width: 20px; height: 20px; }
+.navback[hidden] { display: none; }   /* the header's back arrow: only when there is a previous page */
 /* the stock page: one even, small gap between its parts (the page's own 28px gap plus each section's 28px margin made 56px) */
 .stkpage { display: flex; flex-direction: column; gap: 16px; }
 .stkpage > .mksec { margin-bottom: 0; }
@@ -547,6 +548,7 @@ table.lt th, table.lt td { text-align: left; }
   <header class="topnav">
     <div class="topnav-in">
       <button class="menu iconbtn" id="menu" type="button" aria-label="Open menu" aria-expanded="false"></button>
+      <button class="iconbtn navback" id="navback" type="button" data-act="nav-back" aria-label="Back to the previous page" title="Back" hidden></button>
       <button class="brand" type="button" data-page="dash" aria-label="RAEM Console home"><span class="logo">RA</span><span>RAEM</span></button>
       <nav class="links" id="nav" aria-label="Main"></nav>
       <form class="search" id="search" autocomplete="off">
@@ -917,6 +919,13 @@ function resultsHtml() {
   return `<div><div class="tabs" role="tablist">${TABS.map((t, i) => `<button type="button" class="tab" role="tab" id="tab-${t[0]}" data-tab="${t[0]}" aria-selected="${S.tab === t[0]}" aria-controls="tabpanel" tabindex="${S.tab === t[0] ? 0 : -1}"><b>${i + 1}</b>${t[1]}</button>`).join("")}</div><div class="tabpanel" role="tabpanel" id="tabpanel" aria-labelledby="tab-${S.tab}" tabindex="0">${body}</div></div>`;
 }
 
+/* ---------- back navigation ----------
+   Every page change is a browser history entry carrying its depth on this site (history.state.raem), so the browser's
+   back button and the arrow left of the logo go to the previous page. The arrow shows only when there is one; the stock
+   page keeps its own arrow, which does the same. */
+let navReady = false, navLast = 0;
+const navDepth = () => { const s = history.state; return s && s.raem > 0 ? s.raem : 0; };
+function navBackBtn() { navLast = navDepth(); const b = $("#navback"); if (b) b.hidden = !navLast || S.page === "stock"; }
 /* ---------- extra pages ---------- */
 const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["bt", "Backtest", "chart"], ["eval", "Evaluation", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
 Object.assign(ICONS, {
@@ -2387,8 +2396,12 @@ function render(keepScroll = true) {
   afterRender();
   try {
     const h = S.page === "tk" ? "tk-" + S.t : S.page === "stock" ? "stock-" + X.stk.code : S.page;
-    if (decodeURIComponent(location.hash.slice(1)) !== h) history.replaceState(null, "", "#" + h);
+    if (decodeURIComponent(location.hash.slice(1)) !== h) {
+      if (navReady) history.pushState({ raem: navDepth() + 1 }, "", "#" + h);   // a new page: Back (browser or arrow) returns to the one before
+      else history.replaceState({ raem: navDepth() }, "", "#" + h);            // the first render only tidies the address
+    } else if (!navReady && (!history.state || history.state.raem == null)) history.replaceState({ raem: 0 }, "", location.href);   // the first page on this site
   } catch (e) { /* links are a convenience */ }
+  navReady = true; navBackBtn();
   if (keepScroll) sc.scrollTop = top;
 }
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -2463,7 +2476,8 @@ document.addEventListener("click", e => {
   else if (d.stk) { openStock(d.stk); return; }
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
   else if (a === "stk-more") X.stk.n += 100;
-  else if (a === "stk-back") { goPage(X.stk.from && X.stk.from !== "stock" ? X.stk.from : "stocks"); return; }
+  else if (a === "nav-back") { if (!S.running) history.back(); return; }
+  else if (a === "stk-back") { if (navDepth()) { if (!S.running) history.back(); return; } goPage(X.stk.from && X.stk.from !== "stock" ? X.stk.from : "stocks"); return; }
   else if (a === "stk-range") { X.stk.range = +v; saveStk(); }
   else if (a === "stk-frange") { X.stk.frange = +v; saveStk(); }
   else if (a === "stk-panel") { const c = X.stk.code; X.stk.panel[c] = X.stk.panel[c] === v ? "" : v; saveStk(); }
@@ -2536,6 +2550,7 @@ let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() 
 
 $("#menu").innerHTML = ic("menu");
 applySettings(true);
+$("#navback").innerHTML = ic("back");
 $("#savedAt").textContent = "Results saved " + dLong(ASOF);
 function pageFromHash() {
   try {
@@ -2546,7 +2561,10 @@ function pageFromHash() {
   } catch (e) { /* ignore a bad link */ }
   return false;
 }
-addEventListener("hashchange", () => { if (!S.running && pageFromHash()) render(false); });
+addEventListener("hashchange", () => {
+  try { if (!history.state || history.state.raem == null) history.replaceState({ raem: navLast + 1 }, "", location.href); } catch (e) { /* ignore */ }
+  if (!S.running && pageFromHash()) render(false); else navBackBtn();
+});
 pageFromHash();
 render(false);
 liveInit();
