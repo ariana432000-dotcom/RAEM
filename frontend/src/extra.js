@@ -266,12 +266,38 @@ function lineChart(host, labels, series, opts = {}) {
 }
 
 /* ----- backtest ----- */
+/* ----- return against always long: the Ensemble's saved calls traded one at a time (no overlap), next to buying every time ----- */
+const BT_VL_MIN = 8;   // fewer trades than this are not shown
+function btVsLong(t) {
+  const r = ((EXTRA.backtest || {})[t] || {}).Ensemble;
+  if (!r || !r.trades) return null;
+  let from = "", last = "", n = 0, called = 0, win = 0, model = 1, long_ = 1;
+  r.trades.slice().sort((a, b) => a[0] < b[0] ? -1 : 1).forEach(([d0, d1, s, p0, p1]) => {
+    if (d0 <= last) return;                     // the previous trade has not ended yet
+    const move = p1 / p0 - 1;
+    from = from || d0; last = d1; n++; model *= 1 + s * move; long_ *= 1 + move;
+    if (s) { called++; if (Math.sign(move) === s) win++; }
+  });
+  return n < BT_VL_MIN ? null : { t, n, from, to: last, win: called ? 100 * win / called : null, model: 100 * (model - 1), long: 100 * (long_ - 1) };
+}
+const btVerdict = x => x.model > 0 ? (x.model > x.long ? "Profit, more" : "Profit, but less") : (x.model > x.long ? "Loss, but smaller" : "Loss");
+const btNum = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
+function btVsLongCard() {
+  const rows = ORDER.map(btVsLong).filter(Boolean).sort((a, b) => (b.model > b.long) - (a.model > a.long) || (b.model > 0) - (a.model > 0) || (b.model - b.long) - (a.model - a.long));
+  if (!rows.length) return "";
+  const ahead = rows.filter(x => x.model > x.long).length;
+  const from = rows.map(x => x.from).sort()[0], to = rows.map(x => x.to).sort().pop();
+  const body = rows.map(x => `<tr class="click ${x.t === X.bt.t ? "sel" : ""}" data-bt="${esc(x.t)}"><td class="t"><span class="tkr">${esc(x.t)}</span></td><td>${x.n}</td><td>${x.win == null ? "–" : x.win.toFixed(1)}</td><td class="${cls(x.model)}">${btNum(x.model)}</td><td class="${cls(x.long)}">${btNum(x.long)}</td><td class="t">${btVerdict(x)}</td></tr>`).join("");
+  return card(`Return against always long (buy every time) ${hint(GLOSS.btvl)}`, `Ahead of always long on ${ahead} of ${rows.length} companies. Trades from ${dMonYr(from)} to ${dMonYr(to)}. No trading costs.`, "",
+    `<div class="scroll"><table><thead><tr><th>Company</th><th>Trades</th><th>Win rate %</th><th>Model return %</th><th>Always long %</th><th>Model result</th></tr></thead><tbody>${body}</tbody></table></div>`);
+}
 function renderBT() {
   const t = X.bt.t, res = EXTRA.backtest[t] || {}, models = Object.keys(res);
   X.bt.sel = new Set([...X.bt.sel].filter(m => res[m]));
   if (!X.bt.sel.size && models.length) X.bt.sel.add(models.includes("Ensemble") ? "Ensemble" : models[0]);
   const first = [...X.bt.sel][0], hasPrice = !!(first && res[first].trades && res[first].trades.length && (EXTRA.dataset || {})[t]);
   return `<div class="page-h"><h1>Backtest</h1><p>How each model's saved day-7 calls would have done: long when it predicted up, short when down. Built from graded rows in the forecast log.</p></div>
+    ${btVsLongCard()}
     ${card("", "", "", `<div class="field"><span class="lbl">Ticker</span>${tkrPills(t, "data-bt")}</div>`)}
     ${hasPrice ? card("Trades on the price chart", `Every call of the ${esc(first)} model on the price. ▲ long entry, ▼ short entry; the line runs from entry to exit, green if the call made money and red if it lost. The dots above show each call's return.`, `<div class="pills nw"><button type="button" class="pillbtn" data-act="btp-zin" aria-label="Zoom in">+</button><button type="button" class="pillbtn" data-act="btp-zout" aria-label="Zoom out">−</button><button type="button" class="pillbtn" data-act="btp-reset">Reset</button></div>`, `<div class="ohlc" id="btp-ohlc"></div><div class="chartbox btpchart" id="btprice"></div><p class="src">One forecast a week. Each trade lasts 7 trading days, so trades overlap. No trading costs. ${hint(GLOSS.bttr)}</p>`) : ""}
     ${models.length ? "" : nonEmpty("inbox", "Not enough graded calls", "This ticker has fewer than 8 non-overlapping graded day-7 calls for any model.")}`;
@@ -493,6 +519,7 @@ const GLOSS = {
   rank: ["Best three models", "Each model is scored two ways: its error on the backtest (data it had not seen), and the error of the forecasts it actually saved, once the real closes arrived. Both are compared with 'no change' (below 1.00 is better). The score blends them: the more graded forecasts a model has, the more its real record counts, so a model that stops working loses its place and one that proves itself gains it. The best three are averaged into the reviewed forecast."],
   evacc: ["Accuracy", "The share of scored calls that were right. With 30 to 40 calls per company it is uncertain: read it together with the 95% interval."],
   wilson: ["95% interval", "The range the true hit rate probably lies in, given how few calls there are (a Wilson interval). When two companies' intervals overlap a lot, the data do not show that one is better than the other."],
+  btvl: ["Return against always long", "The Ensemble's saved 7-day forecasts, one trade at a time: the next trade starts only after the previous one has ended. Long (buy) when the forecast was up, short (gain when the price falls) when it was down. Always long buys on the same dates every time. Returns are compounded, with no trading costs. Win rate is the share of trades in the right direction. With about 25 trades a company, these figures do not show skill beyond luck."],
   bttr: ["Backtest trades", "Each forecast is for the price 7 trading days later. A trade opens at the close on the forecast's day and closes at the close 7 trading days later, so most trades overlap the next one by 3 trading days. Most of these forecasts were made afterwards, by re-running the model on the prices known up to each day, not on the day itself. Shown from May 21, 2026."],
   evrule: ["How a call is scored", "BUY is right if at least one of the next 3 trading-day closes is above the entry price, SELL if at least one is below it, and HOLD if at least one is the same as it or above it, so a HOLD is right whenever a BUY would be. Price changes are rounded to 0.01% first. The entry price is the close on the day of the call, or the last close before it when there was no trading that day. The Single vs multi agent tab scores only BUY and SELL calls."],
   dirhit: ["Direction hit", "Of the saved forecasts that predicted a rise or a fall (1 to 7 days ahead, all counted), the share where the price really moved that way. Forecasts of no change are left out."],
