@@ -203,6 +203,8 @@ def test_main_writes_the_file_and_check_writes_nothing(dirs):
 
 # ------------------------------------------------------------------ pipeline and shipped data
 def test_refresh_runs_the_evaluation_before_the_page_is_built():
+    # a full refresh lists every ticker through predictor_lib, which imports torch; CI installs only the light packages
+    pytest.importorskip("torch")
     import refresh
     for kw in ({}, {"build_only": True}):
         labels = [l for l, _ in refresh.steps(**kw)]

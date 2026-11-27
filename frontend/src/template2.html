@@ -554,7 +554,7 @@ function signalPanel(d) {
     ${o.lo != null ? `<div class="sect"><p class="l">7-day range (est., 10–90%)</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div><p class="l" style="margin:0">If it drops</p><p class="v down">${fmtP(last * (1 + o.lo))}</p><p class="vs down">${pcm(last * (1 + o.lo))}</p></div>
       <div><p class="l" style="margin:0">If it rises</p><p class="v up">${fmtP(last * (1 + o.hi))}</p><p class="vs up">${pcm(last * (1 + o.hi))}</p></div></div>
-      <p class="small">A range from this stock's own past forecast errors, around the forecast: 8 times in 10 the price ended inside it.</p></div>` : ""}
+      <p class="small">Range from this stock's past forecast errors: about 8 in 10 past forecasts landed inside it. ${hint(GLOSS.fc)}</p></div>` : ""}
     ${o.pGain != null ? `<div class="sect"><p class="l">Odds</p><p class="why">Gain after costs: <b>${pc(o.pGain)}</b> · fall: <b>${pc(o.pFall)}</b>. BUY or SELL needs ${pc(MIN_ODDS)}.</p></div>` : ""}
     <div class="sect"><p class="l">Why ${esc(o.sig)}</p><p class="why">${o.why[0].toUpperCase() + o.why.slice(1)}.</p></div>`);
   const models = card(`Second opinion: daily models ${hint(GLOSS.daily)}`, `An older, separate set of five models. ★ = the one its own signal uses (${esc(sig)}, ${fmtPct(r * 100)}); it does not set the recommendation.`, sigBadge(sig), `
