@@ -1,5 +1,5 @@
 """Single vs multi agent export (Evaluation page, second tab): scoring rule, same-dates rule, merged vs all data, the HOLD rule,
-3- and 5-day windows, waiting dates, fail-soft run, the input subfolder and the shipped agent_comparison.json. Offline, standard library only."""
+the 3-day window, the start date (RAEM_AC_FROM), waiting dates, fail-soft run, the input subfolder and the shipped agent_comparison.json. Offline, standard library only."""
 import json
 from pathlib import Path
 
@@ -65,23 +65,33 @@ def test_same_dates_merged_and_all(box):
     assert co["n"] == {"all": 4, "merged": 2, "replay": 2}
     assert co["rows"][0][4] == "BUY"                                                                   # replay wins on the same date
     assert co["left_out"]["multi_only"] == 1 and co["left_out"]["single_only"] == 2   # 10-30 only the multi agent; 10-07 (unfinalized) and 10-20 only the single agent
-    for w in ("3", "5"):
-        assert co["overall"][w]["all"]["n"] == 4 and co["overall"][w]["merged"]["n"] == 2
-        assert co["overall"][w]["merged"]["multi"]["k"] <= 2
+    assert co["overall"]["3"]["all"]["n"] == 4 and co["overall"]["3"]["merged"]["n"] == 2
+    assert co["overall"]["3"]["merged"]["multi"]["k"] <= 2
 
 
-def test_windows_use_the_same_dates_and_waiting(box):
+def test_three_day_window_and_waiting(box):
     closes(box, "AAA", [10, 11, 12, 11, 10, 9, 10, 11, 12, 13])
     put(box / "ac" / "single_agent_signals.csv", "ticker,trade_date,signal", [f"AAA,{d},HOLD" for d in DAYS])
     put(box / "ac" / "multi_replay_signals.csv", "ticker,trade_date,signal", [f"AAA,{d},BUY" for d in DAYS])
-    co = ac.build()["companies"][0]
-    assert len(co["rows"]) == 5 and co["left_out"]["waiting"] == DAYS[5:]       # needs five later closes, so the last five dates wait
-    assert co["overall"]["3"]["all"]["n"] == co["overall"]["5"]["all"]["n"] == 5
+    d = ac.build()
+    co = d["companies"][0]
+    assert d["windows"] == [3] and len(co["rows"]) == 7 and co["left_out"]["waiting"] == DAYS[7:]   # needs three later closes
     row = co["rows"][0]
-    assert row[2] == 10 and row[3] == [11, 12, 11, 10, 9]
-    assert row[6] == 1 and row[8] == 1                  # BUY right: the next close is above the entry
-    last = co["rows"][-1]
-    assert len(last[3]) == 5
+    assert row[2] == 10 and row[3] == [11, 12, 11]
+    assert row[6] == 1 and len(row) == 8                # BUY right: the next close is above the entry; one window, so two flags
+
+
+def test_from_date_drops_earlier_calls(box, monkeypatch):
+    closes(box, "AAA", [10, 11, 12, 11, 10, 9, 10, 11, 12, 13])
+    put(box / "ac" / "single_agent_signals.csv", "ticker,trade_date,signal", [f"AAA,{d},HOLD" for d in DAYS])
+    put(box / "ac" / "multi_signals.csv", "ticker,trade_date,signal,group", [f"AAA,{d},SELL,live" for d in DAYS])
+    monkeypatch.setattr(ac, "FROM", "2026-10-07")
+    d = ac.build()
+    co = d["companies"][0]
+    assert d["from"] == "2026-10-07" and [r[0] for r in co["rows"]] == DAYS[3:7]       # 10-04 to 10-06 are before the start date
+    assert {r[1] for r in co["rows"]} == {"live"} and co["counts"] == {"multi": 7, "single": 7}
+    bs = co["signals"]["3"]["all"]["bs"]
+    assert bs["multi"]["n"] == 4 and bs["single"]["n"] == 0                             # BUY + SELL only: the single agent said HOLD
 
 
 def test_by_signal_and_baselines(box):
@@ -130,9 +140,9 @@ def test_shipped_json_is_consistent():
     if not p.is_file():
         pytest.skip("agent_comparison.json not exported yet")
     d = json.loads(p.read_text(encoding="utf-8"))
-    assert d["windows"] == [3, 5] and d["companies"]
+    assert d["windows"] == [3] and d["companies"] and d["from"]
     for c in d["companies"]:
-        for w in ("3", "5"):
+        for w in ("3",):
             for g, o in c["overall"][w].items():
                 n = c["n"][g]
                 assert o["n"] == n and o["multi"]["n"] == n and o["single"]["n"] == n
@@ -140,7 +150,7 @@ def test_shipped_json_is_consistent():
                 assert o["multi"]["k"] - o["single"]["k"] == o["only_multi"] - o["only_single"]
         assert len(c["rows"]) == c["n"]["all"]
         for r in c["rows"]:
-            assert len(r[3]) == 5 and r[4] in ev.SIGNALS and r[5] in ev.SIGNALS
+            assert len(r[3]) == 3 and r[4] in ev.SIGNALS and r[5] in ev.SIGNALS and r[0] >= d["from"]
         m = sum(r[6] for r in c["rows"] if r[1] == "merged")
         if "merged" in c["overall"]["3"]:
             assert m == c["overall"]["3"]["merged"]["multi"]["k"]

@@ -539,7 +539,7 @@ function evBars(items, avg, baseLabel) {
   const axis = `<div class="evrow" aria-hidden="true"><span></span><svg class="evt" height="16">${grid.map(g => `<text class="ax" x="${g}%" y="12" text-anchor="${g === 0 ? "start" : g === 100 ? "end" : "middle"}">${g}%</text>`).join("")}</svg><span></span></div>`;
   const rows = items.map(it => {
     const left = `<div class="evl"><b class="mono">${esc(it.label)}</b><span title="${esc(it.sub)}">${esc(it.sub)}</span></div>`;
-    if (it.acc == null) return `<div class="evrow">${left}<div class="evt evnone">no scored calls yet</div><div class="evv mono">–</div></div>`;
+    if (it.acc == null) return `<div class="evrow">${left}<div class="evt evnone">${esc(it.none || "no scored calls yet")}</div><div class="evv mono">–</div></div>`;
     const lab = `${it.label}: ${it.acc.toFixed(1)}% right (${it.k} of ${it.n}), 95% interval ${it.lo.toFixed(1)} to ${it.hi.toFixed(1)}%${it.base != null ? `, ${baseLabel} ${it.base.toFixed(1)}%` : ""}`;
     return `<div class="evrow">${left}<svg class="evt" height="28" role="img" aria-label="${esc(lab)}">
       ${grid.slice(1, 4).map(g => `<line x1="${g}%" x2="${g}%" y1="0" y2="28" stroke="var(--border-soft)"/>`).join("")}
@@ -606,20 +606,25 @@ function drawEval() {
 }
 
 /* ----- single agent vs multi agent: the second tab of the Evaluation page (data: EXTRA.agent_comparison, written by app/pipeline/export_agent_comparison.py) ----- */
-X.ac = { w: 3, n: 15 };   // the tab shows BPML on the merged-data dates only; w = the fixed scoring window (not shown on the page), n = rows shown
+X.ac = { w: 3, n: 15, t: "" };   // t = the company shown ("" = BPML, else the first); w = the fixed scoring window (not shown on the page), n = rows shown
 const AC = () => EXTRA.agent_comparison || null;
 const AC_COL = { multi: "var(--accent)", single: "#a78bfa" };
 const AC_SIG = { BUY: "var(--buy)", HOLD: "var(--hold)", SELL: "var(--sell)" };
 const evTabs = () => `<div class="tabs evtabs" role="tablist" aria-label="Evaluation view">${[["overall", "Overall accuracy"], ["agents", "Single vs multi agent"]].map(([id, l]) =>
   `<button type="button" class="tab" role="tab" data-act="ev-tab" data-v="${id}" aria-selected="${X.ev.tab === id}">${l}</button>`).join("")}</div>`;
-/* BPML (the first company if it is missing), its merged-data dates (all its dates if it has none): {co, w, d, o (overall block), sg (by-signal block), rows} */
+/* the chosen company (BPML, else the first one) on every compared date (from a.from on): {a, co, w, o (overall block), sg (by-signal block), rows} */
 function acSel() {
   const a = AC();
   if (!a || !a.companies || !a.companies.length) return null;
-  const co = a.companies.find(c => c.ticker === "BPML") || a.companies[0];
-  const w = String(X.ac.w), d = (co.overall[w] || {}).merged ? "merged" : "all";
-  const rows = co.rows.filter(r => d === "all" || r[1] === d);
-  return { a, co, w, d, o: co.overall[w][d], sg: co.signals[w][d], rows };
+  const co = a.companies.find(c => c.ticker === X.ac.t) || a.companies.find(c => c.ticker === "BPML") || a.companies[0];
+  const w = String(X.ac.w);
+  return { a, co, w, o: co.overall[w].all, sg: co.signals[w].all, rows: co.rows };
+}
+/* company buttons and the period of the comparison, above the cards */
+function acPicker(S0) {
+  const { a, co } = S0, from = a.from ? `From ${dShort(a.from)}` : "All dates";
+  return `<div class="evtop acpick"><div class="pills" role="group" aria-label="Company">${a.companies.map(c => `<button type="button" class="pillbtn" data-act="ac-co" data-v="${esc(c.ticker)}" aria-pressed="${c.ticker === co.ticker}"><i></i>${esc(c.ticker)}</button>`).join("")}</div>`
+    + `<span class="src">${esc(from)} · ${co.n.all} dates, ${esc(dShort(co.first))} to ${esc(dShort(co.last))}</span></div>`;
 }
 const acRight = (r, who) => !!r[who === "multi" ? 6 : 7];
 const acMark = (shape, cx0, cy, r, fill, cx = +cx0) => shape === "BUY" ? `<polygon points="${cx},${cy - r} ${cx + r},${cy + r * 0.8} ${cx - r},${cy + r * 0.8}" fill="${fill}"/>`
@@ -638,7 +643,7 @@ function acTimeline(rows) {
   const lane = (k, name, who) => {
     const cy = T + ph + gap + k * laneH + laneH / 2;
     return `<text x="${L - 8}" y="${cy + 4}" text-anchor="end" style="fill:var(--text);font-weight:700">${name}</text><line x1="${L}" x2="${W0 - R}" y1="${cy}" y2="${cy}" stroke="var(--border-soft)"/>`
-      + rows.map((r, i) => acMark(r[who === "multi" ? 4 : 5], xs(i).toFixed(1), cy, rad, acRight(r, who) ? "var(--buy)" : "var(--sell)")).join("");
+      + rows.map((r, i) => { const sg = r[who === "multi" ? 4 : 5]; return acMark(sg, xs(i).toFixed(1), cy, rad, sg === "HOLD" ? "var(--faint)" : acRight(r, who) ? "var(--buy)" : "var(--sell)"); }).join("");
   };
   const mid = Math.floor(n / 2), yl = H0 - 8;
   const axis = [[0, "start"], [mid, "middle"], [n - 1, "end"]].map(([i, a]) => `<text x="${xs(i).toFixed(1)}" y="${yl}" text-anchor="${a}">${esc(dShort(rows[i][0]))}</text>`).join("");
@@ -652,43 +657,36 @@ function acMix(sg, n) {
 function renderAgents() {
   const S0 = acSel();
   if (!S0) return card("", "", "", emptyState("chart", "No single vs multi data saved yet", "Run <span class='mono'>python backend/app/pipeline/export_agent_comparison.py</span> (or <span class='mono'>python backend/refresh.py</span>), then rebuild the page. The input files are described in README.md."));
-  const { co, o, sg, rows } = S0, n = o.n;
-  const both = rows.filter(r => acRight(r, "multi") && acRight(r, "single")).length, neither = rows.filter(r => !acRight(r, "multi") && !acRight(r, "single")).length;
-  const diff = o.multi.k - o.single.k, overlap = o.multi.lo <= o.single.hi && o.single.lo <= o.multi.hi;
-  const sgn = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v);
-  const stats = `<div class="stats">${statCard("Multi agent", evA(o.multi.acc), `${o.multi.k} of ${n} right · ${evI(o.multi)}`, "accent", "check")}${statCard("Single agent", evA(o.single.acc), `${o.single.k} of ${n} right · ${evI(o.single)}`, "", "pulse")}`
-    + `${statCard(`Always HOLD ${hint(["Always HOLD", "What you would score by answering HOLD on every call. The single agent says HOLD almost every day, so its score sits on this bar."])}`, evA(o.hold.acc), `${o.hold.k} of ${n} right`, "hold", "line")}`
-    + `${statCard(`Multi minus single ${hint(["Multi minus single", "The multi agent's accuracy minus the single agent's, in percentage points."])}`, `${o.multi.acc - o.single.acc >= 0 ? "+" : "−"}${Math.abs(o.multi.acc - o.single.acc).toFixed(1)} pts`, `${sgn(diff)} right call${Math.abs(diff) === 1 ? "" : "s"}`, diff > 0 ? "buy" : diff < 0 ? "sell" : "", "chart")}</div>`;
-  const accBars = evBars([{ label: "Multi agent", sub: `${o.multi.k}/${n}`, k: o.multi.k, n, acc: o.multi.acc, lo: o.multi.lo, hi: o.multi.hi, base: o.hold.acc, color: AC_COL.multi },
-    { label: "Single agent", sub: `${o.single.k}/${n}`, k: o.single.k, n, acc: o.single.acc, lo: o.single.lo, hi: o.single.hi, base: o.hold.acc, color: AC_COL.single }], null, "always HOLD");
-  const sigItems = [];
-  [["multi", "Multi"], ["single", "Single"]].forEach(([who, lab]) => ["BUY", "HOLD", "SELL"].forEach(s => { const b = sg[who][s]; if (b.n) sigItems.push({ label: `${lab} ${s}`, sub: `${b.n} calls · ${b.k} right`, k: b.k, n: b.n, acc: b.acc, lo: b.lo, hi: b.hi, base: sg.every[s].acc, color: AC_SIG[s] }); }));
-  const nm = sg.multi.BUY.n + sg.multi.SELL.n, km = sg.multi.BUY.k + sg.multi.SELL.k, ns = sg.single.BUY.n + sg.single.SELL.n;
-  const title = diff > 0 ? "Why the multi agent scores higher " : diff < 0 ? "Why the single agent scores higher" : "How the two agents compare";
+  const { a, sg, rows } = S0, n = rows.length;
+  const side = s => s === "BUY" || s === "SELL";
+  const m = sg.multi, s = sg.single, mb = sg.bs.multi, sb = sg.bs.single;
+  const none = b => b.n ? `${b.k} of ${b.n} right · ${evI(b)}` : "no BUY or SELL call";
+  const stats = `<div class="stats">${statCard("Multi agent, BUY + SELL", evA(mb.acc), none(mb), "accent", "check")}${statCard("Single agent, BUY + SELL", evA(sb.acc), none(sb), "", "pulse")}`
+    + `${statCard("BUY calls right", `${m.BUY.k}/${m.BUY.n}`, `multi agent · single agent ${s.BUY.k}/${s.BUY.n}`, "buy", "line")}`
+    + `${statCard("SELL calls right", `${m.SELL.k}/${m.SELL.n}`, `multi agent · single agent ${s.SELL.k}/${s.SELL.n}`, "sell", "chart")}</div>`;
+  const item = (lab, b, color) => ({ label: lab, sub: b.n ? `${b.n} calls · ${b.k} right` : "0 calls", k: b.k, n: b.n, acc: b.n ? b.acc : null, lo: b.lo, hi: b.hi, color, none: "no call of this kind" });
+  const accBars = evBars([item("Multi BUY", m.BUY, "var(--buy)"), item("Multi SELL", m.SELL, "var(--sell)"), item("Multi BUY + SELL", mb, AC_COL.multi),
+    item("Single BUY", s.BUY, "var(--buy)"), item("Single SELL", s.SELL, "var(--sell)"), item("Single BUY + SELL", sb, AC_COL.single)], null, "");
   const reading = `<ul class="plain">`
-    + `<li>The single agent answered HOLD on <b>${sg.single.HOLD.n} of ${n}</b> calls${ns ? ` (and took a side on ${ns})` : ""}, so its score is the always-HOLD score, ${evA(o.hold.acc)}: it hardly ever takes a side.</li>`
-    + (nm ? `<li>The multi agent took a side (BUY or SELL) on <b>${nm} of ${n}</b> calls and was right on <b>${km}</b> of them (${evA(100 * km / nm)}). Its HOLD calls were right ${sg.multi.HOLD.k} of ${sg.multi.HOLD.n}.</li>` : `<li>The multi agent answered HOLD on every call too.</li>`)
-    + `<li>For reference, answering the same signal on every call scores BUY ${evA(sg.every.BUY.acc)}, HOLD ${evA(sg.every.HOLD.acc)}, SELL ${evA(sg.every.SELL.acc)} here (the amber marks in the signal chart). Part of any gap comes from where the price went in this period.</li>`
-    + `<li>Only one of the two was right on ${o.only_multi + o.only_single} of ${n} calls: only the multi agent on <b>${o.only_multi}</b>, only the single agent on <b>${o.only_single}</b> (exact paired test p = ${o.p < 0.001 ? "&lt; 0.001" : o.p.toFixed(3)}). ${n < 30 || o.p >= 0.05 ? `The data do not show that one agent is better${overlap ? ": the 95% intervals overlap" : ""}.` : "The difference is larger than chance would usually give."}</li></ul>`;
-  const pair = `<div class="acpair"><div><b>${both}</b><span>both right</span></div><div style="border-color:${AC_COL.multi}"><b>${o.only_multi}</b><span>only the multi agent right</span></div><div style="border-color:${AC_COL.single}"><b>${o.only_single}</b><span>only the single agent right</span></div><div><b>${neither}</b><span>neither right</span></div></div>`;
-  const shown = rows.slice().reverse().slice(0, X.ac.n);
+    + (mb.n ? `<li>The multi agent took a side (BUY or SELL) on <b>${mb.n} of ${n}</b> dates and was right on <b>${mb.k}</b> of them (${evA(mb.acc)}): BUY ${m.BUY.k} of ${m.BUY.n}, SELL ${m.SELL.k} of ${m.SELL.n}.</li>` : `<li>The multi agent did not answer BUY or SELL on any of these dates.</li>`)
+    + (sb.n ? `<li>The single agent took a side on <b>${sb.n} of ${n}</b> dates and was right on <b>${sb.k}</b> (${evA(sb.acc)}).</li>`
+      : `<li>The single agent answered HOLD on all <b>${n}</b> dates, so it has no BUY or SELL call to score here.</li>`)
+    + `<li>${mb.n + sb.n < 30 ? "These are few calls, so the percentages can move a lot with a few more dates; they do not prove that one agent is better." : `The 95% intervals show how far each figure could move by chance.`}</li></ul>`;
+  const bsRows = rows.filter(r => side(r[4]) || side(r[5]));
+  const shown = bsRows.slice().reverse().slice(0, X.ac.n);
+  const res = (r, who) => side(r[who === "multi" ? 4 : 5]) ? `<span class="${acRight(r, who) ? "up" : "down"}">${acRight(r, who) ? "Right" : "Wrong"}</span>` : `<span class="src">not scored</span>`;
   const callRows = shown.map(r => { const ch = i => { const v = (r[3][i] - r[2]) / r[2] * 100; return `<td class="${cls(v)}">${fmtPct(v)}</td>`; };
-    const res = who => `<span class="${acRight(r, who) ? "up" : "down"}">${acRight(r, who) ? "Right" : "Wrong"}</span>`;
-    return `<tr><td class="t"><span class="mono">${dShort(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${sigBadge(r[4])} ${res("multi")}</td><td class="t">${sigBadge(r[5])} ${res("single")}</td></tr>`; }).join("");
-  return `${stats}
+    return `<tr><td class="t"><span class="mono">${dShort(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${sigBadge(r[4])} ${res(r, "multi")}</td><td class="t">${sigBadge(r[5])} ${res(r, "single")}</td></tr>`; }).join("");
+  return `${acPicker(S0)}${stats}
     <div class="two">
-      ${card("Accuracy", `Share of calls judged right. The whisker is the 95% interval ${hint(GLOSS.wilson)}; the amber mark is always HOLD.`, "", `${accBars}<p class="evleg"><span><i style="background:${AC_COL.multi}"></i>Multi agent</span><span><i style="background:${AC_COL.single}"></i>Single agent</span><span><i class="w"></i>95% interval</span><span><i class="h"></i>Always HOLD</span></p>`)}
-      ${card("What each agent said", "How the calls split over BUY, HOLD and SELL.", "", acMix(sg, n))}
+      ${card("Accuracy of BUY and SELL calls", `Share of BUY and SELL calls judged right; HOLD calls are not scored. The whisker is the 95% interval ${hint(GLOSS.wilson)}.`, "", `${accBars}<p class="evleg"><span><i style="background:var(--buy)"></i>BUY</span><span><i style="background:var(--sell)"></i>SELL</span><span><i class="w"></i>95% interval</span></p>`)}
+      ${card("What each agent said", "How the calls split over BUY, HOLD and SELL on the same dates.", "", acMix(sg, n))}
     </div>
-    ${card(title, "Read from the numbers on this page.", "", reading)}
-    <div class="two">
-      ${card("Accuracy by signal", "Calls of each kind and how many were right. The amber mark is what answering that signal on every call would have scored.", "", `${evBars(sigItems, null, "if always this signal")}<p class="evleg"><span><i class="h"></i>If always this signal</span><span><i class="w"></i>95% interval</span></p>`)}
-      ${card("Who was right", "Every call, by which of the two agents was right.", "", pair)}
-    </div>
-    ${card("Day by day", `The stock's close on each date, and under it the call of each agent. ▲ BUY, ● HOLD, ▼ SELL; green = right, red = wrong.`, "", (rows.length > 1 ? `<div class="scroll">${acTimeline(rows)}</div>` : `<p class="src">Fewer than two dates.</p>`))}
-    ${card("Dates", `Newest first. Change = the closes after the call against the entry (the close of the call's day).`, "", `<div class="scroll"><table><thead><tr><th>Date</th><th>Entry</th><th>+1d</th><th>+2d</th><th>+3d</th><th>Multi agent</th><th>Single agent</th></tr></thead><tbody>${callRows}</tbody></table></div>${rows.length > shown.length ? `<p class="evmore"><button type="button" class="btn secondary sm" data-act="ac-more">Show more (${rows.length - shown.length} left)</button></p>` : ""}`)}
-    ${card("How this is scored", "", "", `<ul class="plain"><li>Both agents are scored on exactly the same days: only days on which both made a call and enough later closes exist to score it.</li>`
-      + `<li><b>BUY</b> is right if some close after the call is above the entry, <b>SELL</b> if some close is below it. <b>HOLD</b> is wrong only if the closes of day 1 and day 2 are both below the entry. Returns are rounded to 0.01% first.</li>`
+    ${card("How the two agents compare", "Read from the numbers on this page.", "", reading)}
+    ${card("Day by day", `The stock's close on each date, and under it the call of each agent. ▲ BUY, ▼ SELL: green = right, red = wrong; ● HOLD (grey) is not scored.`, "", (rows.length > 1 ? `<div class="scroll">${acTimeline(rows)}</div>` : `<p class="src">Fewer than two dates.</p>`))}
+    ${card("BUY and SELL calls", `Dates on which at least one agent answered BUY or SELL, newest first. Change = the closes after the call against the entry (the close of the call's day).`, "", bsRows.length ? `<div class="scroll"><table><thead><tr><th>Date</th><th>Entry</th><th>+1d</th><th>+2d</th><th>+3d</th><th>Multi agent</th><th>Single agent</th></tr></thead><tbody>${callRows}</tbody></table></div>${bsRows.length > shown.length ? `<p class="evmore"><button type="button" class="btn secondary sm" data-act="ac-more">Show more (${bsRows.length - shown.length} left)</button></p>` : ""}` : `<p class="src">Neither agent answered BUY or SELL on these dates.</p>`)}
+    ${card("How this is scored", "", "", `<ul class="plain"><li>Only calls made on or after <b>${esc(a.from ? dShort(a.from) : "the first date")}</b>, on days when both agents made a call and three later closes exist.</li>`
+      + `<li>Only <b>BUY</b> and <b>SELL</b> calls are scored: BUY is right if some close within the next 3 trading days is above the entry, SELL if some close is below it. HOLD calls are left out. Returns are rounded to 0.01% first.</li>`
       + `<li>The two agents did not see the same inputs: the single agent gets one prompt with price indicators, fundamentals and news; the multi agent runs the analysts, a debate, a risk check and the memory, and the live runs also had the market backdrop, the disclosures and web search.</li>`
       + `<li class="src">Source: backend/data/agent_comparison.json, written by backend/app/pipeline/export_agent_comparison.py from the files in backend/data/evaluation_inputs/agent_comparison/.</li></ul>`)}`;
 }

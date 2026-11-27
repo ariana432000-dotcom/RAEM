@@ -41,6 +41,7 @@ document.addEventListener("click", e => {
   else if (a === "ev-w") X.ev.w = +v;
   else if (a === "ev-tab") X.ev.tab = v;
   else if (a === "ac-more") X.ac.n += 25;
+  else if (a === "ac-co") { X.ac.t = v; X.ac.n = 15; }
   else if (a === "ev-t") { X.ev.t = v; X.ev.n = 25; }
   else if (a === "ev-more") X.ev.n += 25;
   else if (a === "more") S.more = !S.more;

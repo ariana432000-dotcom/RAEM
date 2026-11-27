@@ -4,22 +4,20 @@
     python backend/app/pipeline/export_agent_comparison.py --check    # print a summary, write nothing
 
 The multi agent is the RAEM pipeline (analysts, debate, risk check); the single agent is one model call per date with raw data only. The scoring rule is the
-Evaluation page's (export_evaluation.py: BUY right if a close within the next N trading days is above the entry, SELL if below, returns rounded to 0.01 % first,
-intervals are 95 % Wilson), with one change for HOLD, which the user chose after seeing that "some close is not below the entry" is right most of the time
-(`RAEM_AC_HOLD=any3` brings the old rule back):
-  first2 (default)  HOLD is WRONG only if the closes of day 1 and day 2 are both below the entry; day 3 and later are not looked at
-  any3              HOLD is right if some close within the next N days is the same or higher (the Evaluation page's rule)
+Evaluation page's (export_evaluation.py): BUY right if a close within the next 3 trading days is above the entry, SELL if below, HOLD if one is the same or
+higher; returns rounded to 0.01 % first, intervals 95 % Wilson. `RAEM_AC_HOLD=first2` brings the older HOLD rule back (HOLD wrong only if the closes of
+day 1 and day 2 are both below the entry).
 
-Same dates: only dates on which BOTH agents made a call and five later closes exist are scored (so the 3- and the 5-day window use the same dates).
+Same dates: only dates on or after RAEM_AC_FROM (default 2026-09-21) on which BOTH agents made a call and three later closes exist are scored.
 Dates only one agent has, dates without a price bar and dates still waiting for later closes are counted and left out.
-"All data" is every scored date; "merged data" is the part whose multi-agent call comes from the merged dataset (signals_merged_dataset.csv); the
-rest come from the replay of the multi agent (group "replay").
+The page shows BUY and SELL calls only (by_signal()["bs"]); the blocks with HOLD stay in the file.
+Each multi-agent row keeps its group: "live" (run on the day) or "replay" (run later for a past date).
 
 Inputs (drop-in files, a sub-folder of evaluation_inputs/ so export_evaluation.py does not read them as AI calls):
-  evaluation_inputs/signals_merged_dataset.csv       multi agent, the merged dataset (finalized rows; filled rows kept)
-  evaluation_inputs/agent_comparison/multi_*.csv     multi agent replay: ticker, trade_date, signal  (optional column: group)
+  evaluation_inputs/agent_comparison/multi_*.csv     multi agent: ticker, trade_date, signal  (optional column: group)
   evaluation_inputs/agent_comparison/single_*.csv    single agent: ticker, trade_date, signal
   evaluation_inputs/agent_comparison/closes*.csv     closing prices: ticker, date, close
+  RAEM_AC_MERGED=<csv>                               optional: also read the merged dataset (finalized, not imputed rows) as multi-agent calls
 `backend/tools/import_agent_comparison.py` writes these files from the replay logs and market files. The step never stops a refresh: on any error it says
 so, keeps the old agent_comparison.json and exits 0. Standard library only.
 """
@@ -41,10 +39,11 @@ except ImportError:  # run as a script: this folder is on sys.path
 DATA = E.DATA
 INPUTS = E.INPUTS
 AC_DIR = os.environ.get("RAEM_AC_INPUTS") or os.path.join(INPUTS, "agent_comparison")
-MERGED = os.environ.get("RAEM_AC_MERGED") or os.path.join(INPUTS, "signals_merged_dataset.csv")
+MERGED = os.environ.get("RAEM_AC_MERGED", "")   # off by default: multi_signals.csv already holds the live runs of the merged dataset
 OUT = os.environ.get("RAEM_AC_OUT") or os.path.join(DATA, "agent_comparison.json")
-HOLD_RULE = os.environ.get("RAEM_AC_HOLD", "first2")
-WINDOWS = (3, 5)
+HOLD_RULE = os.environ.get("RAEM_AC_HOLD", "any3")
+FROM = os.environ.get("RAEM_AC_FROM", "2026-09-21")   # only call dates on or after this one are compared ("" = every date)
+WINDOWS = (3,)
 NEED = max(WINDOWS)
 SIGNALS = E.SIGNALS
 
@@ -123,7 +122,7 @@ def read_signals(info: dict):
             info["files"].append(os.path.basename(p))
         except (OSError, csv.Error, UnicodeError) as e:
             info["skipped"].append(f"{os.path.basename(p)}: {e}")
-    if os.path.isfile(MERGED):   # the merged dataset: only the companies the single agent has; a replay call on the same date stays
+    if MERGED and os.path.isfile(MERGED):   # the merged dataset: only the companies the single agent has; a replay call on the same date stays
         try:
             for r in csv_dicts(MERGED):
                 t, d, s = E.ticker_of(r.get("ticker")), r.get("trade_date", "")[:10], sig_of(r)
@@ -166,7 +165,7 @@ def build(info: dict | None = None) -> dict:
     for t in sorted(single):
         md, sd, px = multi.get(t, {}), single[t], prices.get(t, {})
         days = sorted(px)
-        common = sorted(set(md) & set(sd))
+        common = sorted(d for d in set(md) & set(sd) if d >= FROM)
         rows, waiting, no_bar = [], [], []
         for d in common:
             if d not in px:
@@ -187,15 +186,15 @@ def build(info: dict | None = None) -> dict:
         companies.append({
             "ticker": t, "name": E.NAMES.get(t, t), "first": rows[0]["date"], "last": rows[-1]["date"],
             "n": {"all": len(rows), "merged": len(merged), "replay": len(rows) - len(merged)},
-            "left_out": {"multi_only": len(set(md) - set(sd)), "single_only": len(set(sd) - set(md)), "waiting": waiting, "no_bar": no_bar},
-            "counts": {"multi": len(md), "single": len(sd)},
+            "left_out": {"multi_only": len([d for d in set(md) - set(sd) if d >= FROM]), "single_only": len([d for d in set(sd) - set(md) if d >= FROM]),
+                         "waiting": waiting, "no_bar": no_bar},
+            "counts": {"multi": len([d for d in md if d >= FROM]), "single": len([d for d in sd if d >= FROM])},
             "overall": {str(w): {g: block(rs, w) for g, rs in groups.items() if rs} for w in WINDOWS},
             "signals": {str(w): {g: by_signal(rs, w) for g, rs in groups.items() if rs} for w in WINDOWS},
-            "rows": [[r["date"], r["group"], r["entry"], r["closes"], r["multi"], r["single"],
-                      int(call_right(r["multi"], r["r"], 3)), int(call_right(r["single"], r["r"], 3)),
-                      int(call_right(r["multi"], r["r"], 5)), int(call_right(r["single"], r["r"], 5))] for r in rows]})
+            "rows": [[r["date"], r["group"], r["entry"], r["closes"], r["multi"], r["single"]]
+                     + [int(call_right(r[who], r["r"], w)) for w in WINDOWS for who in ("multi", "single")] for r in rows]})
     asof = max((c["last"] for c in companies), default="")
-    return {"version": 1, "asof": asof, "hold_rule": HOLD_RULE, "windows": list(WINDOWS), "companies": companies,
+    return {"version": 1, "asof": asof, "from": FROM, "hold_rule": HOLD_RULE, "windows": list(WINDOWS), "companies": companies,
             "sources": {"files": info["files"], "skipped": info["skipped"]}}
 
 
@@ -203,10 +202,9 @@ def build(info: dict | None = None) -> dict:
 def summary(ac: dict) -> str:
     lines = [f"agent comparison: {len(ac['companies'])} companies, HOLD rule {ac['hold_rule']}"]
     for c in ac["companies"]:
-        a, m = c["overall"]["3"]["all"], c["overall"]["3"].get("merged")
-        lines.append(f"  {c['ticker']:<10} {c['n']['all']} dates ({c['first']} to {c['last']}), 3-day: multi {a['multi']['k']}/{a['n']} = {a['multi']['acc']}%, "
-                     f"single {a['single']['k']}/{a['n']} = {a['single']['acc']}%, always HOLD {a['hold']['acc']}%, p = {a['p']}"
-                     + (f"; merged data {m['n']} dates" if m else ""))
+        a, bs = c["overall"]["3"]["all"], c["signals"]["3"]["all"]["bs"]
+        lines.append(f"  {c['ticker']:<10} {c['n']['all']} dates ({c['first']} to {c['last']}), BUY + SELL only: multi {bs['multi']['k']}/{bs['multi']['n']}, "
+                     f"single {bs['single']['k']}/{bs['single']['n']}; with HOLD: multi {a['multi']['k']}/{a['n']}, single {a['single']['k']}/{a['n']}")
     for x in ac["sources"]["skipped"]:
         lines.append(f"  skipped: {x}")
     return "\n".join(lines)

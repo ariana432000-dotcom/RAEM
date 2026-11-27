@@ -192,6 +192,8 @@ table.stktable th:last-child, table.stktable td:last-child { text-align: right; 
 .evtop { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 16px; }
 .evtop .evtabs { margin-bottom: 0; }
 .acname { font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; }
+.acpick { margin-top: -4px; }
+.acpick .pills { margin: 0; }
 .acmixrow { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 10px; }
 .acmixrow b { font-size: 13px; color: var(--text); }
 .acmix { display: flex; height: 30px; border-radius: 6px; overflow: hidden; background: var(--bg-raised); }
