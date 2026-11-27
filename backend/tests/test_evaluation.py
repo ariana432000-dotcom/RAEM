@@ -163,6 +163,23 @@ def test_engine_csv_extends_the_prices_only_when_it_agrees(dirs):
     assert out["sources"]["closes"]["engine_csv"] == 0 and out["scored"] == 0
 
 
+def test_calls_before_the_start_date_are_left_out(dirs, monkeypatch):
+    closes = dict(zip(DAYS, [100, 101, 102, 103, 104, 105]))
+    (dirs / "logs" / "trading_log_A.json").write_text(json.dumps([sess("A", DAYS[0], "s1", "BUY", closes=closes),
+                                                                  sess("A", DAYS[1], "s2", "SELL", closes=closes)]), encoding="utf-8")
+    monkeypatch.setattr(ev, "FROM", DAYS[1])
+    out = ev.build({})
+    assert out["from"] == DAYS[1] and [r[0] for r in out["rows"]] == [DAYS[1]]
+    monkeypatch.setattr(ev, "FROM", "")
+    assert [r[0] for r in ev.build({})["rows"]] == [DAYS[0], DAYS[1]]
+
+
+def test_buy_and_sell_alone():
+    out = score({("X", DAYS[0]): "BUY", ("X", DAYS[1]): "HOLD", ("X", DAYS[2]): "SELL"}, {"X": dict(zip(DAYS, [100, 101, 102, 103, 104, 105]))})
+    assert out["overall"]["3"]["n"] == 3 and out["bs"]["3"]["n"] == 2 and out["bs"]["3"]["k"] == 1      # BUY right, SELL wrong, HOLD left out
+    assert out["companies"][0]["bs"]["3"] == out["bs"]["3"]
+
+
 # ------------------------------------------------------------------ never stops a refresh
 def test_a_failed_run_keeps_the_old_file_and_exits_zero(dirs, capsys):
     Path(ev.OUT).write_text("KEEP", encoding="utf-8")
@@ -200,6 +217,10 @@ def test_shipped_evaluation_json_is_consistent():
         pytest.skip("evaluation.json not exported yet")
     d = json.loads(p.read_text(encoding="utf-8"))
     assert d["calls"] == len(d["rows"]) == sum(c["calls"] for c in d["companies"])
+    assert all(r[0] >= d["from"] for r in d["rows"])
+    for w in map(str, d["windows"]):
+        assert d["bs"][w]["n"] == sum(d["signals"][w][s]["n"] for s in ("BUY", "SELL"))
+        assert d["bs"][w]["k"] == sum(d["signals"][w][s]["k"] for s in ("BUY", "SELL")) == sum(c["bs"][w]["k"] for c in d["companies"])
     for w in map(str, d["windows"]):
         o = d["overall"][w]
         assert o["n"] == d["scored"] == sum(c["w"][w]["n"] for c in d["companies"]) == sum(d["signals"][w][s]["n"] for s in ("BUY", "HOLD", "SELL"))

@@ -38,7 +38,6 @@ document.addEventListener("click", e => {
   else if (a === "btp-zin") { btpZoom(0.6); return; }
   else if (a === "btp-zout") { btpZoom(1 / 0.6); return; }
   else if (a === "btp-reset") { btpReset(); return; }
-  else if (a === "ev-w") X.ev.w = +v;
   else if (a === "ev-tab") X.ev.tab = v;
   else if (a === "ac-more") X.ac.n += 25;
   else if (a === "ac-co") { X.ac.t = v; X.ac.n = 15; }

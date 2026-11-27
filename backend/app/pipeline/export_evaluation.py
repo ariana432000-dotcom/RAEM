@@ -24,6 +24,8 @@ Scoring (the rule of the evaluation report, "within the next N trading days", N 
                 (weekend, holiday, no data yet: the call keeps its own date, flagged `carried`)
   BUY  right if some close within N days is above the entry      SELL right if some close is below it
   HOLD right if some close within N days is the same or higher
+  Only calls made on or after RAEM_EVAL_FROM (default 2026-09-19, the start of the live runs; "" = every call) are
+  listed and scored; earlier replay runs stay in the session archive.
   A call needs three later closes to be scored (the same calls for N = 1, 2, 3); the others are `pending` and
   are scored by a later run, once the prices exist. Returns are rounded to 0.01 % before they are compared.
   Baselines: always-HOLD on the same calls; for BUY / SELL the share of calls on which the price rose / fell.
@@ -50,6 +52,7 @@ BACKEND = os.path.dirname(os.path.dirname(HERE))
 DATA = os.path.join(BACKEND, "data")
 INPUTS = os.environ.get("RAEM_EVAL_INPUTS") or os.path.join(DATA, "evaluation_inputs")
 OUT = os.environ.get("RAEM_EVAL_OUT") or os.path.join(DATA, "evaluation.json")
+FROM = os.environ.get("RAEM_EVAL_FROM", "2026-09-19")   # calls before this date are not on the Evaluation page
 ENGINE = os.environ.get("RAEM_ENGINE") or os.path.join(BACKEND, "engine")
 LOG_DIR = os.environ.get("RAEM_LOG_DIR") or os.path.join(ENGINE, "notebooks")
 ARCHIVE = os.environ.get("RAEM_SNAPSHOT") or os.path.join(DATA, "session_archive.json.gz")
@@ -294,7 +297,9 @@ def build(info: dict | None = None) -> dict:
             if d > last and c > 0:
                 have[d] = c; n_eng += 1
     info["closes"] = {"logged_windows": n_win, "input_files": n_in, "engine_csv": n_eng}
-    return score(calls, prices, info)
+    out = score({k: c for k, c in calls.items() if k[1] >= FROM}, prices, info)
+    out["from"] = FROM
+    return out
 
 
 def rnd(x: float) -> float:
@@ -352,13 +357,16 @@ def score(calls: dict, prices: dict, info: dict) -> dict:
     def pack(rs: list[dict]) -> dict:
         return {str(w): block(rs, w) for w in WINDOWS}
 
+    def side(rs: list[dict]) -> list[dict]:
+        return [r for r in rs if r["sig"] in ("BUY", "SELL")]   # the calls that took a side
+
     tickers = sorted({r["t"] for r in rows}, key=lambda t: (-sum(1 for r in rows if r["t"] == t and r["scored"]), t))
     companies = []
     for t in tickers:
         rs = [r for r in rows if r["t"] == t]
         companies.append({"ticker": t, "name": NAMES.get(t, t), "calls": len(rs), "scored": sum(r["scored"] for r in rs),
                           "pending": sum(not r["scored"] for r in rs), "carried": sum(r["carried"] for r in rs if r["scored"]),
-                          "w": pack(rs), "signals": {s: pack([r for r in rs if r["sig"] == s]) for s in SIGNALS}})
+                          "w": pack(rs), "bs": pack(side(rs)), "signals": {s: pack([r for r in rs if r["sig"] == s]) for s in SIGNALS}})
     sc_rows = [r for r in rows if r["scored"]]
 
     def sig_block(sig: str, w: int) -> dict:
@@ -390,6 +398,7 @@ def score(calls: dict, prices: dict, info: dict) -> dict:
         "calls": len(rows), "scored": len(sc_rows), "pending": len(rows) - len(sc_rows),
         "carried": sum(r["carried"] for r in sc_rows), "filled": sum(r["filled"] for r in sc_rows),
         "overall": overall,
+        "bs": pack(side(rows)),
         "companies": companies,
         "signals": {str(w): {s: sig_block(s, w) for s in SIGNALS} for w in WINDOWS},
         "trend": trend,
