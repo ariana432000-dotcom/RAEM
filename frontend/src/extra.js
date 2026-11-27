@@ -497,7 +497,6 @@ const GLOSS = {
   evwin: ["Window", "A call is judged on the closes of the next 1, 2 or 3 trading days. BUY is right if some close in that window is above the entry price, SELL if some close is below it, HOLD if some close is the same or higher. A longer window gives each call more chances, so accuracy rises with it. Only calls with three later closes are scored, the same calls for every window."],
   evacc: ["Accuracy", "The share of scored calls that were right under the window rule. With 30 to 40 calls per company it is uncertain: read it together with the 95% interval."],
   wilson: ["95% interval", "The range the true hit rate probably lies in, given how few calls there are (a Wilson interval). When two companies' intervals overlap a lot, the data do not show that one is better than the other."],
-  evbase: ["Always HOLD", "What you would score by answering HOLD on every call. HOLD is right whenever some close in the window is not below the entry, which is most of the time, so this is the bar a BUY / HOLD / SELL agent has to clear."],
 };
 let hintN = 0;
 const hint = g => `<span class="help" tabindex="0" role="note" aria-label="${esc(g[0])}: ${esc(g[1])}"><span aria-hidden="true">?</span><span class="tipbox" aria-hidden="true"><b>${esc(g[0])}</b>${esc(g[1])}</span></span>`;
@@ -555,20 +554,19 @@ function evBars(items, avg, baseLabel) {
 }
 function renderEval() {
   const ev = EV();
-  const head = `<div class="page-h"><h1>Evaluation</h1><p>How often the AI analysis' BUY, HOLD and SELL calls were right, judged on the closes of the next trading days. Every refresh merges the trading logs, the session archive and the files in <span class="mono">backend/data/evaluation_inputs</span> and scores them again.</p></div>`;
+  const head = `<div class="page-h"><h1>Evaluation</h1><p>How often the AI analysis' ${X.ev.tab === "agents" ? "BUY and SELL" : "BUY, HOLD and SELL"} calls were right, judged on the closes of the next trading days. Every refresh merges the trading logs, the session archive and the files in <span class="mono">backend/data/evaluation_inputs</span> and scores them again.</p></div>`;
   const tabs = evTabs();
   if (X.ev.tab === "agents") { const a0 = acSel(); return head + `<div class="evtop">${tabs}${a0 ? `<span class="acname">${esc(a0.co.name)}</span>` : ""}</div>` + renderAgents(); }
   if (!ev || !ev.scored) return head + tabs + card("", "", "", emptyState("chart", "No evaluation saved yet", "Run <span class='mono'>python backend/app/pipeline/export_evaluation.py</span> (or <span class='mono'>python backend/refresh.py</span>), then rebuild the page."));
-  const w = X.ev.w, W = String(w), o = ev.overall[W], diff = o.acc - o.base, pend = ev.pending;
+  const w = X.ev.w, W = String(w), o = ev.overall[W], pend = ev.pending;
   const co = ev.companies.map(c => ({ c, s: c.w[W] })), sg = ev.signals[W];
   const byCo = co.slice().sort((p, q) => (q.s.acc == null ? -1 : q.s.acc) - (p.s.acc == null ? -1 : p.s.acc));
-  const coBars = evBars(byCo.map(({ c, s }) => ({ label: c.ticker, sub: `${evName(c.ticker)} · ${s.k}/${s.n}`, k: s.k, n: s.n, acc: s.acc, lo: s.lo, hi: s.hi, base: s.base })), o.acc, "always HOLD");
+  const coBars = evBars(byCo.map(({ c, s }) => ({ label: c.ticker, sub: `${evName(c.ticker)} · ${s.k}/${s.n}`, k: s.k, n: s.n, acc: s.acc, lo: s.lo, hi: s.hi })), o.acc, "");
   const sigColor = { BUY: "var(--buy)", HOLD: "var(--hold)", SELL: "var(--sell)" };
-  const sgBars = evBars(["BUY", "HOLD", "SELL"].map(k => ({ label: k, sub: `${sg[k].n} calls · ${sg[k].k} right`, k: sg[k].k, n: sg[k].n, acc: sg[k].acc, lo: sg[k].lo, hi: sg[k].hi, base: sg[k].base, color: sigColor[k] })), o.acc, "if always this signal");
+  const sgBars = evBars(["BUY", "HOLD", "SELL"].map(k => ({ label: k, sub: `${sg[k].n} calls · ${sg[k].k} right`, k: sg[k].k, n: sg[k].n, acc: sg[k].acc, lo: sg[k].lo, hi: sg[k].hi, color: sigColor[k] })), o.acc, "");
   const windowPills = `<div class="pills" role="group" aria-label="Window">${EV_W.map(([v, l]) => `<button type="button" class="pillbtn" data-act="ev-w" data-v="${v}" aria-pressed="${w === v}"><i></i>${l}</button>`).join("")}</div>`;
-  const dv = d => d == null ? "–" : (d > 0 ? "+" : d < 0 ? "−" : "") + Math.abs(d).toFixed(1);
-  const coRows = byCo.map(({ c, s }) => { const d = s.acc == null ? null : s.acc - s.base; return `<tr><td class="t"><span class="tkr">${esc(c.ticker)}</span>${evName(c.ticker) === c.ticker ? "" : " " + esc(evName(c.ticker))}</td><td>${c.calls}</td><td>${s.n}</td><td>${s.k}</td><td>${evA(s.acc)}</td><td>${evI(s)}</td><td>${evA(s.base)}</td><td class="${cls(d)}">${dv(d)}</td><td>${c.pending}</td></tr>`; }).join("");
-  const sgRows = ["BUY", "HOLD", "SELL"].map(k => `<tr><td class="t">${sigBadge(k)}</td><td>${sg[k].n}</td><td>${sg[k].k}</td><td>${evA(sg[k].acc)}</td><td>${evI(sg[k])}</td><td>${evA(sg[k].base)}</td></tr>`).join("");
+  const coRows = byCo.map(({ c, s }) => `<tr><td class="t"><span class="tkr">${esc(c.ticker)}</span>${evName(c.ticker) === c.ticker ? "" : " " + esc(evName(c.ticker))}</td><td>${c.calls}</td><td>${s.n}</td><td>${s.k}</td><td>${evA(s.acc)}</td><td>${evI(s)}</td><td>${c.pending}</td></tr>`).join("");
+  const sgRows = ["BUY", "HOLD", "SELL"].map(k => `<tr><td class="t">${sigBadge(k)}</td><td>${sg[k].n}</td><td>${sg[k].k}</td><td>${evA(sg[k].acc)}</td><td>${evI(sg[k])}</td></tr>`).join("");
   const tick = ev.companies.map(c => c.ticker), rowsAll = ev.rows.filter(r => !X.ev.t || r[1] === X.ev.t).slice().reverse(), shown = rowsAll.slice(0, X.ev.n);
   const filt = `<div class="pills" role="group" aria-label="Company">${[["", "All"], ...tick.map(t => [t, t])].map(([v, l]) => `<button type="button" class="pillbtn" data-act="ev-t" data-v="${esc(v)}" aria-pressed="${X.ev.t === v}"><i></i>${esc(l)}</button>`).join("")}</div>`;
   const callRows = shown.map(r => {
@@ -583,28 +581,17 @@ function renderEval() {
     ["Closes from the engine CSVs", "only days after the last logged close", `${fmtN(cl.engine_csv || 0)} closes`]];
   return `${head}${tabs}
     ${card("", "", "", `<div class="field"><span class="lbl">Window ${hint(GLOSS.evwin)}</span>${windowPills}</div>`)}
-    <div class="stats">${statCard(`Accuracy ${hint(GLOSS.evacc)}`, evA(o.acc), `${o.k} of ${o.n} · ${evI(o)}`, "accent", "check")}${statCard(`Always HOLD ${hint(GLOSS.evbase)}`, evA(o.base), `agent is ${Math.abs(diff).toFixed(1)} pts ${diff >= 0 ? "above" : "below"} this bar`, "hold", "pulse")}${statCard("Calls scored", fmtN(ev.scored), `${fmtN(ev.calls)} calls · ${fmtN(pend)} waiting`, "", "chart")}${statCard("Companies", fmtN(ev.companies.length), `${dShort(ev.first)} to ${dLong(ev.asof)}`, "", "db")}</div>
-    ${card("Accuracy by company", `Share of calls judged right within the next ${w} trading day${w > 1 ? "s" : ""}, best first. The whisker is the 95% interval ${hint(GLOSS.wilson)}.`, "", `${coBars}<p class="evleg"><span><i class="b"></i>Accuracy</span><span><i class="w"></i>95% interval</span><span><i class="h"></i>Always HOLD</span><span><i class="a"></i>All stocks ${evA(o.acc)}</span></p><p class="src">Source: backend/data/evaluation.json, written by backend/app/pipeline/export_evaluation.py.</p>`)}
-    <div class="two">
-      ${card("Accuracy by signal", "How each kind of call did. The amber mark is what answering the same signal on every call would have scored.", "", `${sgBars}<p class="evleg"><span><i class="h"></i>If always this signal</span><span><i class="a"></i>All calls ${evA(o.acc)}</span></p>`)}
-      ${card("Accuracy over time", "Running accuracy of all scored calls by the day they were made, from the 20th call on.", "", `<div class="chartbox" id="evtrend"></div><div class="legend"><span><i style="background:var(--accent)"></i>Agent</span><span><i style="background:var(--hold)"></i>Always HOLD</span></div>`)}
-    </div>
-    ${card("Companies", `Calls scored within ${w} day${w > 1 ? "s" : ""}. Vs HOLD is the agent's accuracy minus always-HOLD, in points.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Calls</th><th>Scored</th><th>Right</th><th>Accuracy</th><th>95% interval</th><th>Always HOLD</th><th>Vs HOLD</th><th>Waiting</th></tr></thead><tbody>${coRows}<tr class="tot"><td class="t">All stocks</td><td>${ev.calls}</td><td>${o.n}</td><td>${o.k}</td><td>${evA(o.acc)}</td><td>${evI(o)}</td><td>${evA(o.base)}</td><td class="${cls(diff)}">${dv(diff)}</td><td>${pend}</td></tr></tbody></table></div>`)}
-    ${card("Signals", "", "", `<div class="scroll"><table><thead><tr><th>Signal</th><th>Scored</th><th>Right</th><th>Accuracy</th><th>95% interval</th><th>If always this signal</th></tr></thead><tbody>${sgRows}</tbody></table></div>`)}
+    <div class="stats">${statCard(`Accuracy ${hint(GLOSS.evacc)}`, evA(o.acc), `${o.k} of ${o.n} · ${evI(o)}`, "accent", "check")}${statCard("Calls scored", fmtN(ev.scored), `${fmtN(ev.calls)} calls · ${fmtN(pend)} waiting`, "", "chart")}${statCard("Companies", fmtN(ev.companies.length), `${dShort(ev.first)} to ${dLong(ev.asof)}`, "", "db")}</div>
+    ${card("Accuracy by company", `Share of calls judged right within the next ${w} trading day${w > 1 ? "s" : ""}, best first. The whisker is the 95% interval ${hint(GLOSS.wilson)}.`, "", `${coBars}<p class="evleg"><span><i class="b"></i>Accuracy</span><span><i class="w"></i>95% interval</span><span><i class="a"></i>All stocks ${evA(o.acc)}</span></p><p class="src">Source: backend/data/evaluation.json, written by backend/app/pipeline/export_evaluation.py.</p>`)}
+    ${card("Accuracy by signal", "How each kind of call did.", "", `${sgBars}<p class="evleg"><span><i class="a"></i>All calls ${evA(o.acc)}</span></p>`)}
+    ${card("Companies", `Calls scored within ${w} day${w > 1 ? "s" : ""}.`, "", `<div class="scroll"><table><thead><tr><th>Company</th><th>Calls</th><th>Scored</th><th>Right</th><th>Accuracy</th><th>95% interval</th><th>Waiting</th></tr></thead><tbody>${coRows}<tr class="tot"><td class="t">All stocks</td><td>${ev.calls}</td><td>${o.n}</td><td>${o.k}</td><td>${evA(o.acc)}</td><td>${evI(o)}</td><td>${pend}</td></tr></tbody></table></div>`)}
+    ${card("Signals", "", "", `<div class="scroll"><table><thead><tr><th>Signal</th><th>Scored</th><th>Right</th><th>Accuracy</th><th>95% interval</th></tr></thead><tbody>${sgRows}</tbody></table></div>`)}
     ${card("Calls", `Newest first. Right or Wrong uses the ${w}-day window above; the +1d to +3d columns are the change of the next three closes against the entry close.`, "", `<div class="field"><span class="lbl">Company</span>${filt}</div><div class="scroll"><table><thead><tr><th>Date</th><th>Company</th><th>Signal</th><th>Entry</th><th>+1d</th><th>+2d</th><th>+3d</th><th>Result</th></tr></thead><tbody>${callRows}</tbody></table></div>
       ${rowsAll.length > shown.length ? `<p class="evmore"><button type="button" class="btn secondary sm" data-act="ev-more">Show more (${rowsAll.length - shown.length} left)</button></p>` : ""}
       <p class="src">† no price bar that day (weekend, holiday or no data yet): the entry is the last close before it. ‡ the run stopped after the Trader step, so its own Trader decision is used. Waiting: fewer than three later closes exist so far.</p>`)}
-    ${card("How a call is scored", "", "", `<ul class="plain"><li><b>BUY</b> is right if some close within the window is above the entry price, <b>SELL</b> if some close is below it, <b>HOLD</b> if some close is the same or higher. Longer windows give a call more chances, so accuracy rises with the window.</li><li>The entry price is the close of the day of the call, or the last close before it when the market had no bar that day. Calls on such days keep their own date.</li><li>A call is scored only when three later closes exist, the same calls for every window. The others say Waiting and are scored by a later refresh.</li><li>One call per company and day: the most complete finished run. A run that stopped after the Trader step uses its Trader decision (${fmtN(ev.filled)} scored calls).</li><li>Always HOLD is the bar to beat: HOLD is right whenever the price does not fall inside the window, which is most of the time.</li><li>This page replays saved results; it never fetches prices itself. Research output, not investment advice.</li></ul>`)}
+    ${card("How a call is scored", "", "", `<ul class="plain"><li><b>BUY</b> is right if some close within the window is above the entry price, <b>SELL</b> if some close is below it, <b>HOLD</b> if some close is the same or higher. Longer windows give a call more chances, so accuracy rises with the window.</li><li>The entry price is the close of the day of the call, or the last close before it when the market had no bar that day. Calls on such days keep their own date.</li><li>A call is scored only when three later closes exist, the same calls for every window. The others say Waiting and are scored by a later refresh.</li><li>One call per company and day: the most complete finished run. A run that stopped after the Trader step uses its Trader decision (${fmtN(ev.filled)} scored calls).</li><li>This page replays saved results; it never fetches prices itself. Research output, not investment advice.</li></ul>`)}
     ${card("Where the numbers come from", "Files are merged by company and day; a later source wins. Drop new files into backend/data/evaluation_inputs and run python backend/refresh.py.", "", `<div class="scroll"><table class="lt"><thead><tr><th>Source</th><th>Where</th><th>Amount</th></tr></thead><tbody>${srcRows.map(r => `<tr><td class="t">${esc(r[0])}</td><td class="t"><span class="mono">${esc(r[1])}</span></td><td class="t">${esc(r[2])}</td></tr>`).join("")}</tbody></table></div>${(sc.skipped || []).length ? `<p class="src">Skipped: ${esc(sc.skipped.join("; "))}</p>` : ""}`)}`;
 }
-function drawEval() {
-  const h = $("#evtrend"), ev = EV(); if (!h || !ev) return;
-  const pts = ev.trend[String(X.ev.w)] || [], MIN = 20;
-  if (pts.length < 2) { h.innerHTML = ""; return; }
-  const pct = (a, b) => b >= MIN ? 100 * a / b : null;
-  lineChart(h, pts.map(p => p[0]), [{ name: "Agent", v: pts.map(p => pct(p[2], p[1])), color: "var(--accent)", w: 2.4 }, { name: "Always HOLD", v: pts.map(p => pct(p[3], p[1])), color: "var(--hold)", dash: true, w: 1.8 }], { label: "Running accuracy of all scored calls", fmt: v => v.toFixed(0) + "%" });
-}
-
 /* ----- single agent vs multi agent: the second tab of the Evaluation page (data: EXTRA.agent_comparison, written by app/pipeline/export_agent_comparison.py) ----- */
 X.ac = { w: 3, n: 15, t: "" };   // t = the company shown ("" = BPML, else the first); w = the fixed scoring window (not shown on the page), n = rows shown
 const AC = () => EXTRA.agent_comparison || null;
@@ -643,16 +630,17 @@ function acTimeline(rows) {
   const lane = (k, name, who) => {
     const cy = T + ph + gap + k * laneH + laneH / 2;
     return `<text x="${L - 8}" y="${cy + 4}" text-anchor="end" style="fill:var(--text);font-weight:700">${name}</text><line x1="${L}" x2="${W0 - R}" y1="${cy}" y2="${cy}" stroke="var(--border-soft)"/>`
-      + rows.map((r, i) => { const sg = r[who === "multi" ? 4 : 5]; return acMark(sg, xs(i).toFixed(1), cy, rad, sg === "HOLD" ? "var(--faint)" : acRight(r, who) ? "var(--buy)" : "var(--sell)"); }).join("");
+      + rows.map((r, i) => { const sg = r[who === "multi" ? 4 : 5]; return sg === "BUY" || sg === "SELL" ? acMark(sg, xs(i).toFixed(1), cy, rad, acRight(r, who) ? "var(--buy)" : "var(--sell)") : ""; }).join("");
   };
   const mid = Math.floor(n / 2), yl = H0 - 8;
   const axis = [[0, "start"], [mid, "middle"], [n - 1, "end"]].map(([i, a]) => `<text x="${xs(i).toFixed(1)}" y="${yl}" text-anchor="${a}">${esc(dShort(rows[i][0]))}</text>`).join("");
   return `<svg class="actl" viewBox="0 0 ${W0} ${H0}" role="img" aria-label="Price of the stock on each date, and for each date the call of the multi agent and of the single agent, marked right or wrong">${grid}${price}${lane(0, "Multi", "multi")}${lane(1, "Single", "single")}${axis}</svg>`;
 }
-function acMix(sg, n) {
-  const row = (lab, who) => `<div class="acmixrow"><b>${lab}</b><div class="acmix" role="img" aria-label="${esc(lab)}: ${["BUY", "HOLD", "SELL"].map(s => `${s} ${sg[who][s].n}`).join(", ")}">${["BUY", "HOLD", "SELL"].map(s => sg[who][s].n
-    ? `<span style="width:${(100 * sg[who][s].n / n).toFixed(2)}%;background:${AC_SIG[s]}" title="${s}: ${sg[who][s].n} of ${n} dates">${sg[who][s].n / n >= 0.08 ? `${s} ${sg[who][s].n}` : ""}</span>` : "").join("")}</div></div>`;
-  return `${row("Multi agent", "multi")}${row("Single agent", "single")}<p class="evleg"><span><i style="background:var(--buy)"></i>BUY</span><span><i style="background:var(--hold)"></i>HOLD</span><span><i style="background:var(--sell)"></i>SELL</span></p>`;
+function acMix(sg) {
+  const row = (lab, who) => { const n = sg[who].BUY.n + sg[who].SELL.n;
+    return `<div class="acmixrow"><b>${lab}</b>${n ? `<div class="acmix" role="img" aria-label="${esc(lab)}: BUY ${sg[who].BUY.n}, SELL ${sg[who].SELL.n}">${["BUY", "SELL"].map(s => sg[who][s].n
+      ? `<span style="width:${(100 * sg[who][s].n / n).toFixed(2)}%;background:${AC_SIG[s]}" title="${s}: ${sg[who][s].n} calls">${sg[who][s].n / n >= 0.08 ? `${s} ${sg[who][s].n}` : ""}</span>` : "").join("")}</div>` : `<span class="src">no BUY or SELL call</span>`}</div>`; };
+  return `${row("Multi agent", "multi")}${row("Single agent", "single")}<p class="evleg"><span><i style="background:var(--buy)"></i>BUY</span><span><i style="background:var(--sell)"></i>SELL</span></p>`;
 }
 function renderAgents() {
   const S0 = acSel();
@@ -670,23 +658,23 @@ function renderAgents() {
   const reading = `<ul class="plain">`
     + (mb.n ? `<li>The multi agent took a side (BUY or SELL) on <b>${mb.n} of ${n}</b> dates and was right on <b>${mb.k}</b> of them (${evA(mb.acc)}): BUY ${m.BUY.k} of ${m.BUY.n}, SELL ${m.SELL.k} of ${m.SELL.n}.</li>` : `<li>The multi agent did not answer BUY or SELL on any of these dates.</li>`)
     + (sb.n ? `<li>The single agent took a side on <b>${sb.n} of ${n}</b> dates and was right on <b>${sb.k}</b> (${evA(sb.acc)}).</li>`
-      : `<li>The single agent answered HOLD on all <b>${n}</b> dates, so it has no BUY or SELL call to score here.</li>`)
+      : `<li>The single agent gave no BUY or SELL call on these <b>${n}</b> dates, so it has no figure here.</li>`)
     + `<li>${mb.n + sb.n < 30 ? "These are few calls, so the percentages can move a lot with a few more dates; they do not prove that one agent is better." : `The 95% intervals show how far each figure could move by chance.`}</li></ul>`;
   const bsRows = rows.filter(r => side(r[4]) || side(r[5]));
   const shown = bsRows.slice().reverse().slice(0, X.ac.n);
-  const res = (r, who) => side(r[who === "multi" ? 4 : 5]) ? `<span class="${acRight(r, who) ? "up" : "down"}">${acRight(r, who) ? "Right" : "Wrong"}</span>` : `<span class="src">not scored</span>`;
+  const res = (r, who) => { const v = r[who === "multi" ? 4 : 5]; return side(v) ? `${sigBadge(v)} <span class="${acRight(r, who) ? "up" : "down"}">${acRight(r, who) ? "Right" : "Wrong"}</span>` : `<span class="src">–</span>`; };
   const callRows = shown.map(r => { const ch = i => { const v = (r[3][i] - r[2]) / r[2] * 100; return `<td class="${cls(v)}">${fmtPct(v)}</td>`; };
-    return `<tr><td class="t"><span class="mono">${dShort(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${sigBadge(r[4])} ${res(r, "multi")}</td><td class="t">${sigBadge(r[5])} ${res(r, "single")}</td></tr>`; }).join("");
+    return `<tr><td class="t"><span class="mono">${dShort(r[0])}</span></td><td>${fmtP(r[2])}</td>${ch(0)}${ch(1)}${ch(2)}<td class="t">${res(r, "multi")}</td><td class="t">${res(r, "single")}</td></tr>`; }).join("");
   return `${acPicker(S0)}${stats}
     <div class="two">
-      ${card("Accuracy of BUY and SELL calls", `Share of BUY and SELL calls judged right; HOLD calls are not scored. The whisker is the 95% interval ${hint(GLOSS.wilson)}.`, "", `${accBars}<p class="evleg"><span><i style="background:var(--buy)"></i>BUY</span><span><i style="background:var(--sell)"></i>SELL</span><span><i class="w"></i>95% interval</span></p>`)}
-      ${card("What each agent said", "How the calls split over BUY, HOLD and SELL on the same dates.", "", acMix(sg, n))}
+      ${card("Accuracy of BUY and SELL calls", `Share of BUY and SELL calls judged right. The whisker is the 95% interval ${hint(GLOSS.wilson)}.`, "", `${accBars}<p class="evleg"><span><i style="background:var(--buy)"></i>BUY</span><span><i style="background:var(--sell)"></i>SELL</span><span><i class="w"></i>95% interval</span></p>`)}
+      ${card("What each agent said", "BUY and SELL calls on the same dates.", "", acMix(sg))}
     </div>
     ${card("How the two agents compare", "Read from the numbers on this page.", "", reading)}
-    ${card("Day by day", `The stock's close on each date, and under it the call of each agent. ▲ BUY, ▼ SELL: green = right, red = wrong; ● HOLD (grey) is not scored.`, "", (rows.length > 1 ? `<div class="scroll">${acTimeline(rows)}</div>` : `<p class="src">Fewer than two dates.</p>`))}
+    ${card("Day by day", `The stock's close on each date, and under it the BUY and SELL calls of each agent. ▲ BUY, ▼ SELL: green = right, red = wrong.`, "", (rows.length > 1 ? `<div class="scroll">${acTimeline(rows)}</div>` : `<p class="src">Fewer than two dates.</p>`))}
     ${card("BUY and SELL calls", `Dates on which at least one agent answered BUY or SELL, newest first. Change = the closes after the call against the entry (the close of the call's day).`, "", bsRows.length ? `<div class="scroll"><table><thead><tr><th>Date</th><th>Entry</th><th>+1d</th><th>+2d</th><th>+3d</th><th>Multi agent</th><th>Single agent</th></tr></thead><tbody>${callRows}</tbody></table></div>${bsRows.length > shown.length ? `<p class="evmore"><button type="button" class="btn secondary sm" data-act="ac-more">Show more (${bsRows.length - shown.length} left)</button></p>` : ""}` : `<p class="src">Neither agent answered BUY or SELL on these dates.</p>`)}
     ${card("How this is scored", "", "", `<ul class="plain"><li>Only calls made on or after <b>${esc(a.from ? dShort(a.from) : "the first date")}</b>, on days when both agents made a call and three later closes exist.</li>`
-      + `<li>Only <b>BUY</b> and <b>SELL</b> calls are scored: BUY is right if some close within the next 3 trading days is above the entry, SELL if some close is below it. HOLD calls are left out. Returns are rounded to 0.01% first.</li>`
+      + `<li>Only <b>BUY</b> and <b>SELL</b> calls are scored: BUY is right if some close within the next 3 trading days is above the entry, SELL if some close is below it. Returns are rounded to 0.01% first.</li>`
       + `<li>The two agents did not see the same inputs: the single agent gets one prompt with price indicators, fundamentals and news; the multi agent runs the analysts, a debate, a risk check and the memory, and the live runs also had the market backdrop, the disclosures and web search.</li>`
       + `<li class="src">Source: backend/data/agent_comparison.json, written by backend/app/pipeline/export_agent_comparison.py from the files in backend/data/evaluation_inputs/agent_comparison/.</li></ul>`)}`;
 }
@@ -701,7 +689,7 @@ function goPage(p) {
 function renderExtra() {
   return ({ ai: renderAI, bt: renderBT, mem: renderMem, set: renderSet, help: renderHelp, stocks: renderStocks, stock: renderStock, eval: renderEval })[S.page]();
 }
-function afterRender() { if (S.page === "bt") drawBTPrice(); if (S.page === "eval") drawEval(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); if (X.stk.panel[X.stk.code] === "fc") ensureSavedFc(X.stk.code); drawStockChart(); drawStockFc(); } if (S.page === "tk") ensureSavedFc(S.t); markRows(); }
+function afterRender() { if (S.page === "bt") drawBTPrice(); if (S.page === "stocks") ensureStocks(); if (S.page === "stock") { ensureStock(X.stk.code); if (X.stk.panel[X.stk.code] === "fc") ensureSavedFc(X.stk.code); drawStockChart(); drawStockFc(); } if (S.page === "tk") ensureSavedFc(S.t); markRows(); }
 
 /* ---------- top nav ---------- */
 const NAV_MAIN = [["dash", "Market"], ["stocks", "Stocks"], ["tk", "Forecast"], ["ai", "AI Analysis"], ["bt", "Backtest"], ["eval", "Evaluation"]];
