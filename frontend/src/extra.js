@@ -484,7 +484,7 @@ const GLOSS = {
   models: ["Error vs naive", "Compares a model's average error with simply predicting 'no change'. Below 1.00 means the model beat that simple guess. Direction hit is how often it got up or down right on data it had not seen."],
   agent: ["Reviewer", "A rule-based check, not an AI. It flags old data, replaces weak models, shrinks the forecast toward 'no change' when past accuracy was poor, and limits unusually large moves."],
   track: ["Track record", "Every saved forecast is later checked against the real closing price. 'Within 1%' means the price landed within 1% of the forecast. The p-value (day 7) is the chance of getting the direction (up or down) of the day-7 forecasts right this often by random guessing, as if you flipped a coin for each one. Below 0.05 means random guessing would almost never be right this often. If the price went up in most weeks, always guessing 'up' is also right often, so compare with the Always-UP column."],
-  bt: ["Edge", "In the Track record table: the model's direction hit rate minus the Always-UP rate, in percentage points. Above 0 means the model beat always guessing 'up'."],
+  bt: ["Edge (pts)", "Direction hit minus Always-UP, in percentage points. Above 0 means the model beat always guessing 'up'."],
   runfc: ["Run the forecast", "Fits the chosen forecast models on the server, on the same CSV price files the engine uses, and draws the new 7-day path. Ensemble, Fusion and the reviewer range are rebuilt from the models you pick. Each run is stored; the same company, date and models give back the stored run."],
   ind: ["Indicators", "RSI above 70 is often called overbought and below 30 oversold. MACD above its signal line means upward momentum. %B shows where the price sits in its Bollinger band (0 = lower band, 1 = upper band). Volatility is the typical daily move over 30 days. They describe the recent past and are not a forecast."],
   aidec: ["Decision", "BUY, HOLD or SELL after the whole analysis has run: analysts, the bull vs bear debate, the trader, the risk debate and the portfolio manager. The decision verifier can override the signal when the text and the rating disagree. Overweight counts as BUY and Underweight as SELL."],
@@ -495,9 +495,20 @@ const GLOSS = {
   wilson: ["95% interval", "The range the true hit rate probably lies in, given how few calls there are (a Wilson interval). When two companies' intervals overlap a lot, the data do not show that one is better than the other."],
   bttr: ["Backtest trades", "Each forecast is for the price 7 trading days later. A trade opens at the close on the forecast's day and closes at the close 7 trading days later, so most trades overlap the next one by 3 trading days. Most of these forecasts were made afterwards, by re-running the model on the prices known up to each day, not on the day itself. Shown from May 21, 2026."],
   evrule: ["How a call is scored", "BUY is right if at least one of the next 3 trading-day closes is above the entry price, SELL if at least one is below it, and HOLD if at least one is the same as it or above it, so a HOLD is right whenever a BUY would be. Price changes are rounded to 0.01% first. The entry price is the close on the day of the call, or the last close before it when there was no trading that day. The Single vs multi agent tab scores only BUY and SELL calls."],
+  dirhit: ["Direction hit", "Of the saved forecasts that predicted a rise or a fall (1 to 7 days ahead, all counted), the share where the price really moved that way. Forecasts of no change are left out."],
+  alwaysup: ["Always-UP", "On the same forecasts, the share where the price went up: how often always guessing 'up' would have been right."],
+  pval: ["p (day 7)", "Uses only each forecast's day-7 call. The chance of getting the direction right this often by flipping a coin; below 0.05 means a coin would rarely do this well. It ignores that the stock may have mostly gone up, so check Edge too."],
   memfix: ["Memory correction", "Before the daily models' 7-day guess is used, the system looks for up to 10 past days when this stock looked most like today; days that are not similar enough are left out. With fewer than 5 such days, nothing changes. Otherwise, if past guesses on those days were usually too high, today's guess is lowered; if too low, it is raised. Days that look more like today count more, fewer days means a smaller change, and the change is never bigger than a typical 7-day move for this stock (from its last 30 days)."],
 };
 let hintN = 0;
+function placeTip(h) {
+  const tb = h.querySelector(".tipbox"); if (!tb) return;
+  const r = h.getBoundingClientRect(), w = tb.offsetWidth, ht = tb.offsetHeight;
+  const left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+  const top = r.bottom + 8 + ht > innerHeight - 8 ? Math.max(8, r.top - 8 - ht) : r.bottom + 8;
+  tb.style.left = left + "px"; tb.style.top = top + "px";
+}
+["pointerover", "focusin"].forEach(ev => document.addEventListener(ev, e => { const h = e.target.closest && e.target.closest(".scroll .help"); if (h) placeTip(h); }));
 const hint = g => `<span class="help" tabindex="0" role="note" aria-label="${esc(g[0])}: ${esc(g[1])}"><span aria-hidden="true">?</span><span class="tipbox" aria-hidden="true"><b>${esc(g[0])}</b>${esc(g[1])}</span></span>`;
 function moveWord(r) {
   const a = Math.abs(r);
@@ -819,7 +830,7 @@ function renderStocks() {
   const rows = all.filter(r => (!x.sector || r.sector === x.sector) && (!q || r.code.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q))).map((r, i) => [rank(r), i, r]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(z => z[2]);
   const chips = L.sectors.length ? `<div class="field"><label>Browse by sector</label><div class="pills">${L.sectors.map(s => `<button type="button" class="pillbtn" data-act="stk-sector" data-v="${esc(s.sector)}" aria-pressed="${x.sector === s.sector}">${esc(s.sector)} <span class="sub">${s.count}</span></button>`).join("")}</div></div>` : "";
   const note = L.sectors_known < L.count ? `<p class="sub">Sector is known for ${fmtN(L.sectors_known)} of ${fmtN(L.count)} companies. It is added when you open a stock, or all at once with <span class="mono">python backend/tools/build_dse_sectors.py</span>.</p>` : "";
-  const body = rows.slice(0, x.n).map(r => `<tr class="click" data-stk="${esc(r.code)}"><td class="t"><span class="tkr">${esc(r.code)}</span>${mine.includes(r.code) ? ` <span class="badge accent" title="RAEM has data and a forecast for this company">RAEM</span>` : ""}</td><td class="t nm">${esc(r.name || "–")}</td><td class="t">${r.sector ? `<span class="badge">${esc(r.sector)}</span>` : `<span class="sub">–</span>`}</td><td>${fmtN(r.close || r.ltp, 2)}</td><td class="${cls(r.change_pct)}">${fmtPct(r.change_pct)}</td><td class="t"><button type="button" class="btn secondary sm" data-stk="${esc(r.code)}">Analyze →</button></td></tr>`).join("");
+  const body = rows.slice(0, x.n).map(r => `<tr class="click" data-stk="${esc(r.code)}"><td class="t"><span class="tkr">${esc(r.code)}</span>${mine.includes(r.code) ? ` <span class="badge accent" title="RAEM has data and a forecast for this company">RAEM</span>` : ""}</td><td class="t nm">${esc(r.name || savedName(r.code) || "–")}</td><td class="t">${r.sector ? `<span class="badge">${esc(r.sector)}</span>` : `<span class="sub">–</span>`}</td><td>${fmtN(r.close || r.ltp, 2)}</td><td class="${cls(r.change_pct)}">${fmtPct(r.change_pct)}</td><td class="t"><button type="button" class="btn secondary sm" data-stk="${esc(r.code)}">Analyze →</button></td></tr>`).join("");
   return `${head}<div class="field stkq"><input class="inp" id="stk-q" data-bind="stk-q" placeholder="Search symbol or company…" value="${esc(x.q)}" aria-label="Search symbol or company" autocomplete="off" spellcheck="false"></div>${chips}${note}
     <p class="sub" style="margin:12px 0">${fmtN(rows.length)} results</p>
     ${card("", "", "", rows.length ? `<div class="scroll"><table class="dense stktable"><thead><tr><th>Symbol</th><th>Company</th><th>Sector</th><th>LTP ${L.date ? `<span class="sub">${esc(L.date)}</span>` : ""}</th><th>Change</th><th>Analysis</th></tr></thead><tbody>${body}</tbody></table></div>
@@ -957,11 +968,12 @@ function stockFundamentals(d) {
   const q = `<div class="subcard"><p class="k">Quarterly EPS</p>${qe.length ? `<div class="qeps">${qe.map(r => `<div><b class="mono ${r.eps < 0 ? "down" : ""}">${r.eps < 0 ? "−" : ""}${Math.abs(r.eps).toFixed(2)}</b><span>${esc(r.period)}</span></div>`).join("")}</div>` : `<p class="sub">No quarterly EPS disclosure found in the exchange's recent notices.</p>`}</div>`;
   return card("Company fundamentals", "", "", `${tiles}<div class="fundgrid">${hold}${eps}</div>${q}<p class="src">Fundamental data sourced from dsebd.org${d.as_of ? `, last updated ${esc(d.as_of)}` : ""}.</p>`);
 }
+const savedName = c => (DATA[c] && DATA[c].meta && DATA[c].meta.name) || "";   // a company's name from the saved page data
 /* The stock page's header: a back arrow and the company name, nothing else. */
 const stkHead = (code, name) => `<div class="stkhead"><button type="button" class="backbtn" data-act="stk-back" aria-label="Back">${ic("back")}</button><h1>${esc(name || code)}${name && name !== code ? ` <span class="stkcode">(${esc(code)})</span>` : ""}</h1></div>`;
 function renderStock() {
   const x = X.stk, code = x.code, d = x.det[code];
-  const bc = stkHead(code, d && d.name);
+  const bc = stkHead(code, (d && d.name) || savedName(code));   // the server can lack a name (its DSE list fell back); the saved page data has it
   if (!LIVE.ok) return bc + needServer("The stock analysis");
   if (!d) return bc + card("", "", "", emptyState("chart", x.dstate[code] === "err" ? `${esc(code)} could not be loaded` : `Loading ${esc(code)}…`, x.dstate[code] === "err" ? esc(x.derr[code] || "") : "Fetching the company page and its price history.", x.dstate[code] === "err" ? `<button type="button" class="btn secondary sm" data-act="stk-reload" data-v="${esc(code)}">Try again</button>` : ""), "dashed");
   if (!d.ok) return bc + card("", "", "", emptyState("alert", `No price data for ${esc(code)}`, `The exchange returned no daily prices for this code. ${esc((d.errors || []).join(" · "))}`, `<button type="button" class="btn secondary sm" data-page="stocks">Back to the list</button>`), "dashed");

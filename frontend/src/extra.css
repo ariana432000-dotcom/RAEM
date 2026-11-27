@@ -54,6 +54,8 @@
 .help .tipbox { position: absolute; left: 50%; top: calc(100% + 8px); transform: translateX(-50%); width: min(320px, 80vw); background: var(--solid); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 14px; padding: 12px 14px; font-size: 12.5px; font-weight: 500; line-height: 1.55; color: var(--muted); z-index: 60; visibility: hidden; opacity: 0; transition: opacity 0.12s; text-align: left; white-space: normal; pointer-events: none; }
 .help .tipbox b { display: block; color: var(--text); font-weight: 700; margin-bottom: 4px; }
 .help:hover .tipbox, .help:focus .tipbox { visibility: visible; opacity: 1; }
+/* in a sideways-scrolling table the box would be cut off: placeTip() puts it against the window instead */
+.scroll .help .tipbox { position: fixed; transform: none; z-index: 60; text-align: left; white-space: normal; text-transform: none; letter-spacing: normal; }
 .card:has(.help:hover), .card:has(.help:focus), .field:has(.help:hover), .field:has(.help:focus) { position: relative; z-index: 10; }
 .summary { margin-bottom: 20px; display: flex; gap: 16px; align-items: flex-start; border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 .summary .fi { width: 42px; height: 42px; border-radius: 13px; background: var(--accent-soft); color: var(--accent-strong); display: flex; align-items: center; justify-content: center; flex: none; }

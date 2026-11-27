@@ -924,6 +924,7 @@ _DSE_COMPANY_NAMES_FALLBACK = {
     "ISLAMIBANK": "Islami Bank",
     "LHBL": "LafargeHolcim Bangladesh",
     "ABBANK": "AB Bank",
+    "BPML": "Bashundhara Paper Mills",
     "CITY": "City Bank",
     "RANFOUNDRY": "Rangpur Foundry",
     "AMCL(PRAN)": "Agricultural Marketing Company",
