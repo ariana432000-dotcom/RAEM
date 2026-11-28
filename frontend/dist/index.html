@@ -583,9 +583,8 @@ const STEPS = [
   ["Reviewer check", "Audit, shrink, clip and add band"],
   ["Grading track record", "Past forecasts vs actual closes"],
 ];
-const TABS = [["signal","Daily signal"],["forecast","7-day forecast"],["models","All models"],["agent","Reviewer"],["track","Track record"]];
+const TABS = [["signal","Recommendation"],["forecast","7-day forecast"],["models","All models"],["agent","Reviewer"],["track","Track record"]];
 const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
-const DAILY_MODELS = [["xgb","XGBoost"],["lstm","LSTM"],["arima","ARIMA"],["ridge","Ridge"],["kalman","Kalman"]];
 const ICONS = {
   dash: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
@@ -795,7 +794,7 @@ function renderTicker() {
     </div>
     ${live ? tokenRow() : ""}
     <div class="runbar"><button type="button" class="btn primary" id="run" ${S.running || fcBusy ? "disabled" : ""}>${S.running || fcBusy ? "Running…" : live ? `Run ${nSel} models` : ran ? "Run again" : "Run forecast"}</button>
-      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three best models: ranked by how their own saved forecasts did against the real closes, with the backtest counting until they have a record; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(savedOn(d))}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(savedOn(d))} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
+      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three best models: ranked by how their own saved forecasts did against the real closes, with the backtest counting until they have a record; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(savedOn(d))}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(savedOn(d))} results: recommendation, 5 forecast models, fusion, reviewer and track record.`}</p></div>
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
@@ -810,17 +809,12 @@ function renderTicker() {
   <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
   ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}
   ${card(ran ? "7-day price path" : "Price history", ran ? `Day 1 to day 7 after ${dLong(f.last_date)}. Hover or tap the chart for values.` : `Last ${winLabel(S.win)}.`, `<div class="pills nw">${WIN_QUICK.map(([n, l]) => `<button type="button" class="pillbtn" data-act="win" data-v="${n}" aria-pressed="${S.win === n}">${l}</button>`).join("")}</div>`, `<div class="chartwrap" id="chart"></div><div class="legend" id="legend"></div><p class="src">Source: data/ and daily_data/ price files${ran ? "; forecast_lib.forecast_ticker()" : ""}.</p>`)}
-  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "Saved forecast not opened yet", "Press Run forecast to open the saved 7-day paths, the daily signal, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
+  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "Saved forecast not opened yet", "Press Run forecast to open the saved 7-day paths, the recommendation, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
 }
 
 /* ---------- result panels ---------- */
-function signalPanel(d) {
-  const k = d.daily, sig = k.final_signal, thr = k.signal_threshold, r = k.final_expected_return, cur = d.meta.currency;
-  const max = Math.max(thr * 2.2, Math.abs(r) * 1.25), pos = v => Math.max(1.5, Math.min(98.5, 50 + v / max * 50));
-  const sw = pos(-thr), bw = 100 - pos(thr), hold = pos(thr) - pos(-thr);
-  const rows = DAILY_MODELS.map(([key, nm]) => ({ key, nm, ret: k[key + "_pred_return"], acc: k[key + "_direction_acc"] })).filter(x => x.ret != null);
-  const rmax = Math.max(...rows.map(x => Math.abs(x.ret)), 0.001), win = (k.winner_model || "").toLowerCase();
-  const stale = daysBetween(k.data_end_date, refDate()) > 5, o = outlook(S.t), last = d.forecast.last_price;
+function signalPanel(d) {   // the Recommendation tab
+  const cur = d.meta.currency, o = outlook(S.t), last = d.forecast.last_price;
   const pcm = to => `${to >= last ? "+" : ""}${((to / last - 1) * 100).toFixed(1)}%`;
   // the recommendation follows the main (reviewed) forecast, its tested range and the trading costs
   const odds = o.sig === "BUY" ? o.pGain : o.sig === "SELL" ? o.pFall : Math.max(o.pGain || 0, o.pFall || 0);
@@ -836,16 +830,7 @@ function signalPanel(d) {
       <p class="small">Range from this stock's past forecast errors: about 8 in 10 past forecasts landed inside it. ${hint(GLOSS.fc)}</p></div>` : ""}
     ${o.pGain != null ? `<div class="sect"><p class="l">Odds</p><p class="why">Gain after costs: <b>${pc(o.pGain)}</b> · fall: <b>${pc(o.pFall)}</b>. BUY or SELL needs ${pc(MIN_ODDS)}.</p></div>` : ""}
     <div class="sect"><p class="l">Why ${esc(o.sig)}</p><p class="why">${o.why[0].toUpperCase() + o.why.slice(1)}.</p></div>`);
-  const models = card(`Second opinion: daily models ${hint(GLOSS.daily)}`, `An older, separate set of five models. ★ = the one its own signal uses (${esc(sig)}, ${fmtPct(r * 100)}); it does not set the recommendation.`, sigBadge(sig), `
-    <div class="kvs"><div class="kv"><p class="k">Expected return</p><p class="v ${cls(r)}">${fmtPct(r * 100)}</p></div><div class="kv"><p class="k">Signal threshold</p><p class="v">±${(thr * 100).toFixed(2)}%</p></div><div class="kv"><p class="k">30-day volatility</p><p class="v">${(k.volatility_30d * 100).toFixed(2)}%</p><p class="s">per day</p></div></div>
-    <div class="zones"><div class="gtrack"><b class="gz-s" style="width:${sw}%"></b><b class="gz-h" style="width:${hold}%"></b><b class="gz-b" style="width:${bw}%"></b><span class="gmark" style="left:${pos(r)}%"></span></div>
-      <div class="glabels"><span style="left:${sw / 2}%">SELL</span><span style="left:${pos(-thr)}%">−${(thr * 100).toFixed(2)}%</span><span style="left:50%">HOLD</span><span style="left:${pos(thr)}%">+${(thr * 100).toFixed(2)}%</span><span style="left:${pos(thr) + bw / 2}%">BUY</span></div></div>
-    <div class="rows" style="margin-top:14px">${rows.map(x => `<div class="row"><span>${x.nm}${x.key === win ? " ★" : ""}</span>
-      <div class="dv"><b class="${x.ret >= 0 ? "pos" : "neg"}" style="${x.ret >= 0 ? `left:50%;width:${Math.min(50, x.ret / rmax * 50)}%` : `right:50%;width:${Math.min(50, -x.ret / rmax * 50)}%`}"></b></div>
-      <span class="val"><span class="${cls(x.ret)}">${fmtPct(x.ret * 100)}</span> · ${(x.acc * 100).toFixed(0)}% dir</span></div>`).join("")}</div>
-    ${stale ? `<div class="card warn" style="margin-top:12px;padding:12px;font-size:12px;color:var(--muted)">These models used prices up to ${dLong(k.data_end_date)} (${daysBetween(k.data_end_date, refDate())} days old); daily.py reads only the data snapshot.</div>` : ""}
-    <p class="src">Source: predictor_lib.run_pipeline() and decide_signal(), as in daily.py.</p>`);
-  return `<div class="two">${rec}${models}</div>`;
+  return rec;
 }
 function forecastPanel(d) {
   const f = d.forecast, ms = mainSeries(d), last = f.last_price, ret = ms.vals[6] / last - 1, showB = S.view === "Agent" && ms.band;
@@ -1077,15 +1062,17 @@ function aiResults(t, a, top, tail = "") {
     ${card("Analyst pipeline", "Each stage's saved output for this session.", "", `${pillTabs(stages.map(s => [s, s]), X.ai.stage, "data-stage")}<div class="scrollbox" style="margin-top:16px"><p class="sub" style="margin-bottom:8px">${esc(X.ai.stage)} · ${esc(st.time || "")}</p><div class="pre">${md(st.text)}</div></div><p class="src">Source: notebooks/trading_log_*.json (step outputs, shortened).</p>`)}
     ${aiSessionHistoryCard(t, a)}` + tail;
 }
-/* Session history: newest first. Interrupted runs (stopped before a final decision, so no rating) are hidden unless asked for;
+/* Session history: newest first by the date analysed, then by start time (replays of past dates are saved in the order they ran,
+   so the saved list is not in date order). Interrupted runs (stopped before a final decision, so no rating) are hidden unless asked for;
    the first 15 are shown unless "show all" is on. Source: a notebook run (its logged model) or a website run (its model). */
 function aiSessionHistoryCard(t, a) {
-  const all = a.sessions.slice().reverse(), interrupted = all.filter(s => s.finished === false), finished = all.length - interrupted.length;
+  const key = s => (s.date || "") + " " + (s.start || ""), all = a.sessions.slice().sort((x, y) => key(y) < key(x) ? -1 : key(y) > key(x) ? 1 : 0), interrupted = all.filter(s => s.finished === false), finished = all.length - interrupted.length;
   const rows = X.ai.histInt ? all : all.filter(s => s.finished !== false), shown = X.ai.histAll ? rows : rows.slice(0, 15);
+  const started = s => { const d = (s.start || "").slice(0, 10), hm = (s.start || "").slice(11, 16); return d && d !== s.date ? `${dShort(d)}, ${hm}` : hm; };   // a replay ran on a later day
   const src = s => s.source === "notebook" ? `Notebook${s.model ? ` · ${esc(s.model)}` : ""}` : s.source === "website" ? `Website${s.model ? ` · ${esc(s.model)}` : ""}` : "–";
   const sub = `${finished} finished session${finished === 1 ? "" : "s"}${interrupted.length ? ` and ${interrupted.length} interrupted` : ""} for ${esc(t)} · showing ${shown.length}.`;
   const btns = `${rows.length > 15 ? `<button type="button" class="link" data-act="ai-hist-all">${X.ai.histAll ? "Show newest 15" : `Show all ${rows.length}`}</button>` : ""}${interrupted.length ? `<button type="button" class="link" data-act="ai-hist-int">${X.ai.histInt ? "Hide interrupted" : `Show interrupted (${interrupted.length})`}</button>` : ""}`;
-  return card("Session history", sub, btns, `<div class="scroll"><table><thead><tr><th>Date</th><th>Started</th><th>Source</th><th>Signal</th><th>Rating</th></tr></thead><tbody>${shown.map(s => `<tr><td class="t">${dShort(s.date)}</td><td>${esc((s.start || "").slice(11, 16))}</td><td>${src(s)}</td><td>${s.signal && s.signal !== "nan" ? esc(s.signal) : "–"}</td><td>${s.finished === false ? `<span class="badge">interrupted</span>` : ratingBadge(s.rating)}</td></tr>`).join("")}</tbody></table></div><p class="src">An interrupted run stopped before its final decision, so it has no rating. Source: notebooks/trading_log_*.json, the session archive and website runs.</p>`);
+  return card("Session history", sub, btns, `<div class="scroll"><table><thead><tr><th>Date</th><th>Started</th><th>Source</th><th>Signal</th><th>Rating</th></tr></thead><tbody>${shown.map(s => `<tr><td class="t">${dShort(s.date)}</td><td>${esc(started(s))}</td><td>${src(s)}</td><td>${s.signal && s.signal !== "nan" ? esc(s.signal) : "–"}</td><td>${s.finished === false ? `<span class="badge">interrupted</span>` : ratingBadge(s.rating)}</td></tr>`).join("")}</tbody></table></div><p class="src">An interrupted run stopped before its final decision, so it has no rating. Source: notebooks/trading_log_*.json, the session archive and website runs.</p>`);
 }
 
 /* ----- price helpers ----- */
@@ -1342,7 +1329,7 @@ function renderMem() {
   if (X.mem.tab === "episodes") {
     const list = eps.filter(e => (!X.mem.t || e.ticker === X.mem.t) && (!q || (e.doc + e.ticker + e.winner_model).toLowerCase().includes(q)));
     body = `<div class="toolbar" style="margin-bottom:14px"><select id="mem-t" data-bind="mem-t" aria-label="Filter by ticker"><option value="">All tickers</option>${ORDER.map(x => `<option ${X.mem.t === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select><input class="inp grow" id="mem-q" data-bind="mem-q" placeholder="Search text…" value="${esc(X.mem.q)}" aria-label="Search memory"></div>
-      <div class="scroll"><table><thead><tr><th>Ticker</th><th>Data to</th><th>Model</th><th>Predicted</th><th>Actual</th><th>Status</th><th>Direction</th></tr></thead><tbody>${list.slice(0, 40).map(e => `<tr><td><span class="tkr">${esc(e.ticker)}</span></td><td class="t">${esc(e.data_end_date)}</td><td class="t">${esc(e.winner_model)}</td><td class="${cls(e.pred_return)}">${fmtPct(e.pred_return * 100)}</td><td class="${cls(e.actual_return)}">${e.actual_return == null ? "–" : fmtPct(e.actual_return * 100)}</td><td><span class="badge ${e.outcome_status === "GRADED" ? "buy" : ""}">${esc(e.outcome_status)}</span></td><td>${e.direction_correct == null ? "–" : e.direction_correct ? '<span class="up">right</span>' : '<span class="down">wrong</span>'}</td></tr>`).join("")}</tbody></table></div><p class="src">${list.length} matching of ${eps.length}. Source: chroma_memory, collection prediction_episodes. Today's guess is adjusted by how wrong the models were on similar past days ${hint(GLOSS.memfix)}.</p>`;
+      <div class="scroll"><table><thead><tr><th>Ticker</th><th>Data to</th><th>Model</th><th>Predicted</th><th>Actual</th><th>Status</th><th>Direction</th></tr></thead><tbody>${list.slice(0, 40).map(e => `<tr><td><span class="tkr">${esc(e.ticker)}</span></td><td class="t">${esc(e.data_end_date)}</td><td class="t">${esc(e.winner_model)}</td><td class="${cls(e.pred_return)}">${fmtPct(e.pred_return * 100)}</td><td class="${cls(e.actual_return)}">${e.actual_return == null ? "–" : fmtPct(e.actual_return * 100)}</td><td><span class="badge ${e.outcome_status === "GRADED" ? "buy" : ""}">${esc(e.outcome_status)}</span></td><td>${e.direction_correct == null ? "–" : e.direction_correct ? '<span class="up">right</span>' : '<span class="down">wrong</span>'}</td></tr>`).join("")}</tbody></table></div><p class="src">${list.length} matching of ${eps.length}. Source: chroma_memory, collection prediction_episodes. The older daily models' guess is adjusted by how wrong they were on similar past days ${hint(GLOSS.memfix)}.</p>`;
   } else if (X.mem.tab === "trades") {
     body = tr2.length ? `<div class="grid3">${tr2.map(e => `<div class="memcard"><div class="hd"><span class="tkr">${esc(e.meta.company || "")}</span><span class="badge">${esc(e.meta.trade_date || "")}</span>${ratingBadge(e.meta.final_signal)}${e.meta.outcome_label ? `<span class="badge accent">${esc(e.meta.outcome_label)}</span>` : ""}</div><p>${esc(e.doc)}</p></div>`).join("")}</div><p class="src">Source: notebooks/raem_chroma_db, collection raem_episodic_memory (the LLM agents' own memory, separate from chroma_memory).</p>` : emptyState("inbox", "No trading episodes");
   } else {
@@ -1445,7 +1432,6 @@ Object.assign(ICONS, { help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3
 const GLOSS = {
   views: ["Which forecast", "Reviewed forecast (the main one): the three models with the smallest past error, averaged, after an automatic review that can shrink or clip the forecast; it comes with a 10–90% range. Ensemble: the average of the two models with the smallest past error. Fusion: a learned blend of all models. Fusion Top 3: the three most accurate models, weighted by accuracy. Best single model: the one model that called direction best in testing."],
   rec: ["Recommendation", "From the reviewed forecast and its 10–90% range, which comes from the stock's own past forecast errors. BUY when the odds of a gain after trading costs are at least 60%, SELL when the odds of a fall are at least 60%, otherwise HOLD. Always HOLD when the forecast's tested error was not at least 2% below that of 'no change', or the prices are old."],
-  daily: ["Daily models (second opinion)", "An older, separate set of five models. Each bar is one model's predicted 7-day return; 'dir' is how often that model called up or down correctly on past data it had not seen. The one with the best direction record gives this panel's own signal, which does not set the recommendation."],
   fc: ["7-day forecast", "The 10–90% range is built from this stock's test forecasts on past dates the models were not trained on: it is just wide enough that about 8 in 10 of them landed inside it. It has not yet been checked on new forecasts. 'Always-UP' is how often simply guessing 'up' was right, a baseline a useful model should beat."],
   models: ["Error vs naive", "Compares a model's average error with simply predicting 'no change'. Below 1.00 means the model beat that simple guess. Direction hit is how often it got up or down right on data it had not seen."],
   agent: ["Reviewer", "A rule-based check, not an AI. It flags old data, replaces weak models, shrinks the forecast toward 'no change' when past accuracy was poor, and limits unusually large moves."],
@@ -1494,7 +1480,7 @@ function plainSummary(d) {
     ${age > 5 ? `<p class="sub" style="margin-top:6px;color:var(--hold)">These prices are from ${dLong(f.last_date)}, ${age} days old.</p>` : ""}</div></section>`;
 }
 function renderHelp() {
-  const steps = [["Pick a stock", "Use the cards on Home, the Forecast menu or the search box."], ["Run the forecast", "Press Run forecast to see the 7-day path, the daily signal and every model's numbers."], ["Read the plain summary", "The 'In plain words' box says what the models expect and how sure they are."], ["Check the evidence", "Track record, Backtest and Memory show how past calls really did."]];
+  const steps = [["Pick a stock", "Use the cards on Home, the Forecast menu or the search box."], ["Run the forecast", "Press Run forecast to see the 7-day path, the recommendation and every model's numbers."], ["Read the plain summary", "The 'In plain words' box says what the models expect and how sure they are."], ["Check the evidence", "Track record, Backtest and Memory show how past calls really did."]];
   return `<div class="page-h"><h1>Help and glossary</h1><p>How to use this site, and what each term means, in plain language.</p></div>
     ${card("How to use this site", "", "", `<ol class="steps4">${steps.map(([h, p], i) => `<li><span class="num">${i + 1}</span><div><h3>${h}</h3><p>${p}</p></div></li>`).join("")}</ol>`)}
     ${card("Glossary", "Hover or focus the ? next to a heading anywhere on the site to see the same text.", "", `<dl class="gloss">${Object.values(GLOSS).map(([h, p]) => `<div><dt>${esc(h)}</dt><dd>${esc(p)}</dd></div>`).join("")}</dl>`)}
@@ -1737,7 +1723,6 @@ function renderDash() {
     const ch = (cl[cl.length - 1] / cl[0] - 1) * 100, p = fcPath(t), ens = p ? (p[6] / f.last_price - 1) * 100 : null, age = daysBetween(f.last_date, refDate());
     return `<tr class="click" data-t="${esc(t)}"><td><span class="tkr">${esc(t)}</span><div class="sub">${esc(dd.meta.name)}</div></td><td>${fmtP(f.last_price)} <span class="sub">${esc(dd.meta.currency)}</span></td><td>${spark(cl)}</td><td class="${cls(ch)}">${fmtPct(ch)}</td><td style="${age > 5 ? "color:var(--hold)" : ""}">${dShort(f.last_date)}</td><td>${ran ? sigBadge((outlook(t) || {}).sig) : `<span class="badge">not run</span>`}</td><td class="${cls(ens)}">${fmtPct(ens)}</td><td>${(b => b && !b.stale ? `${ratingBadge(b.rating)} <span class="${cls(b.adj)}">${fmtPct(b.adj * 100)}</span>` : b ? `${ratingBadge(b.rating)} <span class="sub">old</span>` : "–")(aiBlend(t))}</td></tr>`;
   }).join("");
-  const dse = ORDER.filter(t => DATA[t].meta.source === "dse");
   const none = LIVE.ok ? (m.state === "loading" ? "Loading…" : "The exchange did not answer. Refresh tries again.") : "Run the app's server to see the live market here (python -m uvicorn app.main:app --app-dir backend).";
   return `${mktHead()}
   ${mktIndices(d)}
@@ -1745,9 +1730,9 @@ function renderDash() {
   <section class="mksec mk2"><div>${card("Sector breadth", "Advanced, declined and unchanged issues per sector.", "", s ? mktSectors(s) : emptyState("db", "No data yet", none))}</div>
     <div>${card("Top 20 shares", "Ranked by the column you pick.", `<div class="pills">${MKT_SORTS.map(([k, l]) => `<button type="button" class="pillbtn" data-mkt="${k}" aria-pressed="${m.sort === k}">${l}</button>`).join("")}</div>`, s ? mktTop(s) : emptyState("db", "No data yet", none))}</div></section>
   <section class="mksec"><div class="sec-h"><div><h2>RAEM forecast signals</h2><p>Seven-day model forecasts for the stocks on this site. Click a row for the full forecast.</p></div><button type="button" class="btn primary sm" id="runall">Show all signals</button></div>
-    ${card("Watchlist", "Last close, 30-day move, the recommendation and the reviewed forecast's call.", "", `<div class="scroll"><table><thead><tr><th>Stock</th><th>Last close</th><th>30 days</th><th>30d change</th><th>Price data to</th><th>Signal</th><th>Forecast 7d</th><th>With AI ${hint(GLOSS.aiadj)}</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: data/ and daily_data/ price files; signals from predictor_lib; Ensemble from forecast_lib; With AI = the reviewed forecast (the Ensemble when there is none), tilted by the latest AI analysis.</p>`)}</section>
+    ${card("Watchlist", "Last close, 30-day move, the recommendation and the reviewed forecast's call.", "", `<div class="scroll"><table><thead><tr><th>Stock</th><th>Last close</th><th>30 days</th><th>30d change</th><th>Price data to</th><th>Signal</th><th>Forecast 7d</th><th>With AI ${hint(GLOSS.aiadj)}</th></tr></thead><tbody>${rows}</tbody></table></div><p class="src">Source: data/ and daily_data/ price files; Signal and Forecast 7d from the reviewed forecast and its tested range (forecast_lib); With AI = the reviewed forecast (the Ensemble when there is none), tilted by the latest AI analysis.</p>`)}</section>
   <section class="mksec">${card("DSE news", "Latest notices from the exchange.", "", d ? mktNews(d) : emptyState("news", "No news yet", none))}</section>
-  ${dse.length && DATA[dse[0]].daily.data_end_date < DATA[dse[0]].forecast.last_date ? `<section class="card warn"><div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap"><span class="badge hold">Data note</span><p style="font-size:13px;color:var(--muted);flex:1 1 300px">The second-opinion daily models for ${dse.map(esc).join(", ")} use prices up to ${dLong(DATA[dse[0]].daily.data_end_date)}, because daily.py reads only the data snapshot. The 7-day forecasts and the recommendation use prices up to ${dLong(DATA[dse[0]].forecast.last_date)}.</p></div></section>` : ""}`;
+`;
 }
 
 
@@ -2314,7 +2299,8 @@ function aiHistoryCard(t) {
     LIVE.hist[t] = null;
     loadAiHistory(t);
   }
-  const rows = (h || []).filter(r => r.kind === "analysis");
+  // newest analysed date first; the server lists runs by when they were created, and a replay of a past date is created later
+  const rows = (h || []).filter(r => r.kind === "analysis").sort((x, y) => String(y.run_date || "").localeCompare(String(x.run_date || "")));
   const cell = r => r.status === "done" ? `<button type="button" class="link" data-act="ai-load" data-v="${esc(r.id)}">Open</button>`
     : r.status === "held" && r.run_date === LIVE.health.date && !LIVE.busy["ai:" + t] ? `<button type="button" class="link" data-act="ai-resume" data-v="${esc(r.model_key)}">Resume</button>`
     : r.status === "failed" && r.saved_answers && r.run_date === LIVE.health.date && !LIVE.busy["ai:" + t] ? `<button type="button" class="link" data-act="ai-resume" data-v="${esc(r.model_key)}" title="${esc(r.error || "")}">Continue</button>`

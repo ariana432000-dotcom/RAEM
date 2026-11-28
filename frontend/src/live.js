@@ -329,7 +329,8 @@ function aiHistoryCard(t) {
     LIVE.hist[t] = null;
     loadAiHistory(t);
   }
-  const rows = (h || []).filter(r => r.kind === "analysis");
+  // newest analysed date first; the server lists runs by when they were created, and a replay of a past date is created later
+  const rows = (h || []).filter(r => r.kind === "analysis").sort((x, y) => String(y.run_date || "").localeCompare(String(x.run_date || "")));
   const cell = r => r.status === "done" ? `<button type="button" class="link" data-act="ai-load" data-v="${esc(r.id)}">Open</button>`
     : r.status === "held" && r.run_date === LIVE.health.date && !LIVE.busy["ai:" + t] ? `<button type="button" class="link" data-act="ai-resume" data-v="${esc(r.model_key)}">Resume</button>`
     : r.status === "failed" && r.saved_answers && r.run_date === LIVE.health.date && !LIVE.busy["ai:" + t] ? `<button type="button" class="link" data-act="ai-resume" data-v="${esc(r.model_key)}" title="${esc(r.error || "")}">Continue</button>`

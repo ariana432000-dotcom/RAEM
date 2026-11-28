@@ -305,9 +305,8 @@ const STEPS = [
   ["Reviewer check", "Audit, shrink, clip and add band"],
   ["Grading track record", "Past forecasts vs actual closes"],
 ];
-const TABS = [["signal","Daily signal"],["forecast","7-day forecast"],["models","All models"],["agent","Reviewer"],["track","Track record"]];
+const TABS = [["signal","Recommendation"],["forecast","7-day forecast"],["models","All models"],["agent","Reviewer"],["track","Track record"]];
 const COLORS = ["--c1","--c2","--c3","--c4","--c5","--c6","--c7","--c8"];
-const DAILY_MODELS = [["xgb","XGBoost"],["lstm","LSTM"],["arima","ARIMA"],["ridge","Ridge"],["kalman","Kalman"]];
 const ICONS = {
   dash: '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
   moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
@@ -517,7 +516,7 @@ function renderTicker() {
     </div>
     ${live ? tokenRow() : ""}
     <div class="runbar"><button type="button" class="btn primary" id="run" ${S.running || fcBusy ? "disabled" : ""}>${S.running || fcBusy ? "Running…" : live ? `Run ${nSel} models` : ran ? "Run again" : "Run forecast"}</button>
-      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three best models: ranked by how their own saved forecasts did against the real closes, with the backtest counting until they have a record; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(savedOn(d))}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(savedOn(d))} results: daily signal, 5 forecast models, fusion, reviewer and track record.`}</p></div>
+      <p class="note">${live ? `Runs the best ${nAll} models (${esc(LIVE.models.forecast.map(m => m.label).join(", "))}) now on the server's latest prices (about 1 to 3 minutes). The main forecast is the reviewed average of the three best models: ranked by how their own saved forecasts did against the real closes, with the backtest counting until they have a record; the recommendation weighs its tested odds against trading costs.${LIVE.fc[S.t] ? ` Showing the run of ${esc(LIVE.fc[S.t].date === LIVE.health.date ? "today" : dShort(LIVE.fc[S.t].date))} (${LIVE.fc[S.t].models.length} models).` : ""}` : ran ? `Showing the saved run of ${dLong(savedOn(d))}. Changing the options updates the chart and tables straight away.` : `Run replays the saved ${dLong(savedOn(d))} results: recommendation, 5 forecast models, fusion, reviewer and track record.`}</p></div>
     ${live && LIVE.err["fc:" + S.t] ? `<p class="err" role="alert">${esc(LIVE.err["fc:" + S.t])}</p>` : ""}`);
   return `<div class="page-h"><h1>${esc(d.meta.name)} <span class="mono" style="color:var(--faint);font-weight:500;font-size:14px">${esc(S.t)}</span></h1><p>${ran ? "Forecast results from the last saved run." : "Price history. Set the options and run the forecast."}</p></div>
   <div class="strip">${tkrPills(S.t, "data-t")}</div>
@@ -532,17 +531,12 @@ function renderTicker() {
   <div id="progslot">${S.running && S.prog ? progressCard() : ""}</div>
   ${live ? `<div id="live-${liveId("fc:" + S.t)}">${liveStatus("fc:" + S.t)}</div>` : ""}
   ${card(ran ? "7-day price path" : "Price history", ran ? `Day 1 to day 7 after ${dLong(f.last_date)}. Hover or tap the chart for values.` : `Last ${winLabel(S.win)}.`, `<div class="pills nw">${WIN_QUICK.map(([n, l]) => `<button type="button" class="pillbtn" data-act="win" data-v="${n}" aria-pressed="${S.win === n}">${l}</button>`).join("")}</div>`, `<div class="chartwrap" id="chart"></div><div class="legend" id="legend"></div><p class="src">Source: data/ and daily_data/ price files${ran ? "; forecast_lib.forecast_ticker()" : ""}.</p>`)}
-  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "Saved forecast not opened yet", "Press Run forecast to open the saved 7-day paths, the daily signal, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
+  <div id="results">${ran ? plainSummary(d) + resultsHtml() : S.running ? "" : card("", "", "", emptyState("inbox", "Saved forecast not opened yet", "Press Run forecast to open the saved 7-day paths, the recommendation, every model's error and the track record.", `<button type="button" class="btn secondary sm" id="run2" style="margin-top:8px">Run forecast</button>`), "dashed")}</div>`;
 }
 
 /* ---------- result panels ---------- */
-function signalPanel(d) {
-  const k = d.daily, sig = k.final_signal, thr = k.signal_threshold, r = k.final_expected_return, cur = d.meta.currency;
-  const max = Math.max(thr * 2.2, Math.abs(r) * 1.25), pos = v => Math.max(1.5, Math.min(98.5, 50 + v / max * 50));
-  const sw = pos(-thr), bw = 100 - pos(thr), hold = pos(thr) - pos(-thr);
-  const rows = DAILY_MODELS.map(([key, nm]) => ({ key, nm, ret: k[key + "_pred_return"], acc: k[key + "_direction_acc"] })).filter(x => x.ret != null);
-  const rmax = Math.max(...rows.map(x => Math.abs(x.ret)), 0.001), win = (k.winner_model || "").toLowerCase();
-  const stale = daysBetween(k.data_end_date, refDate()) > 5, o = outlook(S.t), last = d.forecast.last_price;
+function signalPanel(d) {   // the Recommendation tab
+  const cur = d.meta.currency, o = outlook(S.t), last = d.forecast.last_price;
   const pcm = to => `${to >= last ? "+" : ""}${((to / last - 1) * 100).toFixed(1)}%`;
   // the recommendation follows the main (reviewed) forecast, its tested range and the trading costs
   const odds = o.sig === "BUY" ? o.pGain : o.sig === "SELL" ? o.pFall : Math.max(o.pGain || 0, o.pFall || 0);
@@ -558,16 +552,7 @@ function signalPanel(d) {
       <p class="small">Range from this stock's past forecast errors: about 8 in 10 past forecasts landed inside it. ${hint(GLOSS.fc)}</p></div>` : ""}
     ${o.pGain != null ? `<div class="sect"><p class="l">Odds</p><p class="why">Gain after costs: <b>${pc(o.pGain)}</b> · fall: <b>${pc(o.pFall)}</b>. BUY or SELL needs ${pc(MIN_ODDS)}.</p></div>` : ""}
     <div class="sect"><p class="l">Why ${esc(o.sig)}</p><p class="why">${o.why[0].toUpperCase() + o.why.slice(1)}.</p></div>`);
-  const models = card(`Second opinion: daily models ${hint(GLOSS.daily)}`, `An older, separate set of five models. ★ = the one its own signal uses (${esc(sig)}, ${fmtPct(r * 100)}); it does not set the recommendation.`, sigBadge(sig), `
-    <div class="kvs"><div class="kv"><p class="k">Expected return</p><p class="v ${cls(r)}">${fmtPct(r * 100)}</p></div><div class="kv"><p class="k">Signal threshold</p><p class="v">±${(thr * 100).toFixed(2)}%</p></div><div class="kv"><p class="k">30-day volatility</p><p class="v">${(k.volatility_30d * 100).toFixed(2)}%</p><p class="s">per day</p></div></div>
-    <div class="zones"><div class="gtrack"><b class="gz-s" style="width:${sw}%"></b><b class="gz-h" style="width:${hold}%"></b><b class="gz-b" style="width:${bw}%"></b><span class="gmark" style="left:${pos(r)}%"></span></div>
-      <div class="glabels"><span style="left:${sw / 2}%">SELL</span><span style="left:${pos(-thr)}%">−${(thr * 100).toFixed(2)}%</span><span style="left:50%">HOLD</span><span style="left:${pos(thr)}%">+${(thr * 100).toFixed(2)}%</span><span style="left:${pos(thr) + bw / 2}%">BUY</span></div></div>
-    <div class="rows" style="margin-top:14px">${rows.map(x => `<div class="row"><span>${x.nm}${x.key === win ? " ★" : ""}</span>
-      <div class="dv"><b class="${x.ret >= 0 ? "pos" : "neg"}" style="${x.ret >= 0 ? `left:50%;width:${Math.min(50, x.ret / rmax * 50)}%` : `right:50%;width:${Math.min(50, -x.ret / rmax * 50)}%`}"></b></div>
-      <span class="val"><span class="${cls(x.ret)}">${fmtPct(x.ret * 100)}</span> · ${(x.acc * 100).toFixed(0)}% dir</span></div>`).join("")}</div>
-    ${stale ? `<div class="card warn" style="margin-top:12px;padding:12px;font-size:12px;color:var(--muted)">These models used prices up to ${dLong(k.data_end_date)} (${daysBetween(k.data_end_date, refDate())} days old); daily.py reads only the data snapshot.</div>` : ""}
-    <p class="src">Source: predictor_lib.run_pipeline() and decide_signal(), as in daily.py.</p>`);
-  return `<div class="two">${rec}${models}</div>`;
+  return rec;
 }
 function forecastPanel(d) {
   const f = d.forecast, ms = mainSeries(d), last = f.last_price, ret = ms.vals[6] / last - 1, showB = S.view === "Agent" && ms.band;
