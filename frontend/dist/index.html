@@ -2253,7 +2253,7 @@ function unfinishedRunFor(t, key) {  // today's held run, or today's newest run 
 /* the company field: type a ticker or a company name and pick it from the list; any ticker works (the pipeline needs no preparation) */
 function aiCompanyField(t) {
   const L = X.stk.list ? X.stk.list.stocks : [], seen = new Set();
-  const opts = [...L.map(r => [r.code, r.name]), ...Object.keys(DATA).map(k => [k, DATA[k].meta.name]), ...(LIVE.models ? LIVE.models.analysis_tickers : []).map(k => [k, ""])]
+  const opts = [...L.map(r => [r.code, r.name]), ...Object.keys(DATA).map(k => [k, DATA[k].meta.name]), ...AI_T.map(k => [k, (EXTRA.ai[k] && EXTRA.ai[k].name) || ""]), ...(LIVE.models ? LIVE.models.analysis_tickers : []).map(k => [k, ""])]   // AI_T adds companies only analysed, e.g. 000333.SZ
     .filter(([c]) => !seen.has(c) && seen.add(c)).map(([c, n]) => `<option value="${esc(c)}">${esc(n || "")}</option>`).join("");
   return `<div class="field"><label for="ai-co">Company</label>
     <input class="inp" id="ai-co" list="ai-co-list" value="${esc(t)}" placeholder="Ticker or name: GP, SQURPHARMA, TSLA, 0700.HK" aria-label="Company" autocomplete="off" spellcheck="false">
