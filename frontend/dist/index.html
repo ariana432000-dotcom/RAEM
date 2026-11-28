@@ -921,7 +921,7 @@ function resultsHtml() {
    page keeps its own arrow, which does the same. */
 let navReady = false, navLast = 0;
 const navDepth = () => { const s = history.state; return s && s.raem > 0 ? s.raem : 0; };
-function navBackBtn() { navLast = navDepth(); const b = $("#navback"); if (b) b.hidden = !navLast || S.page === "stock"; }
+function navBackBtn() { navLast = navDepth(); const b = $("#navback"); if (b) b.hidden = !navLast; }
 /* ---------- extra pages ---------- */
 const NAVS = [["dash", "Home", "dash"], ["stocks", "Stocks", "chart"], ["ai", "AI Analysis", "line"], ["bt", "Backtest", "chart"], ["eval", "Evaluation", "check"], ["mem", "Memory", "brain"], ["set", "Settings", "gear"], ["help", "Help", "help"]];
 Object.assign(ICONS, {
@@ -1771,7 +1771,6 @@ function ensureStock(code) { if (LIVE.ok && code && !X.stk.det[code] && X.stk.ds
 function openStock(code) {
   if (S.running) return;
   savePos();
-  if (S.page !== "stock") X.stk.from = S.page;   // the back arrow returns here
   X.stk.code = String(code).toUpperCase(); X.stk.sect = "stock"; saveStk(); S.more = false; S.page = "stock"; $("#app").classList.remove("open"); render(false); restorePos();
 }
 function resolveStock(v) {
@@ -1920,7 +1919,7 @@ function stockFundamentals(d) {
 }
 const savedName = c => (DATA[c] && DATA[c].meta && DATA[c].meta.name) || "";   // a company's name from the saved page data
 /* The stock page's header: a back arrow and the company name, nothing else. */
-const stkHead = (code, name) => `<div class="stkhead"><button type="button" class="backbtn" data-act="stk-back" aria-label="Back">${ic("back")}</button><h1>${esc(name || code)}${name && name !== code ? ` <span class="stkcode">(${esc(code)})</span>` : ""}</h1></div>`;
+const stkHead = (code, name) => `<div class="stkhead"><button type="button" class="backbtn" data-act="stk-back" aria-label="Back to the stock list" title="All stocks">${ic("back")}</button><h1>${esc(name || code)}${name && name !== code ? ` <span class="stkcode">(${esc(code)})</span>` : ""}</h1></div>`;
 function renderStock() {
   const x = X.stk, code = x.code, d = x.det[code];
   const bc = stkHead(code, (d && d.name) || savedName(code));   // the server can lack a name (its DSE list fell back); the saved page data has it
@@ -2511,7 +2510,7 @@ document.addEventListener("click", e => {
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
   else if (a === "stk-more") X.stk.n += 100;
   else if (a === "nav-back") { if (!S.running) history.back(); return; }
-  else if (a === "stk-back") { if (navDepth()) { if (!S.running) history.back(); return; } goPage(X.stk.from && X.stk.from !== "stock" ? X.stk.from : "stocks"); return; }
+  else if (a === "stk-back") { goPage("stocks"); return; }   // the arrow by the company name leads to the stock list; the header arrow and the browser go back
   else if (a === "stk-range") { X.stk.range = +v; saveStk(); }
   else if (a === "stk-frange") { X.stk.frange = +v; saveStk(); }
   else if (a === "stk-panel") { const c = X.stk.code; X.stk.panel[c] = X.stk.panel[c] === v ? "" : v; saveStk(); }
@@ -2591,7 +2590,7 @@ function pageFromHash() {
     const h = decodeURIComponent(location.hash.slice(1));
     if (h.startsWith("stock-") && h.length > 6) { X.stk.code = h.slice(6).toUpperCase(); X.stk.sect = "stock"; S.page = "stock"; return true; }
     if (h.startsWith("tk-") && DATA[h.slice(3)]) { S.page = "tk"; S.t = h.slice(3); S.overlays = defaultOverlays(D()); return true; }
-    if (h === "dash" || NAVS.some(n => n[0] === h)) { S.page = h; return true; }
+    if (h === "dash" || NAVS.some(n => n[0] === h)) { S.page = h; if (h === "stocks") { X.stk.sect = "stocks"; saveStk(); } return true; }
   } catch (e) { /* ignore a bad link */ }
   return false;
 }

@@ -17,7 +17,7 @@ document.addEventListener("click", e => {
   else if (a === "stk-sector") { X.stk.sector = X.stk.sector === v ? "" : v; X.stk.n = 100; }
   else if (a === "stk-more") X.stk.n += 100;
   else if (a === "nav-back") { if (!S.running) history.back(); return; }
-  else if (a === "stk-back") { if (navDepth()) { if (!S.running) history.back(); return; } goPage(X.stk.from && X.stk.from !== "stock" ? X.stk.from : "stocks"); return; }
+  else if (a === "stk-back") { goPage("stocks"); return; }   // the arrow by the company name leads to the stock list; the header arrow and the browser go back
   else if (a === "stk-range") { X.stk.range = +v; saveStk(); }
   else if (a === "stk-frange") { X.stk.frange = +v; saveStk(); }
   else if (a === "stk-panel") { const c = X.stk.code; X.stk.panel[c] = X.stk.panel[c] === v ? "" : v; saveStk(); }

@@ -643,7 +643,7 @@ function resultsHtml() {
    page keeps its own arrow, which does the same. */
 let navReady = false, navLast = 0;
 const navDepth = () => { const s = history.state; return s && s.raem > 0 ? s.raem : 0; };
-function navBackBtn() { navLast = navDepth(); const b = $("#navback"); if (b) b.hidden = !navLast || S.page === "stock"; }
+function navBackBtn() { navLast = navDepth(); const b = $("#navback"); if (b) b.hidden = !navLast; }
 /* ---------- render & run ---------- */
 function render(keepScroll = true) {
   const sc = $("#scroller"), top = sc.scrollTop;
@@ -724,7 +724,7 @@ function pageFromHash() {
     const h = decodeURIComponent(location.hash.slice(1));
     if (h.startsWith("stock-") && h.length > 6) { X.stk.code = h.slice(6).toUpperCase(); X.stk.sect = "stock"; S.page = "stock"; return true; }
     if (h.startsWith("tk-") && DATA[h.slice(3)]) { S.page = "tk"; S.t = h.slice(3); S.overlays = defaultOverlays(D()); return true; }
-    if (h === "dash" || NAVS.some(n => n[0] === h)) { S.page = h; return true; }
+    if (h === "dash" || NAVS.some(n => n[0] === h)) { S.page = h; if (h === "stocks") { X.stk.sect = "stocks"; saveStk(); } return true; }
   } catch (e) { /* ignore a bad link */ }
   return false;
 }

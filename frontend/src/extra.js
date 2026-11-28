@@ -847,7 +847,6 @@ function ensureStock(code) { if (LIVE.ok && code && !X.stk.det[code] && X.stk.ds
 function openStock(code) {
   if (S.running) return;
   savePos();
-  if (S.page !== "stock") X.stk.from = S.page;   // the back arrow returns here
   X.stk.code = String(code).toUpperCase(); X.stk.sect = "stock"; saveStk(); S.more = false; S.page = "stock"; $("#app").classList.remove("open"); render(false); restorePos();
 }
 function resolveStock(v) {
@@ -996,7 +995,7 @@ function stockFundamentals(d) {
 }
 const savedName = c => (DATA[c] && DATA[c].meta && DATA[c].meta.name) || "";   // a company's name from the saved page data
 /* The stock page's header: a back arrow and the company name, nothing else. */
-const stkHead = (code, name) => `<div class="stkhead"><button type="button" class="backbtn" data-act="stk-back" aria-label="Back">${ic("back")}</button><h1>${esc(name || code)}${name && name !== code ? ` <span class="stkcode">(${esc(code)})</span>` : ""}</h1></div>`;
+const stkHead = (code, name) => `<div class="stkhead"><button type="button" class="backbtn" data-act="stk-back" aria-label="Back to the stock list" title="All stocks">${ic("back")}</button><h1>${esc(name || code)}${name && name !== code ? ` <span class="stkcode">(${esc(code)})</span>` : ""}</h1></div>`;
 function renderStock() {
   const x = X.stk, code = x.code, d = x.det[code];
   const bc = stkHead(code, (d && d.name) || savedName(code));   // the server can lack a name (its DSE list fell back); the saved page data has it
