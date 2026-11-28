@@ -292,7 +292,7 @@ function aiPickCompany() {
   X.ai.anyMsg = "";
   if (!raw) { render(); return; }
   const code = resolveStock(raw) || raw.toUpperCase();
-  if (!/^[A-Z0-9.&\-]{1,20}$/.test(code)) { X.ai.anyMsg = "Pick a company from the list, or type a ticker (letters, digits, dots and dashes)."; render(); return; }
+  if (!/^[A-Z0-9.&()\-]{1,20}$/.test(code)) { X.ai.anyMsg = "Pick a company from the list, or type a ticker (letters, digits, dots, dashes and brackets)."; render(); return; }
   X.ai.extra = X.ai.extra || [];
   if (!DATA[code] && !X.ai.extra.includes(code)) X.ai.extra.push(code);
   X.ai.t = code;

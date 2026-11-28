@@ -17,7 +17,7 @@ from datetime import date, timedelta
 from app.core import config
 from app.services import market
 
-CODE_RE = re.compile(r"^[A-Za-z0-9._&-]{1,20}$")
+CODE_RE = re.compile(r"^[A-Za-z0-9._&()-]{1,20}$")   # some DSE codes have brackets, e.g. AMCL(PRAN)
 DETAIL_TTL = 900
 CANDLE_DAYS = 740          # calendar days of candles (about 2 years, for the 2Y chart window)
 _lock = threading.Lock()

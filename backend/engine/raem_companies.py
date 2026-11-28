@@ -33,7 +33,7 @@ SUFFIX = {
 US = ("USD", "America/New_York", "16:30", (5, 6))
 DSE = {"currency": "BDT", "source": "dse", "tz": "Asia/Dhaka", "final_after": "15:00", "weekend": (4, 5)}
 
-_TICKER_OK = re.compile(r"^[A-Z0-9][A-Z0-9.\-^=]{0,14}$")
+_TICKER_OK = re.compile(r"^[A-Z0-9][A-Z0-9.\-^=()]{0,14}$")   # brackets for DSE codes such as AMCL(PRAN)
 
 
 def path() -> str:
@@ -44,7 +44,7 @@ def normalize(raw: str) -> str:
     """Upper-case ticker; raises ValueError when it could not be a ticker (spaces, slashes, too long)."""
     t = (raw or "").strip().upper()
     if not _TICKER_OK.match(t):
-        raise ValueError(f"{raw!r} is not a ticker. Use letters, digits, dots and dashes, e.g. TSLA, 7203.T, SQURPHARMA.")
+        raise ValueError(f"{raw!r} is not a ticker. Use letters, digits, dots, dashes and brackets, e.g. TSLA, 7203.T, SQURPHARMA, AMCL(PRAN).")
     return t
 
 

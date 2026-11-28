@@ -25,6 +25,7 @@ def rc(tmp_path, monkeypatch):
 
 def test_registry_normalize_and_presets(rc):
     assert rc.normalize(" tsla ") == "TSLA" and rc.normalize("7203.t") == "7203.T"
+    assert rc.normalize("amcl(pran)") == "AMCL(PRAN)"   # a real DSE code with brackets
     for bad in ("", "a b", "x/y", "A" * 20):
         with pytest.raises(ValueError):
             rc.normalize(bad)

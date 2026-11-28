@@ -72,6 +72,7 @@ def test_routes(client, monkeypatch, tmp_path):
     monkeypatch.setattr(stocks, "build_detail", lambda code: {"ok": True, "code": code.upper(), "candles": [], "errors": []})
     assert client.get("/api/stocks").json()["count"] == 2
     assert client.get("/api/stocks/abbank").json()["code"] == "ABBANK"
+    assert client.get("/api/stocks/AMCL(PRAN)").json()["code"] == "AMCL(PRAN)"   # DSE codes can have brackets
     assert client.get("/api/stocks/bad%20code!").status_code in (404, 422)
 
 

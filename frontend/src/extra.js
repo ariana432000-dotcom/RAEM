@@ -854,7 +854,7 @@ function resolveStock(v) {
   v = String(v || "").trim(); if (!v) return null;
   const L = X.stk.list ? X.stk.list.stocks : [], up = v.toUpperCase(), low = v.toLowerCase();
   const hit = L.find(r => r.code === up) || L.find(r => (r.name || "").toLowerCase().includes(low)) || L.find(r => r.code.startsWith(up));
-  return hit ? hit.code : (/^[A-Z0-9._&-]{1,20}$/.test(up) ? up : null);
+  return hit ? hit.code : (/^[A-Z0-9._&()-]{1,20}$/.test(up) ? up : null);
 }
 const crumb = (...parts) => `<nav class="crumb" aria-label="Breadcrumb">${parts.map((p, i) => (i ? "<span>/</span>" : "") + (Array.isArray(p) ? `<button type="button" class="link" data-page="${p[0]}">${p[1]}</button>` : `<b>${esc(p)}</b>`)).join("")}</nav>`;
 const needServer = what => card("", "", "", emptyState("db", `${what} needs the server`, "Run the app's server to load live DSE data (python -m uvicorn app.main:app --app-dir backend)."), "dashed");
@@ -987,29 +987,12 @@ function stockRaem(d) {
   }
   return card("RAEM analysis", "Seven-day model forecast and the BUY, HOLD or SELL signal.", "", `<div class="raemrow"><div>${left}</div><div>${right}</div></div>${pan === "fc" ? stockFcPanel(d) : pan === "ai" ? stockAiPanel(code) : ""}`);
 }
-const HOLD_COL = { "Sponsor/Director": "var(--c7)", Institute: "var(--buy)", Public: "var(--faint)", Govt: "var(--hold)", Foreign: "var(--c3)" };
-function donut(sh) {
-  const R = 52, C = 2 * Math.PI * R, tot = sh.reduce((q, s) => q + s.pct, 0) || 1; let off = 0;
-  const top = sh.slice().sort((a, b) => b.pct - a.pct)[0];
-  const arcs = sh.map(s => { const len = s.pct / tot * C, a = `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${HOLD_COL[s.label] || "var(--faint)"}" stroke-width="16" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 70 70)"/>`; off += len; return a; }).join("");
-  return `<svg viewBox="0 0 140 140" class="donut" role="img" aria-label="Shareholding pattern">${arcs}<text x="70" y="68" text-anchor="middle" class="dn">${top.pct.toFixed(1)}%</text><text x="70" y="84" text-anchor="middle" class="dl">${esc(top.label)}</text></svg>`;
-}
-function epsBars(rows) {
-  const W = 360, H = 170, padB = 22, padT = 22, hi = Math.max(...rows.map(r => r.eps), 0), lo = Math.min(...rows.map(r => r.eps), 0), span = hi - lo || 1;
-  const y = v => padT + (hi - v) * (H - padT - padB) / span, bw = Math.min(38, (W - 20) / rows.length - 14), step = (W - 20) / rows.length;
-  return `<svg viewBox="0 0 ${W} ${H}" class="epsbars" role="img" aria-label="Annual EPS">${rows.map((r, i) => {
-    const prev = i ? rows[i - 1].eps : null, col = prev == null ? "var(--faint)" : r.eps >= prev ? "var(--buy)" : "var(--sell)", x = 10 + step * i + (step - bw) / 2, y0 = y(Math.max(r.eps, 0)), h = Math.max(2, Math.abs(y(r.eps) - y(0)));
-    return `<rect x="${x.toFixed(1)}" y="${y0.toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="3" fill="${col}"/><text x="${(x + bw / 2).toFixed(1)}" y="${(y0 - 5).toFixed(1)}" text-anchor="middle" class="ev">${r.eps.toFixed(2)}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 6}" text-anchor="middle" class="ex">${r.year}</text>`;
-  }).join("")}</svg>`;
-}
 function stockFundamentals(d) {
-  const sh = d.shareholding || [], ae = d.annual_eps || [], qe = d.quarterly_eps || [];
+  const qe = d.quarterly_eps || [];
   const tile = (k, v) => `<div class="card statx"><p class="k">${k}</p><p class="v mono">${v}</p></div>`;
   const tiles = `<div class="fundtiles">${tile("Category", esc(d.category || "–"))}${tile("Paid-up capital", takaCr(d.paid_up_mn))}${tile("Cash dividend", d.dividend ? `${d.dividend.pct}% (${d.dividend.year})` : "–")}${tile("Outstanding shares", fmtN(d.shares_out))}</div>`;
-  const hold = sh.length ? `<div class="subcard"><p class="k">Shareholding pattern</p><div class="holdrow">${donut(sh)}<ul class="legend2">${sh.map(s => `<li><i style="background:${HOLD_COL[s.label] || "var(--faint)"}"></i><span>${esc(s.label)}</span><b class="mono">${s.pct.toFixed(2)}%</b></li>`).join("")}</ul></div></div>` : `<div class="subcard"><p class="k">Shareholding pattern</p><p class="sub">Not available from the company page.</p></div>`;
-  const eps = ae.length ? `<div class="subcard"><p class="k">Annual EPS trend</p>${epsBars(ae)}</div>` : `<div class="subcard"><p class="k">Annual EPS trend</p><p class="sub">Not available from the company page.</p></div>`;
   const q = `<div class="subcard"><p class="k">Quarterly EPS</p>${qe.length ? `<div class="qeps">${qe.map(r => `<div><b class="mono ${r.eps < 0 ? "down" : ""}">${r.eps < 0 ? "−" : ""}${Math.abs(r.eps).toFixed(2)}</b><span>${esc(r.period)}</span></div>`).join("")}</div>` : `<p class="sub">No quarterly EPS disclosure found in the exchange's recent notices.</p>`}</div>`;
-  return card("Company fundamentals", "", "", `${tiles}<div class="fundgrid">${hold}${eps}</div>${q}<p class="src">Fundamental data sourced from dsebd.org${d.as_of ? `, last updated ${esc(d.as_of)}` : ""}.</p>`);
+  return card("Company fundamentals", "", "", `${tiles}${q}<p class="src">Fundamental data sourced from dsebd.org${d.as_of ? `, last updated ${esc(d.as_of)}` : ""}.</p>`);
 }
 const savedName = c => (DATA[c] && DATA[c].meta && DATA[c].meta.name) || "";   // a company's name from the saved page data
 /* The stock page's header: a back arrow and the company name, nothing else. */
