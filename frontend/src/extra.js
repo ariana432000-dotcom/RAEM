@@ -103,20 +103,21 @@ function mdField(text, label) {  // the text after "**Label**:" up to the next "
   return m ? m[1].trim() : "";
 }
 const aiSignal = L => L.signal || SIGNAL_OF[String(L.rating || "").toUpperCase()] || "";
-/* "If I invest today, what could the next 3 trading days bring?" on the Decision card: one expected profit or loss on a fixed stake
-   (100 USD, or 10,000 Tk for Dhaka stocks) and a likely range. Uses the AI-adjusted path when the AI analysis is fresh, else the Ensemble. */
-function aiThreeDay(t) {
+/* "If I invest today, what could the next 7 trading days bring?" on the Decision card: one expected profit or loss on a fixed stake
+   (100 USD, or 10,000 Tk for Dhaka stocks) and a likely range. Uses the AI-adjusted path when the AI analysis is fresh, else the Ensemble.
+   Day 7, so the expected amount is the "7-day outlook with this decision" and the range is the one shown under it. */
+function aiInvest(t) {
   const d = DATA[t];
   if (!d) return "";   // a company that is not on the site has no forecast yet
   const f = d.forecast, last = f.last_price, cur = d.meta.currency, b = aiBlend(t), rb = fcBand(t), rp = fcPath(t);
   const path = b && !b.stale && b.path ? b.path : rp;
   if (!path) return "";
-  const tk = cur === "BDT", A = tk ? 10000 : STAKE, k = 2, r = path[k] / last - 1;
+  const tk = cur === "BDT", A = tk ? 10000 : STAKE, k = 6, r = path[k] / last - 1;
   // the band holds the reviewed forecast's own error range; it is moved onto the path that is shown so both share one centre
   const lo = rb && rp ? (rb[k][0] - rp[k] + path[k]) / last - 1 : null, hi = rb && rp ? (rb[k][1] - rp[k] + path[k]) / last - 1 : null;
   const money = v => tk ? `${v >= 0 ? "+" : "−"}${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 })} Tk` : stakeSigned(v);
   const stake = tk ? `${A.toLocaleString("en-US")} Tk` : stakeShow(A), old = f.dates[k] < refDate();
-  return `<div class="sect"><p class="l">If you invest ${stake} today: after 3 trading days</p>
+  return `<div class="sect"><p class="l">If you invest ${stake} today: after 7 trading days</p>
     <p class="v ${cls(r)}">${money(A * r)} <span class="vs">${fmtPct(r * 100)} expected</span></p>
     ${lo != null ? `<p class="small">Likely range: ${money(A * lo)} to ${money(A * hi)} (${fmtPct(lo * 100)} to ${fmtPct(hi * 100)}).</p>` : ""}
     <p class="small">${old ? `This forecast ends at the ${dShort(f.last_date)} close, so it is out of date; run the forecast again for today's estimate. ` : ""}An estimate from the forecast, before costs and tax; the real result can fall outside the range. Not investment advice.</p></div>`;
@@ -133,8 +134,8 @@ function aiDecisionCard(t, L) {
     ${entry == null ? "" : d ? `<div class="sect"><p class="l">Entry (close of ${dShort(d.forecast.last_date)})</p><p class="v">${fmtP(entry)} ${esc(cur)}</p>
       ${seen && Math.abs(seen / entry - 1) > 0.01 ? `<p class="small">The analysis saw ${fmtP(seen)} ${esc(cur)} on ${dShort(L.date)}; the forecast uses closes to ${dShort(d.forecast.last_date)}. Run the forecast again for the newer prices.</p>` : ""}</div>`
       : `<div class="sect"><p class="l">Close seen by the analysis (${dShort(L.date)})</p><p class="v">${fmtP(entry)}</p><p class="small">${esc(t)} is not on the site yet, so it has no 7-day forecast. Add it from the search box to get one.</p></div>`}
-    ${b && !b.stale ? `<div class="sect"><p class="l">7-day outlook with this decision</p><p class="v ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</p>${band ? `<p class="small">Range from past forecast errors: ${fmtP(band[6][0])} to ${fmtP(band[6][1])} ${esc(cur)}.</p>` : ""}</div>` : ""}
-    ${aiThreeDay(t)}
+    ${b && !b.stale ? `<div class="sect"><p class="l">7-day outlook with this decision</p><p class="v ${cls(b.adj)}">${fmtPct(b.adj * 100)} · ${fmtP(b.price)} ${esc(cur)}</p>${band && fcPath(t) ? `<p class="small">Range from past forecast errors: ${fmtP(band[6][0] - fcPath(t)[6] + b.price)} to ${fmtP(band[6][1] - fcPath(t)[6] + b.price)} ${esc(cur)}.</p>` : ""}</div>` : ""}
+    ${aiInvest(t)}
     ${why ? `<div class="sect"><p class="l">Why ${esc(sig || L.rating || "")}</p><p class="why">${esc(why)}</p></div>` : ""}`);
 }
 const turnHtml = x => `<li class="turn ${SIDE_TONE[x.side] || "hold"}"><div class="who"><b>${esc(x.speaker)}</b><span class="badge ${SIDE_TONE[x.side] || "hold"}">${esc(x.side)}</span>${x.round ? `<span class="sub">round ${x.round}</span>` : ""}</div><div class="pre">${md(x.text)}</div></li>`;
