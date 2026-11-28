@@ -522,6 +522,20 @@ def test_archive_is_read_from_the_snapshot_when_there_is_no_database(tmp_path, m
     assert sessions.archived("NOPE") == []
 
 
+def test_companies_lists_every_analysed_company(tmp_path, monkeypatch):
+    """Logs and archive together, so a company the site does not forecast (Midea's 000333.SZ) still gets its AI page."""
+    import gzip, json, sys
+    sys.path.insert(0, str(BACKEND / "app" / "pipeline"))
+    import sessions
+    snap = tmp_path / "snap.json.gz"
+    with gzip.open(snap, "wt", encoding="utf-8") as fh:
+        json.dump([{"company": "000333.SZ", "session_start": "2026-10-05 10:00:00", "trade_date": "2026-10-05", "signal": "HOLD", "data": {}}], fh)
+    monkeypatch.setenv("RAEM_SNAPSHOT", str(snap))
+    monkeypatch.setenv("RAEM_DB", str(tmp_path / "missing.db"))
+    (tmp_path / "trading_log_IBM.json").write_text(json.dumps([{"company": "IBM", "session_start": "2026-10-22 10:00:00", "steps": []}]), encoding="utf-8")
+    assert sessions.companies(str(tmp_path)) == ["000333.SZ", "IBM"]
+
+
 def test_failed_analysis_error_carries_the_cause(monkeypatch):
     """The run's error names the reason the pipeline runner printed, not just 'did not finish'."""
     from app.workers import jobs

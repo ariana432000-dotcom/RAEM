@@ -923,7 +923,7 @@ const lsDel = k => { try { localStorage.removeItem(k); } catch (e) { /* storage 
 const cleanTxt = s => { let x = String(s || ""); const i = x.indexOf("'report': \""); if (x.startsWith("{") && i >= 0) x = x.slice(i + 11).replace(/"\}\s*(…\[truncated\])?\s*$/, "$1"); return x.replace(/\\n/g, "\n").replace(/\\'/g, "'"); };
 const md = s => esc(cleanTxt(s)).replace(/^#{1,6}\s*(.+)$/gm, "<b>$1</b>").replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
 const num = v => { const n = parseFloat(String(v ?? "").replace(/[^0-9.\-]/g, "")); return isFinite(n) ? n : null; };
-const AI_T = ORDER.filter(t => EXTRA.ai[t]);
+const AI_T = ORDER.filter(t => EXTRA.ai[t]).concat(Object.keys(EXTRA.ai).filter(t => !ORDER.includes(t)).sort());   // site companies first, then ones only analysed (e.g. 000333.SZ)
 const ratingTone = r => ({ buy: "buy", hold: "hold", sell: "sell", overweight: "buy", underweight: "sell" }[String(r || "").toLowerCase()] || "");
 const ratingBadge = r => r ? `<span class="badge sig ${ratingTone(r)}"><i></i>${esc(r)}</span>` : `<span class="badge">n/a</span>`;
 const pillTabs = (items, cur, attr) => `<div class="pills">${items.map(([id, label, dis]) => `<button type="button" class="pillbtn" ${attr}="${esc(id)}" aria-pressed="${cur === id}" ${dis ? "disabled style=\"opacity:.45;cursor:not-allowed\"" : ""}><i></i>${esc(label)}</button>`).join("")}</div>`;
@@ -962,7 +962,9 @@ const nonEmpty = (icon, title, desc) => card("", "", "", emptyState(icon, title,
 const d0 = t => {
   if (DATA[t] && DATA[t].meta.name !== t) return `${DATA[t].meta.name} (${t})`;
   const r = X.stk && X.stk.list && X.stk.list.stocks.find(q => q.code === t);
-  return r && r.name ? `${r.name} (${t})` : t;
+  if (r && r.name) return `${r.name} (${t})`;
+  const ai = EXTRA.ai && EXTRA.ai[t];   // a company that was only analysed carries its name from the export
+  return ai && ai.name ? `${ai.name} (${t})` : t;
 };
 function aiProgress() {
   const p = X.ai.prog, n = p.stages.length, pct = Math.round(p.i / n * 100), cur = p.stages[Math.min(p.i, n - 1)];

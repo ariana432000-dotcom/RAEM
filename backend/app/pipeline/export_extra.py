@@ -22,7 +22,8 @@ import forecast_lib as fl  # noqa: E402
 import predictor_lib as pl  # noqa: E402
 from export_ticker import clean  # noqa: E402
 
-from sessions import ai_entry, trunc  # noqa: E402
+from sessions import ai_entry, companies, trunc  # noqa: E402
+from export_evaluation import NAMES  # noqa: E402
 
 out = {"ai": {}, "dataset": {}, "backtest": {}, "memory": {}, "news_corpus": []}
 EXTRA_PATH = os.path.join(os.path.dirname(HERE), "..", "data", "extra.json")
@@ -121,6 +122,13 @@ for t in pl.TICKERS:
     e = ai_for(t)
     if e:
         out["ai"][t] = e
+# companies analysed but not forecast on the site, e.g. Midea's Shenzhen listing 000333.SZ (the site forecasts 0300.HK)
+for t in companies(os.path.join(ROOT, "notebooks")):
+    if t not in pl.TICKERS and t not in out["ai"]:
+        e = ai_for(t)
+        if e:
+            e["name"] = NAMES.get(t, "").replace(f" ({t})", "")
+            out["ai"][t] = e
 
 # ---- full price tables ----
 for t in pl.TICKERS:

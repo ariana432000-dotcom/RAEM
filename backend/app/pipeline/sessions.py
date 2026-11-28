@@ -230,6 +230,26 @@ def archived(ticker: str) -> list[tuple[dict, str | None]]:
         c.close()
 
 
+def companies(nb_dir: str) -> list[str]:
+    """Every company with a saved session: the trading logs plus the archive (or, without a run database, its snapshot)."""
+    names = {s.get("company") for s, _ in _log_sessions(nb_dir)}
+    c = _archive(create=False)
+    if c is not None:
+        try:
+            names |= {r[0] for r in c.execute("SELECT DISTINCT company FROM sessions")}
+        except Exception:
+            pass
+        finally:
+            c.close()
+    elif os.path.exists(snapshot_path()):
+        try:
+            with gzip.open(snapshot_path(), "rt", encoding="utf-8") as fh:
+                names |= {r.get("company") for r in json.load(fh)}
+        except Exception:
+            pass
+    return sorted(n for n in names if isinstance(n, str) and n)
+
+
 SIDES = {"bull": "bull", "bear": "bear", "aggressive": "aggressive", "risky": "aggressive", "conservative": "conservative",
          "safe": "conservative", "neutral": "neutral"}
 SIGNAL_OF = {"Buy": "BUY", "Overweight": "BUY", "Hold": "HOLD", "Underweight": "SELL", "Sell": "SELL"}
